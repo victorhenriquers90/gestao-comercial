@@ -14,6 +14,23 @@ export const Route = createFileRoute("/login")({ component: LoginPage });
 const fieldClass =
   "h-12 rounded-lg border-transparent bg-muted px-4 text-base focus-visible:border-input focus-visible:bg-card";
 
+// Better Auth's client returns an error `code` (e.g. "INVALID_EMAIL_OR_PASSWORD")
+// alongside its own English `message` — key off `code` so this never depends on
+// matching that English string.
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_EMAIL_OR_PASSWORD: "E-mail ou senha inválidos.",
+  INVALID_EMAIL: "E-mail inválido.",
+  EMAIL_NOT_VERIFIED: "Confirme seu e-mail antes de entrar.",
+  PASSWORD_TOO_SHORT: "A senha deve ter pelo menos 8 caracteres.",
+  PASSWORD_TOO_LONG: "A senha é longa demais.",
+  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "Já existe uma conta com este e-mail.",
+  FAILED_TO_CREATE_USER: "Não foi possível criar a conta.",
+};
+
+function authErrorMessage(code: string | undefined, fallback: string): string {
+  return (code && AUTH_ERROR_MESSAGES[code]) || fallback;
+}
+
 function LoginPage() {
   const { user, isPending } = useCurrentUserState();
   const navigate = useNavigate();
@@ -55,14 +72,14 @@ function LoginPage() {
           password,
           callbackURL: "/app",
         });
-        if (res.error) throw new Error(res.error.message || "Não foi possível criar a conta.");
+        if (res.error) throw new Error(authErrorMessage(res.error.code, "Não foi possível criar a conta."));
       } else {
         const res = await authClient.signIn.email({
           email: email.trim(),
           password,
           callbackURL: "/app",
         });
-        if (res.error) throw new Error(res.error.message || "E-mail ou senha inválidos.");
+        if (res.error) throw new Error(authErrorMessage(res.error.code, "Não foi possível entrar. Tente novamente."));
       }
       navigate({ to: "/app" });
     } catch (err) {
