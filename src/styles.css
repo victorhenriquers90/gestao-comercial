@@ -662,4 +662,21 @@
   .report-sheet .overflow-x-auto {
     overflow: visible !important;
   }
+  .tags-sheet,
+  .tags-sheet * {
+    visibility: visible !important;
+  }
+  body:has(.tags-sheet) * {
+    visibility: hidden;
+  }
+  body:has(.tags-sheet) .tags-sheet,
+  body:has(.tags-sheet) .tags-sheet * {
+    visibility: visible;
+  }
+  .tags-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
 }

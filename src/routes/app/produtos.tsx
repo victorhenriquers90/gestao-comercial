@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageField } from "@/components/image-editor";
+import { PriceTags, type PriceTagItem } from "@/components/price-tag";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +53,32 @@ function ProdutosPage() {
     queryKey: ["products", q, storeId],
     queryFn: () => listProductsFn({ data: { q: q || undefined, storeId: storeId ?? undefined } }),
   });
+
+  const [tagsFor, setTagsFor] = useState<number | null>(null);
+  const tagsProduct = useQuery({
+    queryKey: ["product-tags", tagsFor, storeId],
+    queryFn: () => getProductFn({ data: { id: tagsFor!, storeId: storeId ?? undefined } }),
+    enabled: tagsFor != null,
+  });
+  const tagItems: PriceTagItem[] = (() => {
+    const d = tagsProduct.data;
+    if (!d) return [];
+    const product = d.product as Record<string, unknown>;
+    const variants = d.variants as Record<string, unknown>[];
+    const productName = String(product.name ?? "");
+    const productPrice = Number(product.price ?? 0);
+    const productCode = product.barcode ? String(product.barcode) : product.sku ? String(product.sku) : null;
+    if (!variants.length) {
+      return [{ key: "base", title: productName, price: productPrice, code: productCode }];
+    }
+    return variants.map((v) => ({
+      key: Number(v.id),
+      title: productName,
+      subtitle: [v.color, v.size, v.model].filter(Boolean).join(" · ") || null,
+      price: v.price != null ? Number(v.price) : productPrice,
+      code: v.barcode ? String(v.barcode) : v.sku ? String(v.sku) : productCode,
+    }));
+  })();
 
   useEffect(() => {
     if (!searchId || openedFor.current === searchId) return;
@@ -176,6 +204,7 @@ function ProdutosPage() {
               <Th>Margem</Th>
               <Th>Estoque</Th>
               <Th>Status</Th>
+              <Th />
             </tr>
           }
         >
@@ -222,6 +251,19 @@ function ProdutosPage() {
               <Td className="tabular">{formatQty(p.stock)}</Td>
               <Td>
                 <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativo" : "Inativo"}</Badge>
+              </Td>
+              <Td>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  title="Imprimir etiqueta"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTagsFor(p.id);
+                  }}
+                >
+                  <Printer className="size-3.5" />
+                </Button>
               </Td>
             </tr>
           ))}
@@ -307,6 +349,19 @@ function ProdutosPage() {
           <Button className="mt-4 w-full" onClick={() => void save()}>
             Salvar
           </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tagsFor != null} onOpenChange={(v) => !v && setTagsFor(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Etiquetas</DialogTitle>
+          </DialogHeader>
+          {tagsProduct.isPending ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : (
+            <PriceTags items={tagItems} onClose={() => setTagsFor(null)} />
+          )}
         </DialogContent>
       </Dialog>
     </div>
