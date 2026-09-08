@@ -8,6 +8,9 @@ Produto: ERP/PDV desktop-first para loja (vestuário e mix). Multi-tenant
 (`company_id` em toda linha de negócio). Primeira conta cria empresa + loja e
 semeia o demo.
 
+Repo: [github.com/victorhenriquers90/gestao-comercial](https://github.com/victorhenriquers90/gestao-comercial)
+(privado). Fluxo de PR entre IAs conforme COLLAB.md.
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -47,7 +50,7 @@ src/lib/commission.ts    regras de comissão
 src/lib/sanitize.ts      XSS / linhas
 src/lib/auth/csrf.ts     CSRF double-submit
 src/lib/permissions.ts   papéis e perms
-migrations/              0001…0020
+migrations/              0001…0021
 ```
 
 Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
@@ -92,17 +95,32 @@ Cadastro completo (produto/grade, cliente, fornecedor, compra, estoque,
 financeiro, caixa, CRM, metas, promoções, devoluções, relatórios). Folha de
 comissão com faixas, bônus de meta, retenções. CSRF, sanitização, CPF/CNPJ,
 unicidade de documento/EAN, índices (trgm/GIN). Login com foto da loja.
-Visual editorial (kicker / Syne / filete nos KPIs).
+Visual editorial (kicker / Syne / filete nos KPIs). Chips PF/PJ/com débito no
+F4 (`listCustomersFn`). Documento (CPF/CNPJ) persistido na própria venda
+(`sales.document`, migration 0021) — a listagem de vendas e o comprovante
+reimpresso mostram o documento usado na hora da venda, não o documento
+*atual* do cliente. Etiqueta/código de barras por peça
+(`src/components/price-tag.tsx`, Code128 via `jsbarcode`) — uma etiqueta por
+produto sem variantes, uma por variante quando há grade de cor/tamanho.
+Token `--space-beat` aplicado no `.kpi-card` (escopo reduzido de propósito —
+ver "Próximos").
 
 ## Próximos (se o usuário disser “continuar”)
 
-Prioridade operacional, não teoria:
-
-1. Chips no F4: PF / PJ / com débito (filtro avançado do caixa).
-2. Persistência do documento na listagem de vendas.
-3. Etiqueta / código de barras da peça.
-4. NFC-e **não** começar sem pedido — é um produto à parte.
-5. Unificar gaps num token `--space-beat` (ritmo).
+1. NFC-e — **não** começar sem pedido explícito do usuário; é um produto à
+   parte (certificado digital, SEFAZ por estado, ou API terceira tipo Focus
+   NFe/eNotas). Exigência legal pra loja real vender ao consumidor, mas o
+   usuário ainda não decidiu como tratar isso.
+2. Hospedagem de produção: o projeto já está desenhado pra Vercel + Neon
+   (migrations automáticas no `npm run build`), mas o usuário ainda não
+   confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
+   em deploy/env vars de produção.
+3. Se fizer sentido, estender `--space-beat` (ou um token irmão) pro padrão
+   mais repetido no resto do app: `gap-3` / `mt-3` / `space-y-3` (~0.75rem),
+   espaçamento "entre blocos" usado de forma consistente em quase toda tela.
+   Feito com escopo reduzido da primeira vez de propósito — varredura
+   completa nas ~20 telas arrisca regressão visual que só dá pra confirmar
+   olhando cada uma.
 
 ## Como a próxima IA deve trabalhar
 
