@@ -9,6 +9,7 @@ import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
+import { isTaxRegime } from "@/lib/nfce";
 import {
   optionalLine,
   requireLine,
@@ -210,7 +211,8 @@ export const getSettingsFn = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     const [company] = await sql<Row>`
-      select id, name, trade_name, document, email, phone, address, city, state, zip, logo_url
+      select id, name, trade_name, document, email, phone, address, city, state, zip, logo_url,
+             ie, tax_regime
       from companies where id = ${tenant.companyId}
     `;
     const settings = await sql<Row>`select * from company_settings where company_id = ${tenant.companyId}`;
@@ -273,6 +275,9 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
       allowNegativeStock?: boolean;
       issRate?: number;
       issWithhold?: boolean;
+      ie?: string;
+      taxRegime?: string;
+      nfceEnabled?: boolean;
     }) => ({
       ...d,
       name: requireLine(d.name, "Nome da loja"),
@@ -288,6 +293,8 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
       printHeader: sanitizeMultiline(d.printHeader, 500) ?? undefined,
       printFooter: sanitizeMultiline(d.printFooter, 500) ?? undefined,
       receiptMessage: sanitizeMultiline(d.receiptMessage, 500) ?? undefined,
+      ie: sanitizeCode(d.ie, 20) ?? undefined,
+      taxRegime: isTaxRegime(d.taxRegime) ? d.taxRegime : undefined,
     }),
   )
   .handler(async ({ context, data }) => {
@@ -305,21 +312,29 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
         state = ${data.state ?? null},
         zip = ${data.zip ?? null},
         logo_url = ${data.logoUrl ?? null},
+        ie = coalesce(${data.ie ?? null}, ie),
+        tax_regime = coalesce(${data.taxRegime ?? null}, tax_regime),
         updated_at = now()
       where id = ${tenant.companyId}
     `;
-    const [cur] = await sql<{ iss_rate: string | number | null; iss_withhold: boolean | null }>`
-      select iss_rate, iss_withhold from company_settings where company_id = ${tenant.companyId}
+    const [cur] = await sql<{
+      iss_rate: string | number | null;
+      iss_withhold: boolean | null;
+      nfce_enabled: boolean | null;
+    }>`
+      select iss_rate, iss_withhold, nfce_enabled from company_settings where company_id = ${tenant.companyId}
     `;
     const issRate = data.issRate != null ? clampIss(data.issRate) : cur?.iss_rate == null ? ISS_DEFAULT : clampIss(cur.iss_rate);
     const issWithhold = data.issWithhold != null ? data.issWithhold : cur?.iss_withhold !== false;
+    const nfceEnabled = data.nfceEnabled != null ? data.nfceEnabled : cur?.nfce_enabled === true;
     await sql`
       insert into company_settings (
-        company_id, print_header, print_footer, receipt_message, allow_negative_stock, iss_rate, iss_withhold
+        company_id, print_header, print_footer, receipt_message, allow_negative_stock, iss_rate, iss_withhold,
+        nfce_enabled
       )
       values (
         ${tenant.companyId}, ${data.printHeader ?? null}, ${data.printFooter ?? null}, ${data.receiptMessage ?? null},
-        ${Boolean(data.allowNegativeStock)}, ${issRate}, ${issWithhold}
+        ${Boolean(data.allowNegativeStock)}, ${issRate}, ${issWithhold}, ${nfceEnabled}
       )
       on conflict (company_id) do update set
         print_header = excluded.print_header,
@@ -327,6 +342,7 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
         receipt_message = excluded.receipt_message,
         allow_negative_stock = excluded.allow_negative_stock,
         iss_rate = excluded.iss_rate,
+        nfce_enabled = excluded.nfce_enabled,
         iss_withhold = excluded.iss_withhold,
         updated_at = now()
     `;
