@@ -82,7 +82,7 @@ function FornecedoresPage() {
           <DialogHeader>
             <DialogTitle>Novo fornecedor</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
+          <div className="grid gap-block">
             <Field label="Razão social">
               <Input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} />
             </Field>

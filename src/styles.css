@@ -61,6 +61,15 @@
      card — kept as a single token because the KPI grid's subgrid rows and
      each card's own internal stacking must move together. */
   --space-beat: 0.35rem;
+
+  /* "Between blocks" rhythm — the gap-3/mt-3/space-y-3 pattern repeated
+     across most screens (dialog form fields, stacked sections). Same value
+     as Tailwind's own spacing-3, so adopting gap-block/mt-block/space-y-block
+     in place of the literal utility is a no-op visually; being a named token
+     lets the rhythm move as one later. Adopted screen-by-screen — see
+     HANDOFF.md — not a global find-replace, since some gap-3/mt-3 usages are
+     unrelated local spacing, not block rhythm. */
+  --spacing-block: 0.75rem;
 }
 
 :root {

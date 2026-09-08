@@ -50,7 +50,8 @@ src/lib/commission.ts    regras de comissão
 src/lib/sanitize.ts      XSS / linhas
 src/lib/auth/csrf.ts     CSRF double-submit
 src/lib/permissions.ts   papéis e perms
-migrations/              0001…0021
+src/lib/nfce.ts          payload e regras da NFC-e (Focus NFe)
+migrations/              0001…0022
 ```
 
 Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
@@ -87,7 +88,13 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 - **Vendedores:** regime `none|clt|autonomo|mei|pj` define CPF vs CNPJ.
 - **Promoções** entram no preço da linha via `bestPromo`.
 - **Estoque** por variante × loja; `allow_negative_stock` nas settings.
-- **Papéis:** admin, gerente, vendedor, caixa, estoque, financeiro.
+- **Papéis:** admin, gerente, vendedor, caixa, pdv (só PDV — sem dashboard,
+  vendas, produtos etc., nem no menu nem no servidor), estoque, financeiro.
+  Toda leitura sensível (`listSellersFn`, `listProductsFn`, `dashboardFn`
+  etc.) passa por `assertCan` — não é só o menu que esconde, o servidor barra
+  de verdade. Páginas cuja query principal é protegida mostram
+  `QueryError` (`src/components/shared.tsx`) em vez de renderizar vazio
+  quando o papel não tem a permissão.
 
 ## O que já está feito (não refazer)
 
@@ -102,25 +109,33 @@ reimpresso mostram o documento usado na hora da venda, não o documento
 *atual* do cliente. Etiqueta/código de barras por peça
 (`src/components/price-tag.tsx`, Code128 via `jsbarcode`) — uma etiqueta por
 produto sem variantes, uma por variante quando há grade de cor/tamanho.
-Token `--space-beat` aplicado no `.kpi-card` (escopo reduzido de propósito —
-ver "Próximos").
+Token `--space-beat` aplicado no `.kpi-card` (escopo reduzido de propósito).
+NFC-e via Focus NFe (`src/lib/nfce.ts`, `src/lib/server/nfce.ts`), homologação
+por padrão — configura em Configurações → Impostos (IE, regime tributário,
+`nfce_enabled`); emissão faz sentido a partir de `vendas.tsx`. Papel
+"Operador de PDV" com permissão real no servidor (ver "Papéis" acima).
+Mensagens de erro do login em pt-BR (mapeadas pelo `code` do Better Auth, não
+pela `message` em inglês — ver `src/routes/login.tsx`). Token
+`--spacing-block: 0.75rem` (mesmo valor de `gap-3`/`mt-3`/`space-y-3`)
+adotado em `fornecedores.tsx`, `clientes.tsx` e `compras.tsx` — ver item 2
+abaixo pro resto.
 
 ## Próximos (se o usuário disser “continuar”)
 
-1. NFC-e — **não** começar sem pedido explícito do usuário; é um produto à
-   parte (certificado digital, SEFAZ por estado, ou API terceira tipo Focus
-   NFe/eNotas). Exigência legal pra loja real vender ao consumidor, mas o
-   usuário ainda não decidiu como tratar isso.
-2. Hospedagem de produção: o projeto já está desenhado pra Vercel + Neon
+1. Hospedagem de produção: o projeto já está desenhado pra Vercel + Neon
    (migrations automáticas no `npm run build`), mas o usuário ainda não
    confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
    em deploy/env vars de produção.
-3. Se fizer sentido, estender `--space-beat` (ou um token irmão) pro padrão
-   mais repetido no resto do app: `gap-3` / `mt-3` / `space-y-3` (~0.75rem),
-   espaçamento "entre blocos" usado de forma consistente em quase toda tela.
-   Feito com escopo reduzido da primeira vez de propósito — varredura
-   completa nas ~20 telas arrisca regressão visual que só dá pra confirmar
-   olhando cada uma.
+2. Continuar adotando `gap-block` / `mt-block` / `space-y-block` (mesmo
+   `--spacing-block: 0.75rem` de antes) nas telas que faltam: `caixa.tsx`,
+   `configuracoes.tsx`, `devolucoes.tsx`, `estoque.tsx`, `financeiro.tsx`,
+   `index.tsx`, `metas.tsx`, `pdv.tsx`, `produtos.tsx`, `promocoes.tsx`,
+   `relatorios.tsx`, `vendas.tsx`, `vendedores.tsx`. Aos poucos, tela por
+   tela — só trocar `gap-3`/`mt-3`/`space-y-3` quando for de fato ritmo
+   "entre blocos" (form empilhado, seções de um painel); tem uso desses
+   mesmos valores que é espaçamento local (dentro de uma linha, grid de KPI)
+   e não deve virar o token. Confirmar visualmente cada tela — mesmo valor
+   (12px), mas troca de classe erra fácil se for às pressas.
 
 ## Como a próxima IA deve trabalhar
 
