@@ -31,6 +31,14 @@ export const SALE_STATUS_LABELS: Record<string, string> = {
   aberta: "Aberta",
 };
 
+export const NFCE_STATUS_LABELS: Record<string, string> = {
+  processando_autorizacao: "Processando",
+  autorizado: "Autorizada",
+  erro_autorizacao: "Erro",
+  erro: "Erro",
+  cancelado: "Cancelada",
+};
+
 export const PURCHASE_STATUS = [
   "orcamento",
   "pedido",

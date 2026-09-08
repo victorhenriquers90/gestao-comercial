@@ -91,7 +91,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
          ) st on st.product_id = p.id`;
     const rows = await sql.query<Row>(
       `select p.id, p.internal_code, p.barcode, p.sku, p.name, p.unit, p.cost, p.price, p.promo_price,
-              p.min_stock, p.is_active, p.has_variants, p.location, p.image_url,
+              p.min_stock, p.is_active, p.has_variants, p.location, p.image_url, p.ncm, p.cfop,
               c.name as category, b.name as brand,
               coalesce(st.stock, 0) as stock
          from products p
@@ -119,6 +119,8 @@ export const listProductsFn = createServerFn({ method: "POST" })
       hasVariants: Boolean(r.has_variants),
       location: strN(r.location),
       imageUrl: strN(r.image_url),
+      ncm: strN(r.ncm),
+      cfop: strN(r.cfop),
       category: strN(r.category),
       brand: strN(r.brand),
       stock: num(r.stock),
@@ -176,6 +178,8 @@ export const saveProductFn = createServerFn({ method: "POST" })
       location?: string;
       imageUrl?: string | null;
       isActive?: boolean;
+      ncm?: string;
+      cfop?: string;
       variants?: { id?: number; sku?: string; barcode?: string; color?: string; size?: string; model?: string; cost?: number; price?: number }[];
     }) => ({
       ...d,
@@ -188,6 +192,8 @@ export const saveProductFn = createServerFn({ method: "POST" })
       unit: sanitizeLine(d.unit ?? "UN", 8) || "UN",
       location: optionalLine(d.location, 80) ?? undefined,
       imageUrl: sanitizeHttpUrl(d.imageUrl),
+      ncm: sanitizeCode(d.ncm, 8) ?? undefined,
+      cfop: sanitizeCode(d.cfop, 4) ?? undefined,
       variants: d.variants?.map((v) => ({
         ...v,
         sku: sanitizeCode(v.sku) ?? undefined,
@@ -229,6 +235,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
           promo_price = ${data.promoPrice ?? null}, min_stock = ${data.minStock ?? 0},
           location = ${data.location ?? null}, image_url = ${data.imageUrl ?? null},
           is_active = ${data.isActive ?? true},
+          ncm = ${data.ncm ?? null}, cfop = ${data.cfop ?? "5102"},
           has_variants = ${hasVariants}, updated_at = now()
         where id = ${productId} and company_id = ${tenant.companyId}
       `;
@@ -236,12 +243,13 @@ export const saveProductFn = createServerFn({ method: "POST" })
       const [row] = await sql<{ id: number }>`
         insert into products (
           company_id, internal_code, barcode, sku, name, description, category_id, brand_id, supplier_id,
-          unit, cost, price, promo_price, min_stock, location, image_url, is_active, has_variants
+          unit, cost, price, promo_price, min_stock, location, image_url, is_active, has_variants, ncm, cfop
         ) values (
           ${tenant.companyId}, ${data.internalCode ?? null}, ${data.barcode ?? null}, ${data.sku ?? null},
           ${data.name}, ${data.description ?? null}, ${data.categoryId ?? null}, ${brandId}, ${data.supplierId ?? null},
           ${data.unit ?? "UN"}, ${data.cost}, ${data.price}, ${data.promoPrice ?? null}, ${data.minStock ?? 0},
-          ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants}
+          ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants},
+          ${data.ncm ?? null}, ${data.cfop ?? "5102"}
         ) returning id
       `;
       productId = row!.id;

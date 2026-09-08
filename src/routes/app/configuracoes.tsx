@@ -19,9 +19,11 @@ import {
   saveStoreFn,
   updateMemberFn,
 } from "@/lib/server/session";
+import { nfceStatusFn } from "@/lib/server/nfce";
 import { formatDateTime } from "@/lib/format";
 import { parseCnpj, maskCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
+import { isTaxRegime, TAX_REGIME_LABELS, type TaxRegime } from "@/lib/nfce";
 
 const CONFIG_TABS = ["empresa", "lojas", "equipe", "print", "impostos", "audit"] as const;
 type ConfigTab = (typeof CONFIG_TABS)[number];
@@ -43,6 +45,7 @@ function ConfigPage() {
   const tab: ConfigTab = isConfigTab(rawTab) ? rawTab : "empresa";
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const audit = useQuery({ queryKey: ["audit"], queryFn: () => listAuditFn({ data: {} }) });
+  const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
   const [form, setForm] = useState({
     name: "",
     tradeName: "",
@@ -60,6 +63,9 @@ function ConfigPage() {
     allowNegativeStock: false,
     issRate: String(ISS_DEFAULT),
     issWithhold: true,
+    ie: "",
+    taxRegime: "simples" as TaxRegime,
+    nfceEnabled: false,
   });
   const [invite, setInvite] = useState({ email: "", role: "vendedor" });
   const [storeName, setStoreName] = useState("");
@@ -85,6 +91,9 @@ function ConfigPage() {
       allowNegativeStock: Boolean(s?.allow_negative_stock),
       issRate: s?.iss_rate == null ? String(ISS_DEFAULT) : String(s.iss_rate),
       issWithhold: s?.iss_withhold !== false,
+      ie: String(c.ie ?? ""),
+      taxRegime: isTaxRegime(c.tax_regime) ? c.tax_regime : "simples",
+      nfceEnabled: Boolean(s?.nfce_enabled),
     });
   }, [settings.data]);
 
@@ -106,6 +115,9 @@ function ConfigPage() {
       allowNegativeStock: form.allowNegativeStock,
       issRate: clampIss(form.issRate),
       issWithhold: form.issWithhold,
+      ie: form.ie,
+      taxRegime: form.taxRegime,
+      nfceEnabled: form.nfceEnabled,
     };
   }
 
@@ -158,6 +170,23 @@ function ConfigPage() {
                 onChange={(e) => setForm({ ...form, document: maskCnpj(e.target.value) })}
               />
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Inscrição Estadual">
+                <Input value={form.ie} onChange={(e) => setForm({ ...form, ie: e.target.value })} />
+              </Field>
+              <Field label="Regime tributário">
+                <Select
+                  value={form.taxRegime}
+                  onChange={(e) => setForm({ ...form, taxRegime: e.target.value as TaxRegime })}
+                >
+                  {Object.entries(TAX_REGIME_LABELS).map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="E-mail">
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
@@ -315,6 +344,39 @@ function ConfigPage() {
               void qc.invalidateQueries({ queryKey: ["tenant"] });
             }}
           />
+          <Card className="mt-4 max-w-xl space-y-3 p-5">
+            <p className="ed-label">Nota fiscal (NFC-e)</p>
+            <p className="text-sm text-muted-foreground">
+              Emissão via Focus NFe.{" "}
+              {nfceStatus.data?.available ? (
+                <>
+                  Configurada, ambiente{" "}
+                  <strong>{nfceStatus.data.env === "producao" ? "produção" : "homologação"}</strong>.
+                </>
+              ) : (
+                "Nenhuma credencial configurada no servidor (FOCUS_NFE_TOKEN) — a emissão fica indisponível até isso ser feito."
+              )}
+            </p>
+            <label className="flex items-center gap-2 text-sm">
+              <NativeCheckbox
+                checked={form.nfceEnabled}
+                onChange={(e) => setForm({ ...form, nfceEnabled: e.target.checked })}
+              />
+              Mostrar emissão de NFC-e nas vendas
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Cada produto precisa de NCM cadastrado pra emitir — configure em Produtos.
+            </p>
+            <Button
+              onClick={async () => {
+                await saveCompanyFn({ data: companyPayload() });
+                toast.success("Configuração de nota fiscal salva.");
+                void qc.invalidateQueries({ queryKey: ["settings"] });
+              }}
+            >
+              Salvar
+            </Button>
+          </Card>
         </TabsContent>
         <TabsContent value="audit">
           <Card className="p-5">

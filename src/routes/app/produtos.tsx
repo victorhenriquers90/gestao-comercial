@@ -36,6 +36,8 @@ const empty = {
   isActive: true,
   categoryId: "" as string | number,
   variantsText: "",
+  ncm: "",
+  cfop: "5102",
 };
 
 function ProdutosPage() {
@@ -103,6 +105,8 @@ function ProdutosPage() {
         location: p.location ?? "",
         imageUrl: p.imageUrl ?? "",
         isActive: p.isActive,
+        ncm: p.ncm ?? "",
+        cfop: p.cfop ?? "5102",
       });
       return;
     }
@@ -124,6 +128,8 @@ function ProdutosPage() {
           imageUrl: pr.image_url ? String(pr.image_url) : "",
           isActive: Boolean(pr.is_active),
           categoryId: pr.category_id == null ? "" : Number(pr.category_id),
+          ncm: pr.ncm ? String(pr.ncm) : "",
+          cfop: pr.cfop ? String(pr.cfop) : "5102",
         });
       })
       .catch(() => toast.error("Produto não encontrado."));
@@ -159,6 +165,8 @@ function ProdutosPage() {
           imageUrl: form.imageUrl || null,
           isActive: form.isActive,
           categoryId: form.categoryId === "" ? null : Number(form.categoryId),
+          ncm: form.ncm || undefined,
+          cfop: form.cfop || undefined,
           variants: variants.length ? variants : undefined,
         },
       });
@@ -228,6 +236,8 @@ function ProdutosPage() {
                   location: p.location ?? "",
                   imageUrl: p.imageUrl ?? "",
                   isActive: p.isActive,
+                  ncm: p.ncm ?? "",
+                  cfop: p.cfop ?? "5102",
                 });
                 setOpen(true);
               }}
@@ -298,6 +308,18 @@ function ProdutosPage() {
             </Field>
             <Field label="Código interno">
               <Input value={form.internalCode} onChange={(e) => setForm({ ...form, internalCode: e.target.value })} />
+            </Field>
+            <Field label="NCM">
+              <Input
+                value={form.ncm}
+                inputMode="numeric"
+                placeholder="00000000"
+                onChange={(e) => setForm({ ...form, ncm: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">Classificação fiscal — exigida pra emitir NFC-e.</p>
+            </Field>
+            <Field label="CFOP">
+              <Input value={form.cfop} onChange={(e) => setForm({ ...form, cfop: e.target.value })} />
             </Field>
             <Field label="Unidade">
               <Select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>

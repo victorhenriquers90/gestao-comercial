@@ -30,8 +30,8 @@ export function Badge({
 
 export function statusBadgeVariant(status: string): VariantProps<typeof badgeVariants>["variant"] {
   const s = status.toLowerCase();
-  if (["pago", "recebido", "finalizada", "ativa", "open", "venda"].includes(s)) return "success";
-  if (["pendente", "parcial", "orcamento", "pedido", "enviado"].includes(s)) return "warning";
-  if (["cancelado", "cancelada", "vencido", "perdido"].includes(s)) return "danger";
+  if (["pago", "recebido", "finalizada", "ativa", "open", "venda", "autorizado"].includes(s)) return "success";
+  if (["pendente", "parcial", "orcamento", "pedido", "enviado", "processando_autorizacao"].includes(s)) return "warning";
+  if (["cancelado", "cancelada", "vencido", "perdido", "erro", "erro_autorizacao"].includes(s)) return "danger";
   return "muted";
 }
