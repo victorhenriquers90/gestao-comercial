@@ -17,7 +17,7 @@ import { searchPosFn } from "@/lib/server/catalog";
 import { checkoutFn, discardHeldFn, holdSaleFn, listHeldFn, listPromotionsFn, resumeHeldFn } from "@/lib/server/commerce";
 import { simulateCommissionFn } from "@/lib/server/commission";
 import { getRegisterFn, openRegisterFn } from "@/lib/server/finance";
-import { listCustomersFn, listSellersFn } from "@/lib/server/party";
+import { listActiveSellerNamesFn, listCustomersFn } from "@/lib/server/party";
 import { getSettingsFn, getTenantFn } from "@/lib/server/session";
 import { cn, num } from "@/lib/utils";
 
@@ -76,7 +76,7 @@ function PdvPage() {
       }),
     enabled: custOpen,
   });
-  const sellers = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
+  const sellers = useQuery({ queryKey: ["seller-names"], queryFn: () => listActiveSellerNamesFn() });
   const promos = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const register = useQuery({

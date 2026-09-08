@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { assertCan } from "@/lib/permissions";
 import {
   ACCOUNT_STATUS_LABELS,
   PAYMENT_LABELS,
@@ -103,6 +104,7 @@ export const reportFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "reports.read");
     const cid = tenant.companyId;
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;

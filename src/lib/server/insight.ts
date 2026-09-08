@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { assertCan } from "@/lib/permissions";
 import { resolvePeriod, type PeriodKey } from "@/lib/period";
 import { num } from "@/lib/utils";
 import { requireTenant } from "./context";
@@ -27,6 +28,7 @@ export const dashboardFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "dashboard.read");
     const range = resolvePeriod(data.period, data.from, data.to);
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;

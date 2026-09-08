@@ -20,6 +20,7 @@ export const listCustomersFn = createServerFn({ method: "POST" })
   .validator((d: { q?: string; stage?: string; kind?: "pf" | "pj"; debit?: boolean }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "customers.read");
     const params: unknown[] = [tenant.companyId];
     const raw = data.q?.trim() || "";
     let extra = "";
@@ -100,6 +101,7 @@ export const getCustomerFn = createServerFn({ method: "POST" })
   .validator((d: { id: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "customers.read");
     const [customer] = await sql<Row>`select * from customers where id = ${data.id} and company_id = ${tenant.companyId}`;
     if (!customer) throw new Error("Cliente não encontrado.");
     const sales = await sql<Row>`
@@ -309,6 +311,7 @@ export const listCrmTasksFn = createServerFn({ method: "POST" })
   .validator((d: { openOnly?: boolean }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "crm.write");
     const rows = await sql.query<Row>(
       `select t.id, t.title, t.due_at, t.done_at, t.customer_id, c.name as customer_name
          from crm_tasks t
@@ -347,6 +350,7 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
   .validator((d: { q?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "suppliers.read");
     const raw = data.q?.trim() || "";
     const rows = await sql.query<Row>(
       `select s.*,
@@ -390,6 +394,7 @@ export const getSupplierFn = createServerFn({ method: "POST" })
   .validator((d: { id: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "suppliers.read");
     const [supplier] = await sql<Row>`select * from suppliers where id = ${data.id} and company_id = ${tenant.companyId}`;
     if (!supplier) throw new Error("Fornecedor não encontrado.");
     const purchases = await sql<Row>`
@@ -527,6 +532,7 @@ export const listSellersFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sellers.read");
     const rows = await sql<Row>`
       select sl.*,
         coalesce((select sum(s.total) from sales s
@@ -562,6 +568,23 @@ export const listSellersFn = createServerFn({ method: "GET" })
       iss_rate: r.iss_rate == null ? null : num(r.iss_rate),
       document: r.document == null ? null : String(r.document),
     }));
+  });
+
+/**
+ * Só id+nome, pro seletor de vendedor no PDV. `listSellersFn` também traz
+ * salário, comissão e documento — não dá pra usá-lo ali sem vazar dado de
+ * folha pra quem só teria acesso ao PDV. Sem perm própria: mesmo nível de
+ * exposição do nome do vendedor já impresso no cupom.
+ */
+export const listActiveSellerNamesFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { tenant, sql } = await requireTenant(context.userId);
+    return sql<{ id: number; name: string }>`
+      select id, name from sellers
+      where company_id = ${tenant.companyId} and deleted_at is null and is_active = true
+      order by name
+    `;
   });
 
 export const saveSellerFn = createServerFn({ method: "POST" })

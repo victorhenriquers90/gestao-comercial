@@ -433,6 +433,7 @@ export const listSalesFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sales.read");
     return dump(await sql.query<Row>(
       `select s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
               c.name as customer_name, sl.name as seller_name, st.name as store_name
@@ -470,6 +471,7 @@ export const getSaleFn = createServerFn({ method: "POST" })
   .validator((d: { id: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sales.read");
     const [sale] = await sql.query<Row>(
       `select s.*, c.name as customer_name, sl.name as seller_name, st.name as store_name
          from sales s
@@ -802,6 +804,7 @@ export const listReturnsFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "returns.write");
     return dump(await sql<Row>`
       select r.*, s.number as sale_number
       from returns r
@@ -882,6 +885,7 @@ export const listHeldFn = createServerFn({ method: "POST" })
   .validator((d: { storeId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "pdv.sell");
     await assertStore(sql, tenant.companyId, data.storeId);
     const rows = await sql<Row>`
       select h.id, h.created_at, h.discount, h.notes, h.payload, c.name as customer_name, s.name as seller_name

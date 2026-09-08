@@ -239,6 +239,7 @@ export const listCommissionRulesFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sellers.write");
     const rows = await sql<Row>`
       select r.*, sl.name as seller_name, c.name as category_name, p.name as product_name
         from commission_rules r

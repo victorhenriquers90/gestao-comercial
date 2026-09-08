@@ -53,6 +53,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
   .validator((d: { q?: string; categoryId?: number; active?: boolean; storeId?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "products.read");
     const params: unknown[] = [tenant.companyId];
     const raw = data.q?.trim() || "";
     let extra = "";
@@ -136,6 +137,7 @@ export const getProductFn = createServerFn({ method: "POST" })
   .validator((d: { id: number; storeId?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "products.read");
     const products = await sql<Row>`select * from products where id = ${data.id} and company_id = ${tenant.companyId}`;
     const product = products[0];
     if (!product) throw new Error("Produto não encontrado.");
@@ -354,6 +356,7 @@ export const listStockFn = createServerFn({ method: "POST" })
   .validator((d: { storeId?: number; q?: string; filter?: "all" | "low" | "zero" | "stale" }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "stock.read");
     const params: unknown[] = [tenant.companyId];
     let storeSql = "";
     if (data.storeId != null) {
@@ -423,6 +426,7 @@ export const listMovementsFn = createServerFn({ method: "POST" })
   .validator((d: { storeId?: number; variantId?: number; type?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "stock.read");
     return dump(await sql.query<Row>(
       `select m.id, m.quantity, m.previous_qty, m.new_qty, m.type, m.user_id, m.note, m.created_at,
               p.name, v.color, v.size, s.name as store_name
@@ -507,6 +511,7 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
   .validator((d: { storeId?: number; status?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "purchases.read");
     const rows = await sql.query<Row>(
       `select p.*, s.legal_name as supplier_name, st.name as store_name
          from purchases p
@@ -540,6 +545,7 @@ export const getPurchaseFn = createServerFn({ method: "POST" })
   .validator((d: { id: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "purchases.read");
     const [purchase] = await sql<Row>`
       select p.*, s.legal_name as supplier_name, s.trade_name as supplier_trade, st.name as store_name
         from purchases p

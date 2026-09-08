@@ -3,6 +3,7 @@ export const ROLES = [
   "gerente",
   "vendedor",
   "caixa",
+  "pdv",
   "estoque",
   "financeiro",
 ] as const;
@@ -14,6 +15,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   gerente: "Gerente",
   vendedor: "Vendedor",
   caixa: "Caixa",
+  pdv: "Operador de PDV",
   estoque: "Estoque",
   financeiro: "Financeiro",
 };
@@ -23,6 +25,7 @@ export const DEFAULT_DISCOUNT_LIMIT: Record<Role, number> = {
   gerente: 25,
   vendedor: 5,
   caixa: 2,
+  pdv: 2,
   estoque: 0,
   financeiro: 0,
 };
@@ -112,6 +115,9 @@ const ROLE_PERMS: Record<Role, Perm[]> = {
     "crm.write",
     "targets.read",
     "sellers.read",
+    // Leitura do status do caixa (não abre/fecha) — o PDV consulta isso pra
+    // qualquer papel que venda, mesmo sem permissão de mexer no caixa.
+    "cash.read",
   ],
   caixa: [
     "dashboard.read",
@@ -123,6 +129,11 @@ const ROLE_PERMS: Record<Role, Perm[]> = {
     "cash.read",
     "cash.write",
   ],
+  // Só o PDV: sem dashboard/vendas/produtos, nem no menu nem nas consultas
+  // do servidor. O seletor de vendedor do PDV usa listActiveSellerNamesFn
+  // (só id+nome, sem perm própria) em vez de sellers.read — esse dá acesso
+  // à página Vendedores inteira, com salário/comissão/documento de cada um.
+  pdv: ["pdv.sell", "pdv.discount", "customers.read", "cash.read", "cash.write"],
   estoque: [
     "dashboard.read",
     "products.read",

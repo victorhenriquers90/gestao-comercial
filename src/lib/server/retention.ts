@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { assertCan } from "@/lib/permissions";
 import type { Sql } from "@/lib/db";
 import { dump } from "@/lib/json";
 import { parseTaxBreakdown, TAX_REGIME_LABELS, isTaxRegime, money, type TaxRegime } from "@/lib/tax";
@@ -173,5 +174,6 @@ export const retentionGuideFn = createServerFn({ method: "POST" })
   .validator((d: { from: string; to: string; sellerId?: number | null }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sellers.read");
     return dump(await loadRetentionGuide(sql, tenant.companyId, data.from, data.to, data.sellerId));
   });

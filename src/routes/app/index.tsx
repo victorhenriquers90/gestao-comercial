@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Area,
@@ -19,6 +19,8 @@ import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
 import { formatBRL, formatPct, formatQty } from "@/lib/format";
 import { PERIOD_OPTIONS, type PeriodKey } from "@/lib/period";
+import { can } from "@/lib/permissions";
+import { NAV_ITEMS } from "@/lib/nav";
 import { dashboardFn } from "@/lib/server/insight";
 import { listSellersFn } from "@/lib/server/party";
 import { getTenantFn } from "@/lib/server/session";
@@ -57,6 +59,13 @@ function DashboardPage() {
     [dash.data],
   );
 
+  if (tenant.data && !can(tenant.data.role, "dashboard.read")) {
+    // Papel sem acesso ao painel (ex.: pdv) — manda pra primeira tela que
+    // ele realmente pode ver, em vez de cair num erro de permissão no
+    // primeiro login.
+    const firstAllowed = NAV_ITEMS.find((i) => i.href !== "/app" && can(tenant.data!.role, i.perm));
+    return <Navigate to={firstAllowed?.href ?? "/login"} />;
+  }
   if (dash.isPending) return <PageSkeleton cards={8} />;
   if (dash.error) {
     return (
