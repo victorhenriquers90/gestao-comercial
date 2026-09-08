@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
 import { createReturnFn, getSaleFn, listReturnsFn, listSalesFn } from "@/lib/server/commerce";
@@ -80,6 +80,7 @@ function DevolucoesPage() {
   const refund = lines.reduce((a, l) => a + l.unit * l.qty, 0);
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar devoluções." />;
 
   return (
     <div>

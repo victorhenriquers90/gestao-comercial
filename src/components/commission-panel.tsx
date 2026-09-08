@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { DataTable, EmptyState, KpiCard, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, QueryError, Td, Th } from "@/components/shared";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { COMMISSION_KIND_LABELS, PAYMENT_LABELS, TIER_BASIS_LABELS, type PaymentMethod } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
@@ -210,6 +210,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
 
   const rows = rules.data ?? [];
   const showTiers = (form.kind === "percent_sales" || form.kind === "percent_profit") && form.tierBasis !== "none";
+
+  if (rules.error) return <QueryError error={rules.error} fallback="Erro ao carregar regras de comissão." />;
 
   return (
     <div>

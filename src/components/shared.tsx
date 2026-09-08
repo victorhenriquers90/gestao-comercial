@@ -132,6 +132,14 @@ export function Td({ children, className }: { children?: ReactNode; className?: 
   return <td className={cn("px-4 py-3 align-middle", className)}>{children}</td>;
 }
 
+export function QueryError({ error, fallback }: { error: unknown; fallback: string }) {
+  return (
+    <p className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+      {error instanceof Error ? error.message : fallback}
+    </p>
+  );
+}
+
 export function PageSkeleton({ cards = 4 }: { cards?: number }) {
   return (
     <div className="space-y-5">

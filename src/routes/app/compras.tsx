@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
@@ -47,6 +47,7 @@ function ComprasPage() {
   }, [searchId]);
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar compras." />;
 
   async function receive(id: number) {
     try {

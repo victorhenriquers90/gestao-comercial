@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { EmptyState, PageHeader, PageSkeleton } from "@/components/shared";
+import { EmptyState, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -57,6 +57,7 @@ function MetasPage() {
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const sellers = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar metas." />;
 
   function startCreate() {
     setForm(emptyForm());

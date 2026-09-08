@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, KpiCard, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
@@ -77,6 +77,7 @@ function VendedoresPage() {
   });
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar vendedores." />;
   const ranked = [...(list.data ?? [])].sort((a, b) => b.month_revenue - a.month_revenue);
   const pendingTotal = (list.data ?? []).reduce((a, s) => a + s.pending_commission, 0);
   const sellers = list.data ?? [];

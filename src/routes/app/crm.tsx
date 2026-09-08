@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { CustomerPanel } from "@/components/customer-panel";
 import { Card } from "@/components/ui/card";
 import { NativeCheckbox } from "@/components/ui/select";
-import { KpiCard, PageHeader, PageSkeleton } from "@/components/shared";
+import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { CRM_STAGE_LABELS, CRM_STAGES } from "@/lib/constants";
 import { formatBRL, formatDate } from "@/lib/format";
 import { listCrmTasksFn, listCustomersFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
@@ -32,6 +32,7 @@ function CrmPage() {
   const overdue = (tasks.data ?? []).filter((t) => t.dueAt && new Date(t.dueAt).getTime() < Date.now());
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar o CRM." />;
 
   return (
     <div>
