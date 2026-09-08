@@ -24,6 +24,7 @@ export const listPayablesFn = createServerFn({ method: "POST" })
   .validator((d: { storeId?: number; status?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.read");
     const rows = await sql.query<Row>(
       `select ap.*, s.legal_name as supplier_name
          from accounts_payable ap
@@ -112,6 +113,7 @@ export const listReceivablesFn = createServerFn({ method: "POST" })
   .validator((d: { storeId?: number; status?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.read");
     const rows = await sql.query<Row>(
       `select ar.*, c.name as customer_name
          from accounts_receivable ar
@@ -197,6 +199,7 @@ export const cashflowFn = createServerFn({ method: "POST" })
   .validator((d: { from: string; to: string; storeId?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.read");
     const inflows = await sql.query<{ method: string; total: string | number }>(
       `select p.method, coalesce(sum(p.amount),0) as total
          from payments p
@@ -324,6 +327,7 @@ export const getRegisterFn = createServerFn({ method: "POST" })
   .validator((d: { storeId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "cash.read");
     await assertStore(sql, tenant.companyId, data.storeId);
     return dump(await loadOpenRegister(sql, tenant.companyId, data.storeId));
   });
@@ -394,6 +398,7 @@ export const listExpensesFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.read");
     return dump(
       await sql<Row>`
         select * from expenses where company_id = ${tenant.companyId} and deleted_at is null
@@ -421,6 +426,7 @@ export const listTargetsFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "targets.read");
     const rows = await sql<Row>`
       select t.*, sl.name as seller_name, st.name as store_name, c.name as category_name
       from targets t
@@ -564,6 +570,7 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
   .validator((d: { sellerId?: number; status?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "sellers.read");
     const rows = await sql.query<Row>(
       `select c.id, c.seller_id, c.sale_id, c.amount, c.percent, c.status, c.created_at, c.paid_at, c.note,
               c.net_amount, c.tax_inss, c.tax_irrf, c.tax_iss, c.tax_other, c.tax_breakdown,
