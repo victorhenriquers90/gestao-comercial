@@ -343,11 +343,23 @@ export const openRegisterFn = createServerFn({ method: "POST" })
     `;
     if (existing.length) throw new Error("Já existe um caixa aberto nesta loja.");
     if (data.amount < 0) throw new Error("Fundo inicial não pode ser negativo.");
-    const [row] = await sql<{ id: number }>`
-      insert into cash_registers (company_id, store_id, user_id, opening_amount, notes, status)
-      values (${tenant.companyId}, ${data.storeId}, ${tenant.userId}, ${data.amount}, ${data.notes ?? null}, 'open')
-      returning id
-    `;
+    let row: { id: number } | undefined;
+    try {
+      [row] = await sql<{ id: number }>`
+        insert into cash_registers (company_id, store_id, user_id, opening_amount, notes, status)
+        values (${tenant.companyId}, ${data.storeId}, ${tenant.userId}, ${data.amount}, ${data.notes ?? null}, 'open')
+        returning id
+      `;
+    } catch (err) {
+      // Duas aberturas quase-simultâneas (duplo clique, duas abas) passam pelo
+      // SELECT acima antes de qualquer INSERT confirmar — cash_registers_one_open_idx
+      // (migration 0010) é o backstop real contra a corrida; sem isto o erro cru
+      // do Postgres (23505) vazava pro operador em vez da mensagem de negócio.
+      if ((err as { code?: string }).code === "23505") {
+        throw new Error("Já existe um caixa aberto nesta loja.");
+      }
+      throw err;
+    }
     await audit(sql, tenant, "open", "cash_register", row!.id, null, { amount: data.amount });
     return { id: row!.id };
   });

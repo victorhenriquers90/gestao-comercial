@@ -60,6 +60,7 @@ function PdvPage() {
   const [payments, setPayments] = useState<PayRow[]>([emptyPay()]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [openAmt, setOpenAmt] = useState("350");
+  const [openingCaixa, setOpeningCaixa] = useState(false);
 
   const [custQ, setCustQ] = useState("");
   const [custKind, setCustKind] = useState<"" | "pf" | "pj">("");
@@ -398,17 +399,22 @@ function PdvPage() {
             />
             <Button
               type="button"
+              disabled={openingCaixa}
               onClick={async () => {
+                if (openingCaixa) return;
+                setOpeningCaixa(true);
                 try {
                   await openRegisterFn({ data: { storeId: activeStore, amount: Number(openAmt) || 0 } });
                   toast.success("Caixa aberto.");
                   void qc.invalidateQueries({ queryKey: ["register"] });
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Falha ao abrir o caixa");
+                } finally {
+                  setOpeningCaixa(false);
                 }
               }}
             >
-              Abrir caixa
+              {openingCaixa ? "Abrindo…" : "Abrir caixa"}
             </Button>
           </div>
         ) : null}
