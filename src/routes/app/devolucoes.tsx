@@ -148,7 +148,7 @@ function DevolucoesPage() {
           </Field>
           {saleLabel ? <p className="mt-2 text-sm text-muted-foreground">{saleLabel}</p> : null}
           {!saleId && (recent.data ?? []).length ? (
-            <div className="mt-3 max-h-40 space-y-1 overflow-y-auto text-sm">
+            <div className="mt-block max-h-40 space-y-1 overflow-y-auto text-sm">
               <p className="text-xs text-muted-foreground">Ou escolha uma venda recente</p>
               {(recent.data as Record<string, unknown>[]).slice(0, 8).map((s) => (
                 <button
@@ -171,7 +171,7 @@ function DevolucoesPage() {
             </div>
           ) : null}
           {lines.length ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-block space-y-2">
               {lines.map((l) => (
                 <div key={l.saleItemId} className="flex items-center gap-2 text-sm">
                   <span className="min-w-0 flex-1 truncate">{l.description}</span>
@@ -193,14 +193,14 @@ function DevolucoesPage() {
               <p className="text-sm font-medium tabular">Estorno {formatBRL(refund)}</p>
             </div>
           ) : null}
-          <Field label="Tipo" className="mt-3">
+          <Field label="Tipo" className="mt-block">
             <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
               <option value="parcial">Devolução parcial</option>
               <option value="total">Devolução total</option>
               <option value="troca">Troca</option>
             </Select>
           </Field>
-          <Field label="Motivo" className="mt-3">
+          <Field label="Motivo" className="mt-block">
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>
           <Button

@@ -117,8 +117,16 @@ por padrão — configura em Configurações → Impostos (IE, regime tributári
 Mensagens de erro do login em pt-BR (mapeadas pelo `code` do Better Auth, não
 pela `message` em inglês — ver `src/routes/login.tsx`). Token
 `--spacing-block: 0.75rem` (mesmo valor de `gap-3`/`mt-3`/`space-y-3`)
-adotado em `fornecedores.tsx`, `clientes.tsx` e `compras.tsx` — ver item 2
-abaixo pro resto.
+adotado (`gap-block`/`mt-block`/`mb-block`/`space-y-block`) em quase toda
+tela: `fornecedores.tsx`, `clientes.tsx`, `compras.tsx`, `caixa.tsx`,
+`configuracoes.tsx`, `devolucoes.tsx`, `estoque.tsx`, `financeiro.tsx`,
+`index.tsx`, `metas.tsx`, `produtos.tsx`, `promocoes.tsx`, `vendas.tsx`,
+`vendedores.tsx`. Faltam só `pdv.tsx` (layout de checkout demais afinado pra
+mexer sem pedido explícito) e `relatorios.tsx` (a única ocorrência lá é a
+barra de filtro, espaçamento local, não "entre blocos"). Cada `gap-3`/`mt-3`/
+`space-y-3` que sobrou nessas telas foi deixado de propósito — é espaçamento
+local (dentro de uma linha, grid de KPI, barra de progresso), não ritmo
+"entre blocos".
 
 ## Próximos (se o usuário disser “continuar”)
 
@@ -126,16 +134,9 @@ abaixo pro resto.
    (migrations automáticas no `npm run build`), mas o usuário ainda não
    confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
    em deploy/env vars de produção.
-2. Continuar adotando `gap-block` / `mt-block` / `space-y-block` (mesmo
-   `--spacing-block: 0.75rem` de antes) nas telas que faltam: `caixa.tsx`,
-   `configuracoes.tsx`, `devolucoes.tsx`, `estoque.tsx`, `financeiro.tsx`,
-   `index.tsx`, `metas.tsx`, `pdv.tsx`, `produtos.tsx`, `promocoes.tsx`,
-   `relatorios.tsx`, `vendas.tsx`, `vendedores.tsx`. Aos poucos, tela por
-   tela — só trocar `gap-3`/`mt-3`/`space-y-3` quando for de fato ritmo
-   "entre blocos" (form empilhado, seções de um painel); tem uso desses
-   mesmos valores que é espaçamento local (dentro de uma linha, grid de KPI)
-   e não deve virar o token. Confirmar visualmente cada tela — mesmo valor
-   (12px), mas troca de classe erra fácil se for às pressas.
+2. `pdv.tsx` ainda usa `mt-3`/`space-y-3` cru — só migrar pro token com
+   bastante cuidado (ou nem migrar): é a tela mais sensível do app (ver
+   invariante 1), qualquer regressão ali afeta o caixa ao vivo.
 
 ## Como a próxima IA deve trabalhar
 

@@ -145,7 +145,7 @@ function ConfigPage() {
           <TabsTrigger value="audit">Auditoria</TabsTrigger>
         </TabsList>
         <TabsContent value="empresa">
-          <Card className="max-w-xl space-y-3 p-5">
+          <Card className="max-w-xl space-y-block p-5">
             <ImageField
               value={form.logoUrl}
               onChange={(logoUrl) => setForm({ ...form, logoUrl })}
@@ -170,7 +170,7 @@ function ConfigPage() {
                 onChange={(e) => setForm({ ...form, document: maskCnpj(e.target.value) })}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-block">
               <Field label="Inscrição Estadual">
                 <Input value={form.ie} onChange={(e) => setForm({ ...form, ie: e.target.value })} />
               </Field>
@@ -187,7 +187,7 @@ function ConfigPage() {
                 </Select>
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-block">
               <Field label="E-mail">
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </Field>
@@ -198,7 +198,7 @@ function ConfigPage() {
             <Field label="Endereço">
               <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </Field>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-block">
               <Field label="Cidade">
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </Field>
@@ -234,7 +234,7 @@ function ConfigPage() {
           </Card>
         </TabsContent>
         <TabsContent value="lojas">
-          <Card className="max-w-xl space-y-3 p-5">
+          <Card className="max-w-xl space-y-block p-5">
             {(settings.data?.stores as Record<string, unknown>[] | undefined)?.map((s) => (
               <div key={String(s.id)} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
                 <span>{String(s.name)}</span>
@@ -259,7 +259,7 @@ function ConfigPage() {
           </Card>
         </TabsContent>
         <TabsContent value="equipe">
-          <Card className="max-w-xl space-y-3 p-5">
+          <Card className="max-w-xl space-y-block p-5">
             {(settings.data?.members ?? []).map((m) => (
               <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                 <div>
@@ -308,7 +308,7 @@ function ConfigPage() {
           </Card>
         </TabsContent>
         <TabsContent value="print">
-          <Card className="max-w-xl space-y-3 p-5">
+          <Card className="max-w-xl space-y-block p-5">
             <Field label="Cabeçalho do comprovante">
               <Input value={form.printHeader} onChange={(e) => setForm({ ...form, printHeader: e.target.value })} />
             </Field>
@@ -344,7 +344,7 @@ function ConfigPage() {
               void qc.invalidateQueries({ queryKey: ["tenant"] });
             }}
           />
-          <Card className="mt-4 max-w-xl space-y-3 p-5">
+          <Card className="mt-4 max-w-xl space-y-block p-5">
             <p className="ed-label">Nota fiscal (NFC-e)</p>
             <p className="text-sm text-muted-foreground">
               Emissão via Focus NFe.{" "}

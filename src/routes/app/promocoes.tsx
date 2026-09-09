@@ -66,7 +66,7 @@ function PromocoesPage() {
           <Field label="Nome">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Tipo" className="mt-3">
+          <Field label="Tipo" className="mt-block">
             <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
               {Object.entries(PROMO_KIND_LABELS).map(([k, l]) => (
                 <option key={k} value={k}>
@@ -75,13 +75,13 @@ function PromocoesPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Percentual" className="mt-3">
+          <Field label="Percentual" className="mt-block">
             <Input value={form.percent} onChange={(e) => setForm({ ...form, percent: e.target.value })} />
           </Field>
-          <Field label="Quantidade mínima" className="mt-3">
+          <Field label="Quantidade mínima" className="mt-block">
             <Input value={form.minQty} onChange={(e) => setForm({ ...form, minQty: e.target.value })} />
           </Field>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
               <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
             </Field>

@@ -147,13 +147,13 @@ function EstoquePage() {
               <option value="perda">Perda</option>
             </Select>
           </Field>
-          <Field label="Quantidade" className="mt-3">
+          <Field label="Quantidade" className="mt-block">
             <Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} />
           </Field>
-          <Field label="Motivo" className="mt-3">
+          <Field label="Motivo" className="mt-block">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
-          <Field label="Transferir para loja" className="mt-3">
+          <Field label="Transferir para loja" className="mt-block">
             <Select value={toStore} onChange={(e) => setToStore(e.target.value)}>
               <option value="">Não transferir</option>
               {(tenant.data?.stores ?? []).map((s) => (
