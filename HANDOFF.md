@@ -167,14 +167,20 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
   arquivo e o script **sai 0** — foi assim que `tax.test.ts` e
   `commission.test.ts` (41 testes de retenção e comissão) ficaram fora da
   suíte sem ninguém notar.
-- `npm run test:scripts` roda os testes do andaime (`scripts/**`). Está fora
-  do `npm test` de propósito: **13 dos 195 falham hoje**, e são expectativas
-  da época do template, não bug do produto — o `grok-pwa-plugin` agora emite
-  `og:title` com o nome do app ("Gestão Comercial") e os testes ainda esperam
-  o fallback pro `<title>` do documento; outros cobram defaults que o projeto
-  mudou de propósito (`VITE_AUTH_ENABLED` off). Antes de reescrever essas
-  asserções pra bater com o código, confirme qual comportamento é o
-  desejado — senão o teste vira espelho da implementação.
+- `npm run test:scripts` roda os testes do andaime (`scripts/**`), fora do
+  `npm test` de propósito. **Hoje passa 193/193.** Chegou a ter 13 falhas, e
+  nenhuma era bug do produto:
+  - 8 eram testes não-herméticos — `normalizeHeadContext` cai no workspace
+    real quando `ctx.site` é omitido, e `applyCustomCardFromFs` procura
+    `public/og.*`. Enquanto isto era o template os dois davam vazio; virou app
+    de verdade (nome próprio, `public/og.jpg`) e vazaram pras asserções.
+    Resolvido fixando `cwd`/`site` nesses testes, sem afrouxar asserção.
+  - 5 afirmavam o que o template vazio embarcava (auth off no
+    `.grok/app-env.json`, `migrations/` sem nada na raiz). 2 foram aposentadas
+    e 3 reescritas pro invariante real do app.
+
+  Se voltar a ficar vermelho, **desconfie primeiro do teste ler o workspace**
+  antes de mudar o produto pra caber na asserção.
 - Migration nova se mudar schema; nunca reescrever `0001`–`0020`.
 - Não “explorar” 800 palavras se o usuário pediu para implementar.
 - Não adicionar Google/X, mobile-first, ou tema roxo.

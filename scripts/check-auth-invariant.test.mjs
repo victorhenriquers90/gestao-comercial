@@ -90,8 +90,10 @@ test("only a divergence warns the smoke verdict", () => {
   }
 });
 
-test("the build side resolves the template's shipped app-env", () => {
-  assert.equal(buildAuthEnabled(projectRoot(), {}), false);
+test("the build side resolves this app's shipped app-env", () => {
+  // Invariante 6: este app roda com login e-mail/senha ligado, então o
+  // app-env não traz VITE_AUTH_ENABLED e o build resolve auth como on.
+  assert.equal(buildAuthEnabled(projectRoot(), {}), true);
   assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "true" }), true);
 });
 
