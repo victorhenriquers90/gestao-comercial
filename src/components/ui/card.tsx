@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card text-card-foreground shadow-none",
+        "rounded-xl border border-border bg-card text-card-foreground shadow-soft",
         className,
       )}
       {...props}
@@ -36,7 +36,7 @@ export function Separator({ className, ...props }: React.ComponentProps<"div">) 
 export function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-muted", className)}
+      className={cn("skeleton-sweep rounded-md bg-muted", className)}
       {...props}
     />
   );

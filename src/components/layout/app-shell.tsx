@@ -123,7 +123,12 @@ export function AppShell({
               <UserMenu tenant={tenant} />
             </div>
           </header>
-          <div className={cn("app-main content-pane page-pad", isPdv && "p-0")}>{children}</div>
+          <div
+            key={pathname}
+            className={cn("app-main content-pane page-pad page-enter", isPdv && "p-0")}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </TooltipProvider>
@@ -176,10 +181,11 @@ function SidebarBody({
                     aria-label={item.label}
                     onClick={onNavigate}
                     className={cn(
-                      "flex h-10 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-150",
+                      "relative flex h-10 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-150",
+                      "before:absolute before:top-1/2 before:left-0 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-sidebar-foreground before:transition-opacity before:duration-150",
                       active
-                        ? "bg-sidebar-accent text-sidebar-foreground"
-                        : "text-sidebar-muted hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+                        ? "bg-sidebar-accent text-sidebar-foreground before:opacity-100"
+                        : "text-sidebar-muted before:opacity-0 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
                       item.accent && !active && "text-sidebar-foreground",
                       collapsed && "justify-center px-0",
                     )}
