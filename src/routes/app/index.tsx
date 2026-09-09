@@ -236,8 +236,8 @@ function DashboardPage() {
             ) : (
               d.topProducts.map((p) => (
                 <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate">{p.name}</span>
-                  <span className="tabular text-muted-foreground">
+                  <span className="min-w-0 truncate">{p.name}</span>
+                  <span className="tabular shrink-0 whitespace-nowrap text-muted-foreground">
                     {formatQty(p.qty)} · {formatBRL(p.total)}
                   </span>
                 </div>
@@ -255,8 +255,8 @@ function DashboardPage() {
             ) : (
               d.topSellers.map((p) => (
                 <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate">{p.name}</span>
-                  <span className="tabular">{formatBRL(p.total)}</span>
+                  <span className="min-w-0 truncate">{p.name}</span>
+                  <span className="tabular shrink-0 whitespace-nowrap">{formatBRL(p.total)}</span>
                 </div>
               ))
             )}
