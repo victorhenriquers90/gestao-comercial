@@ -21,6 +21,7 @@ function CaixaPage() {
   const activeStore = storeId ?? tenant.data?.defaultStoreId ?? 0;
   const qc = useQueryClient();
   const [openAmt, setOpenAmt] = useState("350");
+  const [openingCaixa, setOpeningCaixa] = useState(false);
   const [closeAmt, setCloseAmt] = useState("");
   const [moveAmt, setMoveAmt] = useState("");
   const [moveDesc, setMoveDesc] = useState("");
@@ -48,17 +49,22 @@ function CaixaPage() {
           </Field>
           <Button
             className="mt-4"
+            disabled={openingCaixa}
             onClick={async () => {
+              if (openingCaixa) return;
+              setOpeningCaixa(true);
               try {
                 await openRegisterFn({ data: { storeId: activeStore, amount: Number(openAmt) } });
                 toast.success("Caixa aberto.");
                 void qc.invalidateQueries({ queryKey: ["register"] });
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Falha");
+              } finally {
+                setOpeningCaixa(false);
               }
             }}
           >
-            Abrir caixa
+            {openingCaixa ? "Abrindo…" : "Abrir caixa"}
           </Button>
         </Card>
       ) : (
