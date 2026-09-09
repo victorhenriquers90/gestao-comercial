@@ -182,6 +182,7 @@ function SidebarBody({
                     onClick={onNavigate}
                     className={cn(
                       "relative flex h-10 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-150",
+                      "focus-visible:ring-2 focus-visible:ring-sidebar-foreground/60 focus-visible:outline-none",
                       "before:absolute before:top-1/2 before:left-0 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-sidebar-foreground before:transition-opacity before:duration-150",
                       active
                         ? "bg-sidebar-accent text-sidebar-foreground before:opacity-100"

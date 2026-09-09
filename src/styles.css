@@ -215,11 +215,20 @@
   }
 }
 
+/* Reset global em vez de listar classe por classe: o tw-animate-css (usado
+   nos diálogos, nas abas e no card do login) não trata reduced-motion
+   sozinho, então guardar só os keyframes daqui deixaria metade das
+   animações passando por cima da preferência. Duração mínima em vez de
+   `animation: none` pra que quem escuta `animationend` ainda receba o
+   evento. */
 @media (prefers-reduced-motion: reduce) {
-  .login-scene,
-  .page-enter,
-  .skeleton-sweep {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

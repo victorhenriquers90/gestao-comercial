@@ -84,8 +84,11 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
     nos tokens do `styles.css` — não tela por tela. Os KPIs seguem chapados de
     propósito (`.kpi-card` zera `box-shadow`/borda pro filete editorial), mesmo
     com `Card` tendo `shadow-soft` por padrão.
-12. **Animação nova respeita `prefers-reduced-motion`.** Já valem por isso:
-    `.page-enter` (entrada de página), `.skeleton-sweep` e `.login-scene`.
+12. **`prefers-reduced-motion` é tratado globalmente** por um reset em
+    `styles.css` (`*`, `::before`, `::after` com duração mínima). Vale pros
+    keyframes daqui **e** pro `tw-animate-css` (diálogos, abas, card do
+    login), que não trata isso sozinho. Não precisa guardar animação nova
+    caso a caso — e não remova o reset achando que é redundante.
 
 ## Domínio rápido
 
