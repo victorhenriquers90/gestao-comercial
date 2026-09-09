@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
+import { chartTooltip } from "@/lib/chart";
 import { formatBRL, formatPct, formatQty } from "@/lib/format";
 import { PERIOD_OPTIONS, type PeriodKey } from "@/lib/period";
 import { can } from "@/lib/permissions";
@@ -145,7 +146,7 @@ function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                <Tooltip formatter={(v: number) => formatBRL(v)} />
+                <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
                 <Area
                   type="monotone"
                   dataKey="total"
@@ -294,7 +295,7 @@ function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
               <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <Tooltip formatter={(v: number) => formatBRL(v)} />
+              <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
               <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
