@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Minus, Pause, Play, Plus, Search, Trash2, UserRound, X } from "lucide-react";
+import { IdCard, Minus, Pause, Play, Plus, Search, Trash2, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { useSelection } from "@/hooks/use-selection";
@@ -90,10 +90,23 @@ function PdvPage() {
     enabled: Boolean(activeStore),
   });
   const sellerPicked = useRef(false);
+  const custPrompted = useRef(false);
 
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (cart.length === 0) {
+      // Nova venda: o próximo primeiro item deve pedir o documento de novo.
+      custPrompted.current = false;
+      return;
+    }
+    if (cart.length === 1 && !custPrompted.current) {
+      custPrompted.current = true;
+      setCustOpen(true);
+    }
+  }, [cart.length]);
 
   useEffect(() => {
     if (sellerPicked.current || !sellers.data?.length || tenant.isPending) return;
@@ -648,25 +661,42 @@ function PdvPage() {
       <Dialog open={custOpen} onOpenChange={setCustOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Documento na nota</DialogTitle>
+            <DialogTitle>Documento do cliente</DialogTitle>
+            <DialogDescription>
+              Vai no comprovante. Não é obrigatório — pode pular se o cliente não quiser informar.
+            </DialogDescription>
           </DialogHeader>
-          <Input
-            className="mb-2"
-            placeholder="Buscar nome, telefone ou documento"
-            value={custQ}
-            onChange={(e) => setCustQ(e.target.value)}
-          />
-          <Input
-            inputMode="numeric"
-            placeholder="CPF ou CNPJ"
-            value={cpfNota}
-            onChange={(e) => setCpfNota(maskBrDoc(e.target.value))}
-            aria-label="Documento na nota"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            CPF ou CNPJ. Se já existir no cadastro, vincula o cliente; senão cria um consumidor.
-          </p>
-          <div className="mt-block flex flex-wrap gap-1.5">
+
+          <Field label="CPF ou CNPJ na nota">
+            <div className="relative">
+              <IdCard className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                inputMode="numeric"
+                placeholder="Só números"
+                value={cpfNota}
+                onChange={(e) => setCpfNota(maskBrDoc(e.target.value))}
+                aria-label="Documento na nota"
+                className="pl-9"
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Se já existir no cadastro, vincula o cliente; senão cria um consumidor.
+            </p>
+          </Field>
+
+          <Field label="Buscar cliente cadastrado" className="mt-block">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Nome, telefone ou documento"
+                value={custQ}
+                onChange={(e) => setCustQ(e.target.value)}
+              />
+            </div>
+          </Field>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
             {(
               [
                 ["", "Todos"],
@@ -712,22 +742,36 @@ function PdvPage() {
               </option>
             ))}
           </Select>
-          <Button
-            className="mt-block"
-            onClick={() => {
-              if (cpfNota.trim()) {
-                try {
-                  parseBrDocument(cpfNota, "any");
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Documento inválido.");
-                  return;
+          <div className="mt-block flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setCpfNota("");
+                setCustomerId(null);
+                setCustOpen(false);
+              }}
+            >
+              Pular
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                if (cpfNota.trim()) {
+                  try {
+                    parseBrDocument(cpfNota, "any");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Documento inválido.");
+                    return;
+                  }
                 }
-              }
-              setCustOpen(false);
-            }}
-          >
-            Confirmar
-          </Button>
+                setCustOpen(false);
+              }}
+            >
+              Confirmar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
