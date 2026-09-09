@@ -6,7 +6,7 @@ import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSearchId } from "@/hooks/use-search-id";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { parseCnpj, maskCnpj } from "@/lib/document";
@@ -35,6 +35,7 @@ function FornecedoresPage() {
   }, [searchId]);
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar fornecedores." />;
 
   return (
     <div>

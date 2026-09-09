@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
-import { KpiCard, PageHeader, PageSkeleton } from "@/components/shared";
+import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { CASH_MOVE_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime } from "@/lib/format";
@@ -34,6 +34,7 @@ function CaixaPage() {
 
   if (!activeStore) return <p className="text-sm text-muted-foreground">Selecione uma loja.</p>;
   if (reg.isPending) return <PageSkeleton />;
+  if (reg.error) return <QueryError error={reg.error} fallback="Erro ao carregar o caixa." />;
   const d = reg.data;
 
   return (

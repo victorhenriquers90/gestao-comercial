@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, KpiCard, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS, CASH_ACCOUNT_LABELS, EXPENSE_CATEGORIES, PAYMENT_LABELS } from "@/lib/constants";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -58,6 +58,7 @@ function FinanceiroPage() {
   const customers = useQuery({ queryKey: ["customers"], queryFn: () => listCustomersFn({ data: {} }) });
 
   if (pay.isPending) return <PageSkeleton />;
+  if (pay.error) return <QueryError error={pay.error} fallback="Erro ao carregar o financeiro." />;
 
   const overduePay = (pay.data ?? []).filter((r) => String(r.status) === "vencido").length;
   const overdueRec = (rec.data ?? []).filter((r) => String(r.status) === "vencido").length;

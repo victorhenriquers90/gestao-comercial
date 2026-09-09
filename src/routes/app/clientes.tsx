@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { CustomerPanel } from "@/components/customer-panel";
 import { useSearchId } from "@/hooks/use-search-id";
 import { CRM_STAGE_LABELS, type CrmStage } from "@/lib/constants";
@@ -35,6 +35,7 @@ function ClientesPage() {
   }, [searchId]);
 
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar clientes." />;
 
   return (
     <div>
