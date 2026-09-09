@@ -213,13 +213,13 @@ function DashboardPage() {
               <span className="tabular">{formatBRL(d.monthCommissionNet)}</span>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link to="/app/vendedores" className="inline-block text-xs text-primary hover:underline">
+              <Link to="/app/vendedores" className="text-xs text-primary hover:underline">
                 Guia de retenções
               </Link>
               <Link
                 to="/app/configuracoes"
                 search={{ tab: "impostos" } as never}
-                className="inline-block text-xs text-primary hover:underline"
+                className="text-xs text-primary hover:underline"
               >
                 Alíquota de ISS
               </Link>
