@@ -277,6 +277,13 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Both properties inherit, so setting them here themes every scroller —
+       the default chrome-grey bar is the most dated thing left on screen. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent) transparent;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 24%, transparent);
   }
   body {
     @apply bg-background text-foreground font-sans;
