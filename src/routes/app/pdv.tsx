@@ -374,7 +374,7 @@ function PdvPage() {
   return (
     <div className="pdv-stage">
       <section className="pdv-catalog border-b border-border p-6 md:border-r md:border-b-0">
-        <p className="ed-label mb-3">Peças</p>
+        <p className="ed-label mb-block">Peças</p>
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -454,7 +454,7 @@ function PdvPage() {
       </section>
 
       <aside className="pdv-ticket bg-card p-6">
-        <p className="ed-label mb-3">Cupom</p>
+        <p className="ed-label mb-block">Cupom</p>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setCustOpen(true)}>
             <UserRound className="size-3.5" />
@@ -474,7 +474,7 @@ function PdvPage() {
           </Select>
         </div>
 
-        <div className="mt-3 flex-1 space-y-2 overflow-y-auto">
+        <div className="mt-block flex-1 space-y-2 overflow-y-auto">
           {cart.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
               <p className="text-sm font-medium">Carrinho vazio</p>
@@ -539,7 +539,7 @@ function PdvPage() {
           )}
         </div>
 
-        <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+        <div className="mt-block space-y-1 border-t border-border pt-3 text-sm">
           <Row label="Subtotal" value={formatBRL(subtotal)} />
           <Row label="Desconto" value={formatBRL(discount)} />
           <Row label="Total" value={formatBRL(total)} big />
@@ -574,7 +574,7 @@ function PdvPage() {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-block grid grid-cols-2 gap-2">
           <Button variant="outline" onClick={() => setDiscOpen(true)}>
             Desconto (F6)
           </Button>
@@ -666,7 +666,7 @@ function PdvPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             CPF ou CNPJ. Se já existir no cadastro, vincula o cliente; senão cria um consumidor.
           </p>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-block flex flex-wrap gap-1.5">
             {(
               [
                 ["", "Todos"],
@@ -694,7 +694,7 @@ function PdvPage() {
             </Button>
           </div>
           <Select
-            className="mt-3"
+            className="mt-block"
             value={customerId ?? ""}
             onChange={(e) => {
               const id = e.target.value ? Number(e.target.value) : null;
@@ -713,7 +713,7 @@ function PdvPage() {
             ))}
           </Select>
           <Button
-            className="mt-3"
+            className="mt-block"
             onClick={() => {
               if (cpfNota.trim()) {
                 try {
@@ -745,13 +745,13 @@ function PdvPage() {
             </Button>
           </div>
           <Input
-            className="mt-3"
+            className="mt-block"
             value={discInput}
             onChange={(e) => setDiscInput(e.target.value)}
             placeholder={discMode === "pct" ? "% " : "R$"}
           />
           <p className="text-xs text-muted-foreground">Limite do seu perfil: {tenant.data?.discountLimit ?? 0}%</p>
-          <Button className="mt-3" onClick={applyDisc}>
+          <Button className="mt-block" onClick={applyDisc}>
             Aplicar
           </Button>
         </DialogContent>
@@ -773,7 +773,7 @@ function PdvPage() {
               {comm.data.bonusNote ? ` · ${comm.data.bonusNote}` : ""}
             </p>
           ) : null}
-          <div className="mt-3 space-y-3">
+          <div className="mt-block space-y-block">
             {payments.map((p, idx) => (
               <div key={idx} className="rounded-lg border border-border p-3">
                 <div className="flex gap-2">
@@ -853,7 +853,7 @@ function PdvPage() {
             ))}
           </div>
           {change > 0 ? <p className="mt-2 text-sm">Troco: {formatBRL(change)}</p> : null}
-          <div className="mt-3 flex gap-2">
+          <div className="mt-block flex gap-2">
             <Button
               variant="outline"
               onClick={() =>

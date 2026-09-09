@@ -131,12 +131,11 @@ adotado (`gap-block`/`mt-block`/`mb-block`/`space-y-block`) em quase toda
 tela: `fornecedores.tsx`, `clientes.tsx`, `compras.tsx`, `caixa.tsx`,
 `configuracoes.tsx`, `devolucoes.tsx`, `estoque.tsx`, `financeiro.tsx`,
 `index.tsx`, `metas.tsx`, `produtos.tsx`, `promocoes.tsx`, `vendas.tsx`,
-`vendedores.tsx`. Faltam só `pdv.tsx` (layout de checkout demais afinado pra
-mexer sem pedido explícito) e `relatorios.tsx` (a única ocorrência lá é a
-barra de filtro, espaçamento local, não "entre blocos"). Cada `gap-3`/`mt-3`/
-`space-y-3` que sobrou nessas telas foi deixado de propósito — é espaçamento
-local (dentro de uma linha, grid de KPI, barra de progresso), não ritmo
-"entre blocos".
+`vendedores.tsx` e `pdv.tsx`. Falta só `relatorios.tsx`, e de propósito: a
+única ocorrência lá é a barra de filtro, espaçamento local, não "entre
+blocos". Cada `gap-3`/`mt-3`/`space-y-3` que sobrou nessas telas foi deixado
+de propósito — é espaçamento local (dentro de uma linha, grid de KPI, barra
+de progresso, padding interno), não ritmo "entre blocos".
 
 Modernização da tela de login (sombra do card, largura maior a partir de
 1024px, gradiente radial na foto, zoom lento, ícones nos campos, tela de
@@ -153,9 +152,10 @@ texto no tema do app.
    (migrations automáticas no `npm run build`), mas o usuário ainda não
    confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
    em deploy/env vars de produção.
-2. `pdv.tsx` ainda usa `mt-3`/`space-y-3` cru — só migrar pro token com
-   bastante cuidado (ou nem migrar): é a tela mais sensível do app (ver
-   invariante 1), qualquer regressão ali afeta o caixa ao vivo.
+
+O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
+inclusive — a conversão lá foi verificada instância por instância (12/12 em
+12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
 
 ## Como a próxima IA deve trabalhar
 
