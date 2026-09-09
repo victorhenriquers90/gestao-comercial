@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { useState, type FormEvent, useEffect } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -146,41 +146,48 @@ function LoginPage() {
                   <Label htmlFor="name" className="ed-label">
                     Nome
                   </Label>
-                  <Input
-                    id="name"
-                    className={fieldClass}
-                    value={name}
-                    autoComplete="name"
-                    placeholder="Como aparece na loja"
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
+                  <div className="relative">
+                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="name"
+                      className={cn(fieldClass, "pl-11")}
+                      value={name}
+                      autoComplete="name"
+                      placeholder="Como aparece na loja"
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
               ) : null}
               <div className="grid gap-1.5">
                 <Label htmlFor="email" className="ed-label">
                   E-mail
                 </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  className={fieldClass}
-                  autoComplete="email"
-                  placeholder="voce@loja.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    className={cn(fieldClass, "pl-11")}
+                    autoComplete="email"
+                    placeholder="voce@loja.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="password" className="ed-label">
                   Senha
                 </Label>
                 <div className="relative">
+                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    className={cn(fieldClass, "pr-12")}
+                    className={cn(fieldClass, "pr-12 pl-11")}
                     autoComplete={signingUp ? "new-password" : "current-password"}
                     placeholder={signingUp ? "Mínimo 8 caracteres" : "Sua senha"}
                     value={password}

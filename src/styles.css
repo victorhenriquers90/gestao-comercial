@@ -183,6 +183,22 @@
   height: 100%;
   object-fit: cover;
   object-position: 58% 32%;
+  animation: login-ken-burns 24s ease-in-out infinite alternate;
+}
+
+@keyframes login-ken-burns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-scene {
+    animation: none;
+  }
 }
 
 .login-photo::after {
