@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
 const fieldClass =
-  "h-12 rounded-lg border-transparent bg-muted px-4 text-base focus-visible:border-input focus-visible:bg-card";
+  "h-12 rounded-lg border-transparent bg-muted px-4 text-base transition-colors focus-visible:border-input focus-visible:bg-card";
 
 // Better Auth's client returns an error `code` (e.g. "INVALID_EMAIL_OR_PASSWORD")
 // alongside its own English `message` — key off `code` so this never depends on
@@ -48,10 +48,21 @@ function LoginPage() {
 
   if (isPending) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6">
-        <BrandMark className="size-10" />
-        <p className="text-sm text-muted-foreground">Abrindo a loja…</p>
-      </div>
+      <main className="login-page relative flex min-h-dvh flex-col items-center justify-center gap-3 px-6">
+        <div className="login-photo" aria-hidden>
+          <img
+            src="/login-store.jpg"
+            alt=""
+            className="login-scene"
+            fetchPriority="high"
+            decoding="async"
+          />
+        </div>
+        <div className="relative z-[1] flex flex-col items-center gap-3">
+          <BrandMark className="size-10" tone="inverse" />
+          <p className="text-sm text-primary-foreground/85">Abrindo a loja…</p>
+        </div>
+      </main>
     );
   }
   if (user) {
@@ -108,7 +119,7 @@ function LoginPage() {
         />
       </div>
       <section className="login-panel">
-        <div className="login-card rounded-2xl p-6 lg:p-8">
+        <div className="login-card animate-in fade-in-0 zoom-in-95 duration-300 rounded-2xl p-6 lg:p-8">
             <div className="mb-6 flex items-center gap-3 lg:mb-8">
               <BrandMark className="size-10" />
               <div>
