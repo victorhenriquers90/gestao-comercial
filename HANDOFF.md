@@ -161,6 +161,20 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
 - Testes em `src/lib/*.test.ts` para regra de domínio (CPF, comissão, tax).
+  `npm test` pega `src/**/*.test.ts` por glob — arquivo novo entra sozinho,
+  não precisa listar. **Use aspas duplas no glob**: com aspas simples o
+  cmd.exe não desmonta a string, o node recebe as aspas literais, casa zero
+  arquivo e o script **sai 0** — foi assim que `tax.test.ts` e
+  `commission.test.ts` (41 testes de retenção e comissão) ficaram fora da
+  suíte sem ninguém notar.
+- `npm run test:scripts` roda os testes do andaime (`scripts/**`). Está fora
+  do `npm test` de propósito: **13 dos 195 falham hoje**, e são expectativas
+  da época do template, não bug do produto — o `grok-pwa-plugin` agora emite
+  `og:title` com o nome do app ("Gestão Comercial") e os testes ainda esperam
+  o fallback pro `<title>` do documento; outros cobram defaults que o projeto
+  mudou de propósito (`VITE_AUTH_ENABLED` off). Antes de reescrever essas
+  asserções pra bater com o código, confirme qual comportamento é o
+  desejado — senão o teste vira espelho da implementação.
 - Migration nova se mudar schema; nunca reescrever `0001`–`0020`.
 - Não “explorar” 800 palavras se o usuário pediu para implementar.
 - Não adicionar Google/X, mobile-first, ou tema roxo.
