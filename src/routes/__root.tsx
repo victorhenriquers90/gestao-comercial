@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { Toaster } from "sonner";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { useTheme } from "@/hooks/use-theme";
 import { AuthProvider } from "@/lib/auth/provider";
 import { APP_NAME } from "@/lib/constants";
 import appCss from "../styles.css?url";
@@ -45,6 +46,7 @@ export const Route = createRootRoute({
 });
 
 function RootDocument() {
+  const { theme } = useTheme();
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -75,6 +77,7 @@ function RootDocument() {
             <Outlet />
             <Toaster
               position="top-right"
+              theme={theme}
               richColors
               closeButton
               toastOptions={{
