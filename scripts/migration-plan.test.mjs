@@ -57,8 +57,10 @@ test("non-.sql entries are dropped (readdir also yields the auth/ directory)", (
 });
 
 test("the auth schema ships outside the globbed directory", () => {
+  // O template não trazia migration nenhuma na raiz; este app tem as suas
+  // (0001…0022), então só o que importa aqui segue valendo: o schema de auth
+  // mora em migrations/auth/, fora do glob que aplica automaticamente.
   const migrationsDir = join(projectRoot(), "migrations");
-  assert.deepEqual(pendingMigrations(readdirSync(migrationsDir), []), []);
   assert.ok(readdirSync(join(migrationsDir, "auth")).includes("0001_auth.sql"));
 });
 
