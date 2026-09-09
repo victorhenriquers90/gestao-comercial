@@ -162,6 +162,34 @@
   --ring: #1f5c4d;
   --destructive: #9b3a32;
   --destructive-foreground: #fbf6f4;
+  /* Tailwind utilities (text-foreground, bg-muted, …) don't read the raw
+     tokens above — they read the --color-* aliases from @theme, and those
+     are `var(--foreground)` etc. resolved ONCE at :root/<html>. With
+     <html class="dark">, that resolution already happened against the dark
+     palette before inheritance ever reaches this element, so overriding the
+     raw tokens here has no effect on anything styled via a Tailwind color
+     utility — only on rules that reference --foreground/--muted-foreground/…
+     directly. Re-declaring the aliases at this same scope forces them to
+     resolve against the raw tokens just above, which is what actually keeps
+     "E-mail"/"Senha" (text-foreground on the Label component) legible when a
+     visitor's last session left the app in dark mode. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
 }
 
 .login-photo {
