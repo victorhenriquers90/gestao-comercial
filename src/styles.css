@@ -183,13 +183,64 @@
   height: 100%;
   object-fit: cover;
   object-position: 58% 32%;
+  animation: login-ken-burns 24s ease-in-out infinite alternate;
+}
+
+@keyframes login-ken-burns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -180% 0;
+  }
+}
+
+/* Reset global em vez de listar classe por classe: o tw-animate-css (usado
+   nos diálogos, nas abas e no card do login) não trata reduced-motion
+   sozinho, então guardar só os keyframes daqui deixaria metade das
+   animações passando por cima da preferência. Duração mínima em vez de
+   `animation: none` pra que quem escuta `animationend` ainda receba o
+   evento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .login-photo::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgb(26 25 22 / 0.28);
+  background: radial-gradient(
+    130% 110% at 50% 42%,
+    rgb(26 25 22 / 0.34) 0%,
+    rgb(26 25 22 / 0.62) 100%
+  );
 }
 
 .login-panel {
@@ -212,7 +263,15 @@
   background: #fbf9f4;
   color: #1a1916;
   border: 1px solid color-mix(in oklab, #1a1916 14%, transparent);
-  box-shadow: 0 1px 0 color-mix(in oklab, #1a1916 6%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.12),
+    0 24px 48px -12px rgb(0 0 0 / 0.35);
+}
+
+@media (min-width: 1024px) {
+  .login-card {
+    width: min(100%, 30rem);
+  }
 }
 
 .login-card input {
@@ -227,6 +286,13 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Both properties inherit, so setting them here themes every scroller —
+       the default chrome-grey bar is the most dated thing left on screen. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent) transparent;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 24%, transparent);
   }
   body {
     @apply bg-background text-foreground font-sans;
@@ -249,6 +315,20 @@
 @layer components {
   .data-table tbody tr {
     @apply border-b border-border transition-colors last:border-0 hover:bg-muted/50;
+  }
+
+  /* Highlight sweeping over the skeleton's muted base — reads as "loading"
+     more clearly than a whole-block pulse, and doesn't dim the layout. */
+  .skeleton-sweep {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, var(--foreground) 7%, transparent) 50%,
+      transparent 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 180% 100%;
+    animation: skeleton-sweep 1.6s ease-in-out infinite;
   }
 
   .content-pane {
@@ -446,6 +526,12 @@
   .app-main {
     grid-area: main;
     min-width: 0;
+  }
+
+  /* Re-keyed by pathname in AppShell, so this replays on every navigation.
+     Opacity + a 4px rise only — nothing that shifts layout. */
+  .page-enter {
+    animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .topbar {

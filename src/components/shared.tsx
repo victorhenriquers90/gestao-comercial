@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -31,14 +31,18 @@ export function EmptyState({
   title,
   description,
   action,
+  icon: Icon = Inbox,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  icon?: LucideIcon;
 }) {
   return (
     <div className="flex flex-col items-start justify-center gap-3 border-y border-border py-16">
-      <p className="ed-label">Vazio</p>
+      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-4" />
+      </span>
       <div>
         <p className="font-display text-xl font-semibold tracking-tight">{title}</p>
         {description ? (

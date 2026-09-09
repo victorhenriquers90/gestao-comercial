@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
+import { chartTooltip } from "@/lib/chart";
 import { formatBRL, formatDate, formatDateTime, formatPct, formatQty } from "@/lib/format";
 import { PERIOD_OPTIONS, resolvePeriod, type PeriodKey } from "@/lib/period";
 import { listSellersFn } from "@/lib/server/party";
@@ -424,7 +425,7 @@ function ReportChartView({
           Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
         }
       />
-      <Tooltip formatter={(v: number) => formatBRL(v)} />
+      <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
     </>
   );
   return (

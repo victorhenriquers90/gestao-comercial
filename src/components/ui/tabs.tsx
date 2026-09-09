@@ -23,7 +23,7 @@ export function TabsTrigger({
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors duration-150 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-soft",
+        "inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-soft",
         className,
       )}
       {...props}
@@ -35,5 +35,13 @@ export function TabsContent({
   className,
   ...props
 }: ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content className={cn("mt-4 outline-none", className)} {...props} />;
+  return (
+    <TabsPrimitive.Content
+      className={cn(
+        "mt-4 outline-none data-[state=active]:animate-in data-[state=active]:fade-in-0 data-[state=active]:duration-200",
+        className,
+      )}
+      {...props}
+    />
+  );
 }

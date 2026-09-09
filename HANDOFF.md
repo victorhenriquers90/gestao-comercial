@@ -79,6 +79,16 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
    de texto.
 10. **Foto de login:** `/public/login-store.jpg`, `object-fit: cover`, full-bleed
     atrás do cartão. Não recortar rostos; `object-position: 58% 32%`.
+11. **Design é sistêmico.** Mudança visual que vale pra "todas as telas" entra
+    em `src/components/ui/*`, `src/components/shared.tsx`, `app-shell.tsx` ou
+    nos tokens do `styles.css` — não tela por tela. Os KPIs seguem chapados de
+    propósito (`.kpi-card` zera `box-shadow`/borda pro filete editorial), mesmo
+    com `Card` tendo `shadow-soft` por padrão.
+12. **`prefers-reduced-motion` é tratado globalmente** por um reset em
+    `styles.css` (`*`, `::before`, `::after` com duração mínima). Vale pros
+    keyframes daqui **e** pro `tw-animate-css` (diálogos, abas, card do
+    login), que não trata isso sozinho. Não precisa guardar animação nova
+    caso a caso — e não remova o reset achando que é redundante.
 
 ## Domínio rápido
 
@@ -127,6 +137,15 @@ barra de filtro, espaçamento local, não "entre blocos"). Cada `gap-3`/`mt-3`/
 `space-y-3` que sobrou nessas telas foi deixado de propósito — é espaçamento
 local (dentro de uma linha, grid de KPI, barra de progresso), não ritmo
 "entre blocos".
+
+Modernização da tela de login (sombra do card, largura maior a partir de
+1024px, gradiente radial na foto, zoom lento, ícones nos campos, tela de
+carregamento com a mesma foto) e a rodada sistêmica que vale pra todas as
+telas: transição de entrada de página (`.page-enter`, re-keyed pelo pathname
+no `AppShell`), filete do item ativo na sidebar, `Skeleton` com brilho
+varrendo em vez de pulse, `EmptyState` com ícone em círculo, `Tabs` com
+hover/foco/fade, `Card` com `shadow-soft`, e barra de rolagem + seleção de
+texto no tema do app.
 
 ## Próximos (se o usuário disser “continuar”)
 
