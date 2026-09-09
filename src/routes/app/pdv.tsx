@@ -431,29 +431,28 @@ function PdvPage() {
             </Button>
           </div>
         ) : null}
-        <div className="tile-grid mt-4">
-          {hits.map((h, i) => (
+        <div className="mt-4 flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {hits.map((h) => (
             <button
               key={h.variantId}
               type="button"
               onClick={() => add(h)}
-              className={cn(
-                "tile rounded-lg border border-border bg-card p-3 hover:border-primary",
-                i === 0 && hits.length > 3 && "tile-wide",
-              )}
+              className="flex items-center gap-3 bg-card p-3 text-left hover:bg-muted"
             >
-              <span className="tile-photo">
+              <span className="tile-photo size-12 shrink-0">
                 {h.imageUrl ? (
                   <img src={h.imageUrl} alt="" />
                 ) : (
                   <span className="tile-photo-fallback">{h.label.slice(0, 1)}</span>
                 )}
               </span>
-              <p className="line-clamp-2 text-sm font-medium">{h.label}</p>
-              <p className="text-xs text-muted-foreground">
-                {h.sku} · estoque {h.stock}
-              </p>
-              <p className="font-display text-lg tabular">{formatBRL(h.price)}</p>
+              <span className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{h.label}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {h.sku} · estoque {h.stock}
+                </p>
+              </span>
+              <p className="font-display text-lg tabular shrink-0">{formatBRL(h.price)}</p>
             </button>
           ))}
         </div>
