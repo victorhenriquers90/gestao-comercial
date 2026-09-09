@@ -286,7 +286,7 @@ function ProdutosPage() {
           <DialogHeader>
             <DialogTitle>{editId ? "Editar produto" : "Novo produto"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-block sm:grid-cols-2">
             <div className="sm:col-span-2">
               <ImageField
                 value={form.imageUrl}

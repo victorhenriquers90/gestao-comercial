@@ -194,7 +194,7 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Folha e retenções</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className="space-y-block text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Comissões a pagar</span>
               <span className="tabular font-medium">{formatBRL(d.pendingCommissionNet)}</span>
@@ -229,7 +229,7 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Produtos mais vendidos</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-block">
             {d.topProducts.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ainda não há vendas neste período.</p>
             ) : (
@@ -248,7 +248,7 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Vendedores</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-block">
             {d.topSellers.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma comissão neste período.</p>
             ) : (
@@ -265,7 +265,7 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Estoque baixo</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-block">
             {d.lowStock.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum alerta no momento.</p>
             ) : (

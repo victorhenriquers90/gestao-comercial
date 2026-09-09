@@ -89,7 +89,7 @@ function FinanceiroPage() {
         </TabsList>
         <TabsContent value="pagar">
           <Button
-            className="mb-3"
+            className="mb-block"
             size="sm"
             onClick={() => {
               setDesc("");
@@ -161,7 +161,7 @@ function FinanceiroPage() {
         </TabsContent>
         <TabsContent value="receber">
           <Button
-            className="mb-3"
+            className="mb-block"
             size="sm"
             onClick={() => {
               setDesc("");
@@ -308,10 +308,10 @@ function FinanceiroPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Descrição" className="mt-3">
+          <Field label="Descrição" className="mt-block">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} />
           </Field>
-          <Field label="Categoria" className="mt-3">
+          <Field label="Categoria" className="mt-block">
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               {EXPENSE_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -321,10 +321,10 @@ function FinanceiroPage() {
               <option value="Compras">Compras</option>
             </Select>
           </Field>
-          <Field label="Vencimento" className="mt-3">
+          <Field label="Vencimento" className="mt-block">
             <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </Field>
-          <Field label="Valor" className="mt-3">
+          <Field label="Valor" className="mt-block">
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Button
@@ -367,13 +367,13 @@ function FinanceiroPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Descrição" className="mt-3">
+          <Field label="Descrição" className="mt-block">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} />
           </Field>
-          <Field label="Vencimento" className="mt-3">
+          <Field label="Vencimento" className="mt-block">
             <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </Field>
-          <Field label="Valor" className="mt-3">
+          <Field label="Valor" className="mt-block">
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Button

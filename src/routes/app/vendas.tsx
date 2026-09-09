@@ -143,7 +143,7 @@ function VendasPage() {
             <DialogTitle>Venda {detail.data ? `nº ${detail.data.sale.number}` : ""}</DialogTitle>
           </DialogHeader>
           {detail.data ? (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-block text-sm">
               <Receipt
                 data={saleToReceipt(detail.data)}
                 company={receiptCompany(settings.data)}

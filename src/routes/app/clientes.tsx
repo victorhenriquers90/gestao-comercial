@@ -86,7 +86,7 @@ function ClientesPage() {
           <DialogHeader>
             <DialogTitle>Novo cliente</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
+          <div className="grid gap-block">
             <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
               <option value="pf">Pessoa física</option>
               <option value="pj">Pessoa jurídica</option>

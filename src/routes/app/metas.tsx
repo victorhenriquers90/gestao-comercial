@@ -120,7 +120,7 @@ function MetasPage() {
           action={<Button onClick={startCreate}>Nova meta</Button>}
         />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-block md:grid-cols-2">
           {rows.map((t) => {
             const badge = bonusBadge(t.bonus_kind, t.bonus_value);
             const hit = t.progress + 0.05 >= 100;
@@ -171,10 +171,10 @@ function MetasPage() {
           <Field label="Nome">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Valor" className="mt-3">
+          <Field label="Valor" className="mt-block">
             <Input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </Field>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
               <Input type="date" value={form.periodStart} onChange={(e) => setForm({ ...form, periodStart: e.target.value })} />
             </Field>
@@ -182,7 +182,7 @@ function MetasPage() {
               <Input type="date" value={form.periodEnd} onChange={(e) => setForm({ ...form, periodEnd: e.target.value })} />
             </Field>
           </div>
-          <Field label="Loja" className="mt-3">
+          <Field label="Loja" className="mt-block">
             <Select value={form.storeId} onChange={(e) => setForm({ ...form, storeId: e.target.value })}>
               <option value="">Todas</option>
               {(tenant.data?.stores ?? []).map((s) => (
@@ -192,7 +192,7 @@ function MetasPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Vendedor" className="mt-3">
+          <Field label="Vendedor" className="mt-block">
             <Select value={form.sellerId} onChange={(e) => setForm({ ...form, sellerId: e.target.value })}>
               <option value="">Todos</option>
               {(sellers.data as { id: number; name: string }[] | undefined)?.map((s) => (
@@ -202,7 +202,7 @@ function MetasPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Bônus de comissão" className="mt-3">
+          <Field label="Bônus de comissão" className="mt-block">
             <Select
               value={form.bonusKind}
               onChange={(e) => setForm({ ...form, bonusKind: e.target.value as TargetBonusKind })}
@@ -218,7 +218,7 @@ function MetasPage() {
             <>
               <Field
                 label={form.bonusKind === "extra_percent" ? "Percentual de bônus" : "Valor do bônus"}
-                className="mt-3"
+                className="mt-block"
               >
                 <Input
                   type="number"

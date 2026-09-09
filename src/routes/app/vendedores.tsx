@@ -372,7 +372,7 @@ function VendedoresPage() {
           <Field label="Nome">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label={sellerDocKind(form.taxRegime) === "cnpj" ? "CNPJ" : "CPF"} className="mt-3">
+          <Field label={sellerDocKind(form.taxRegime) === "cnpj" ? "CNPJ" : "CPF"} className="mt-block">
             <Input
               value={form.document}
               inputMode="numeric"
@@ -386,13 +386,13 @@ function VendedoresPage() {
               }
             />
           </Field>
-          <Field label="E-mail" className="mt-3">
+          <Field label="E-mail" className="mt-block">
             <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
-          <Field label="Telefone" className="mt-3">
+          <Field label="Telefone" className="mt-block">
             <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </Field>
-          <Field label="% comissão padrão" className="mt-3">
+          <Field label="% comissão padrão" className="mt-block">
             <Input
               type="number"
               step="0.1"
@@ -403,7 +403,7 @@ function VendedoresPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             Usado quando nenhuma regra de produto, categoria ou pagamento se aplica. O CPF entra no RPA.
           </p>
-          <Field label="Regime tributário" className="mt-3">
+          <Field label="Regime tributário" className="mt-block">
             <Select value={form.taxRegime} onChange={(e) => setForm({ ...form, taxRegime: e.target.value })}>
               {TAX_REGIMES.map((k) => (
                 <option key={k} value={k}>
@@ -413,7 +413,7 @@ function VendedoresPage() {
             </Select>
           </Field>
           {form.taxRegime === "clt" ? (
-            <Field label="Salário mensal (CLT)" className="mt-3">
+            <Field label="Salário mensal (CLT)" className="mt-block">
               <Input
                 type="number"
                 min="0"
@@ -424,7 +424,7 @@ function VendedoresPage() {
             </Field>
           ) : null}
           {form.taxRegime === "clt" || form.taxRegime === "autonomo" ? (
-            <Field label="Dependentes (IRRF)" className="mt-3">
+            <Field label="Dependentes (IRRF)" className="mt-block">
               <Input
                 type="number"
                 min="0"
@@ -436,7 +436,7 @@ function VendedoresPage() {
           ) : null}
           {form.taxRegime === "autonomo" || form.taxRegime === "pj" ? (
             <IssRateField
-              className="mt-3"
+              className="mt-block"
               label="ISS deste vendedor (%)"
               value={form.issRate}
               onChange={(v) => setForm({ ...form, issRate: v })}
@@ -446,7 +446,7 @@ function VendedoresPage() {
             />
           ) : null}
           {form.taxRegime === "mei" ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-block space-y-2">
               <label className="flex items-start gap-2 text-sm">
                 <NativeCheckbox
                   className="mt-0.5"
@@ -525,7 +525,7 @@ function VendedoresPage() {
               <div>
                 <TaxBreakdown tax={tax} />
                 <Button
-                  className="mt-3"
+                  className="mt-block"
                   variant="outline"
                   onClick={() => {
                     const slip = previewSlip(c.id);

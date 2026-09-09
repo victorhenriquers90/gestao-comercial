@@ -136,7 +136,7 @@ function ComprasPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Status" className="mt-3">
+          <Field label="Status" className="mt-block">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               {PURCHASE_STATUS.map((s) => (
                 <option key={s} value={s}>
@@ -145,10 +145,10 @@ function ComprasPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Frete" className="mt-3">
+          <Field label="Frete" className="mt-block">
             <Input value={freight} onChange={(e) => setFreight(e.target.value)} />
           </Field>
-          <Field label="Adicionar produto" className="mt-3">
+          <Field label="Adicionar produto" className="mt-block">
             <Input
               placeholder="Buscar e Enter"
               value={q}
@@ -240,7 +240,7 @@ function ComprasPage() {
           {!p ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-block text-sm">
               <p className="text-muted-foreground">
                 {p.supplierName ?? "Sem fornecedor"} · {p.storeName}
                 {p.createdAt ? ` · ${formatDateTime(p.createdAt)}` : ""}

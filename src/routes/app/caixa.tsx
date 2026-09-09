@@ -72,13 +72,13 @@ function CaixaPage() {
           <div className="ops-stage mt-4">
             <Card className="ops-primary p-5">
               <p className="text-sm font-medium">Sangria / suprimento</p>
-              <Field label="Valor" className="mt-3">
+              <Field label="Valor" className="mt-block">
                 <Input value={moveAmt} onChange={(e) => setMoveAmt(e.target.value)} />
               </Field>
-              <Field label="Descrição" className="mt-3">
+              <Field label="Descrição" className="mt-block">
                 <Input value={moveDesc} onChange={(e) => setMoveDesc(e.target.value)} />
               </Field>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-block flex gap-2">
                 <Button
                   variant="outline"
                   onClick={async () => {
@@ -110,7 +110,7 @@ function CaixaPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Aberto em {formatDateTime(String(d.register.opened_at))}
               </p>
-              <Field label="Dinheiro informado" className="mt-3">
+              <Field label="Dinheiro informado" className="mt-block">
                 <Input value={closeAmt} onChange={(e) => setCloseAmt(e.target.value)} />
               </Field>
               <Button
@@ -141,7 +141,7 @@ function CaixaPage() {
             </Card>
           </div>
           <Card className="mt-4 p-5">
-            <p className="mb-3 text-sm font-medium">Movimentações</p>
+            <p className="mb-block text-sm font-medium">Movimentações</p>
             <div className="space-y-2 text-sm">
               {(d.movements as Record<string, unknown>[]).map((m) => (
                 <div key={String(m.id)} className="flex justify-between">
