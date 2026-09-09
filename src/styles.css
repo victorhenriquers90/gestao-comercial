@@ -189,7 +189,11 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: rgb(26 25 22 / 0.28);
+  background: radial-gradient(
+    130% 110% at 50% 42%,
+    rgb(26 25 22 / 0.34) 0%,
+    rgb(26 25 22 / 0.62) 100%
+  );
 }
 
 .login-panel {
@@ -212,7 +216,15 @@
   background: #fbf9f4;
   color: #1a1916;
   border: 1px solid color-mix(in oklab, #1a1916 14%, transparent);
-  box-shadow: 0 1px 0 color-mix(in oklab, #1a1916 6%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.12),
+    0 24px 48px -12px rgb(0 0 0 / 0.35);
+}
+
+@media (min-width: 1024px) {
+  .login-card {
+    width: min(100%, 30rem);
+  }
 }
 
 .login-card input {
