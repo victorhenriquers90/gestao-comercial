@@ -162,7 +162,7 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Metas</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 overflow-y-auto">
             {d.targets.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma meta no período.</p>
             ) : (
