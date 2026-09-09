@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { authClient, authEnabled, ensureCsrfCookie } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import { APP_NAME } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
@@ -120,15 +120,11 @@ function LoginPage() {
       </div>
       <section className="login-panel">
         <div className="login-card animate-in fade-in-0 zoom-in-95 duration-300 rounded-2xl p-6 lg:p-8">
-            <div className="mb-6 flex items-center gap-3 lg:mb-8">
+            <div className="mb-7 flex items-center gap-3">
               <BrandMark className="size-10" />
-              <div>
-                <p className="ed-label">{APP_NAME}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{APP_TAGLINE}</p>
-              </div>
+              <p className="ed-label">{APP_NAME}</p>
             </div>
 
-            <p className="ed-label mb-2">{signingUp ? "Nova conta" : "Acesso"}</p>
             <h1 className="font-display text-3xl font-semibold tracking-tight">
               {signingUp ? "Criar a loja" : "Abrir a loja"}
             </h1>
