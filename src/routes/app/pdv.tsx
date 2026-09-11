@@ -431,7 +431,7 @@ function PdvPage() {
             </Button>
           </div>
         ) : null}
-        <div className="mt-4 flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
           {hits.map((h) => (
             <button
               key={h.variantId}
@@ -492,7 +492,7 @@ function PdvPage() {
           </Select>
         </div>
 
-        <div className="mt-block flex-1 space-y-2 overflow-y-auto">
+        <div className="mt-block min-h-0 flex-1 space-y-2 overflow-y-auto">
           {cart.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
               <p className="text-sm font-medium">Carrinho vazio</p>

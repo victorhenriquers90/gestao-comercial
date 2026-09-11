@@ -36,6 +36,12 @@
          nome de pasta que Install-GestaoComercial.ps1 procura dentro de
          -AppSourceDir (Copy-AppFiles faz Join-Path $AppSourceDir ".output"). -->
     <Content Include="..\..\.output\**\*" Link=".output\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- So o nivel raiz de migrations\ (sem **), a mesma regra de nao descer
+         em migrations\auth\ que scripts\migration-plan.mjs usa. Invoke-AppMigrations
+         em installer\lib\Database.ps1 aplica isso contra o Postgres do
+         cliente, porque nem "npm run build" nem o app em producao fazem
+         isso sozinhos (ver comentario da funcao). -->
+    <Content Include="..\..\migrations\*.sql" Link="migrations\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

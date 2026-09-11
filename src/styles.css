@@ -686,7 +686,11 @@
 
   .pdv-stage {
     display: grid;
-    min-height: calc(100dvh - 4rem);
+    /* height fixo (não min-height): sem isso a grade cresce pra caber todo o
+       conteudo e a pagina inteira rola, em vez de so a lista de produtos ou
+       o carrinho rolarem por dentro. */
+    height: calc(100dvh - 4rem);
+    overflow: hidden;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas: "catalog" "ticket";
@@ -696,6 +700,7 @@
     grid-area: catalog;
     display: flex;
     min-width: 0;
+    min-height: 0;
     flex-direction: column;
   }
 
@@ -703,6 +708,7 @@
     grid-area: ticket;
     display: flex;
     min-width: 0;
+    min-height: 0;
     flex-direction: column;
   }
 

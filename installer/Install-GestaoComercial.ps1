@@ -137,6 +137,65 @@ function Write-Step {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
+function Invoke-CurrentAppMigrations {
+    <#
+        Fininho em volta de Invoke-AppMigrations (lib/Database.ps1) so pra nao
+        repetir Get-PostgresInstallDir/psqlPath/MigrationsDir nos 3 lugares
+        que precisam disto (atualizacao, instalacao "ja configurada" e
+        instalacao nova do zero) -- foi exatamente esquecer um desses 3
+        lugares que deixou o banco sem schema numa versao anterior deste
+        script.
+    #>
+    param([Parameter(Mandatory)][string]$RolePassword)
+    $psqlPath = Join-Path (Get-PostgresInstallDir) "bin\psql.exe"
+    Invoke-AppMigrations -PsqlPath $psqlPath -RoleName $DbRoleName -RolePassword $RolePassword `
+        -DatabaseName $DbName -MigrationsDir (Join-Path $AppSourceDir "migrations")
+}
+
+function Get-BrowserAppModeExe {
+    <#
+        Chrome/Edge, nessa ordem de preferencia -- os dois suportam
+        "--app=<url>", que abre so o conteudo da pagina, sem barra de
+        endereco nem abas, como se fosse um programa nativo em vez de uma
+        aba de navegador comum.
+    #>
+    $candidates = @(
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return $c }
+    }
+    return $null
+}
+
+function Add-AppShortcut {
+    <#
+        Atalho na area de trabalho de TODOS os usuarios (CommonDesktopDirectory,
+        nao a de um usuario especifico) -- essa maquina e um PC compartilhado de
+        loja, nao faz sentido o atalho existir so pra quem instalou.
+        Idempotente: sobrescreve se ja existir, seguro de rodar de novo numa
+        atualizacao.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BrowserExePath,
+        [Parameter(Mandatory)][int]$Port
+    )
+    $shortcutPath = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Gestao Comercial.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $BrowserExePath
+    # --kiosk (nao --app): tela cheia de verdade, sem nenhuma barra de titulo --
+    # --app ainda deixa uma faixa minima com os botoes de minimizar/fechar.
+    # Alt+F4 fecha a janela normalmente.
+    $shortcut.Arguments = "--kiosk http://localhost:$Port"
+    $shortcut.IconLocation = $BrowserExePath
+    $shortcut.Description = "Gestao Comercial"
+    $shortcut.Save()
+}
+
 function Write-ProtectedSecretFile {
     <#
         Guarda um segredo de recuperacao (a senha de superusuario do Postgres,
@@ -211,11 +270,22 @@ if ($isUpdate) {
     if (-not (Test-Path $NssmPath)) {
         Copy-Item -Path $NssmSourcePath -Destination $NssmPath -Force
     }
+
+    Write-Step "Conferindo schema do banco de dados."
+    $dbPasswordExistente = Get-DbPasswordFromConnectionString -ConnectionString (Get-MachineEnvVar -Name "DATABASE_URL")
+    Invoke-CurrentAppMigrations -RolePassword $dbPasswordExistente
+    $dbPasswordExistente = $null
+
     Update-AppServiceBinary -NssmPath $NssmPath -NodeExePath $nodeExe -EntryScriptPath $entryScript
     Start-AppService
 
     if (-not (Test-AppHealthy)) {
         throw "O app nao respondeu em http://localhost:$Port apos a atualizacao -- confira os logs em $(Join-Path $StateDir 'logs') (stdout.log / stderr.log)."
+    }
+
+    $browserExe = Get-BrowserAppModeExe
+    if ($browserExe) {
+        Add-AppShortcut -BrowserExePath $browserExe -Port $Port
     }
 
     Save-InstallState -State @{
@@ -252,6 +322,11 @@ if (Get-MachineEnvVar -Name "DATABASE_URL") {
     # incompativel com o banco real.
     Write-Step "Banco e segredos ja configurados por uma tentativa anterior -- pulando para o restante da instalacao."
     $lanIp = Get-MachineEnvVar -Name "EXTRA_AUTH_HOSTS"
+
+    Write-Step "Conferindo schema do banco de dados."
+    $dbPasswordExistente = Get-DbPasswordFromConnectionString -ConnectionString (Get-MachineEnvVar -Name "DATABASE_URL")
+    Invoke-CurrentAppMigrations -RolePassword $dbPasswordExistente
+    $dbPasswordExistente = $null
 } else {
     Write-Step "Verificando PostgreSQL."
     $postgresJustInstalled = $false
@@ -274,6 +349,9 @@ if (Get-MachineEnvVar -Name "DATABASE_URL") {
     $dbPassword = New-DbPassword
     New-AppDatabaseRole -PsqlPath $psqlPath -RoleName $DbRoleName -RolePassword $dbPassword `
         -DatabaseName $DbName -SuperuserPassword $superuserPassword -Port 5432
+
+    Write-Step "Aplicando schema do banco de dados."
+    Invoke-CurrentAppMigrations -RolePassword $dbPassword
 
     if ($postgresJustInstalled) {
         New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
@@ -351,6 +429,15 @@ Start-AppService
 Write-Step "Checando saude do app."
 if (-not (Test-AppHealthy)) {
     throw "O app nao respondeu em http://localhost:$Port -- confira os logs em $logDir (stdout.log / stderr.log) antes de liberar a loja."
+}
+
+Write-Step "Criando atalho na area de trabalho."
+$browserExe = Get-BrowserAppModeExe
+if ($browserExe) {
+    Add-AppShortcut -BrowserExePath $browserExe -Port $Port
+    Write-Host "Atalho 'Gestao Comercial' criado -- abre o sistema em janela propria, sem barra de endereco nem abas."
+} else {
+    Write-Host "Nenhum Chrome/Edge encontrado -- atalho nao criado. Acesse http://localhost:$Port manualmente." -ForegroundColor Yellow
 }
 
 Save-InstallState -State @{

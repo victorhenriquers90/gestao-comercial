@@ -45,6 +45,11 @@
 
             <!-- Botoes -->
             <Style x:Key="Botao" TargetType="Button">
+                <!-- Sem isso, o WPF desenha o retangulo de foco padrao por cima de QUALQUER
+                     template customizado. Foi o "contorno estranho" ao redor do botao
+                     primario da tela de conclusao (aparece assim que o botao recebe foco,
+                     mesmo sem o usuario clicar nele). -->
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                 <Setter Property="FontFamily" Value="{StaticResource FontePrincipal}"/>
                 <Setter Property="FontSize" Value="13"/>
                 <Setter Property="Padding" Value="16,10"/>
@@ -90,6 +95,15 @@
                 <Setter Property="Background" Value="{StaticResource CorErro}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource CorErro}"/>
                 <Setter Property="Foreground" Value="#0F0F1E"/>
+            </Style>
+
+            <!-- Link discreto (ex.: "Ver detalhes"), sem borda/fundo, so texto -->
+            <Style x:Key="BotaoLink" TargetType="Button" BasedOn="{StaticResource Botao}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{StaticResource CorTextoSecundario}"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="HorizontalAlignment" Value="Left"/>
             </Style>
 
             <!-- Campos -->

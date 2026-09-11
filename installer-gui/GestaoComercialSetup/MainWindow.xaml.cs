@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 
 namespace GestaoComercialSetup;
 
@@ -17,7 +20,16 @@ public partial class MainWindow : Window
     private const string SentinelaSenhaPostgres = "__NEED_PG_PASSWORD__";
     private const string SentinelaConfirmacaoRede = "__NEED_NETWORK_CONFIRM__";
 
+    // Linhas de progresso escritas via "Write-Step" no script (prefixo "==> ")
+    // -- usadas so pra atualizar o texto da etapa atual, nao tem contagem
+    // fixa de passos (varia entre instalacao nova e atualizacao), por isso a
+    // barra e indeterminada em vez de mostrar uma porcentagem que seria
+    // inventada.
+    private const string PrefixoEtapa = "==> ";
+
     private Process? _processo;
+    private readonly StringBuilder _logCompleto = new();
+    private bool _ultimaInstalacaoComSucesso;
 
     public MainWindow()
     {
@@ -44,10 +56,26 @@ public partial class MainWindow : Window
 
     private void BotaoInstalar_Click(object sender, RoutedEventArgs e)
     {
-        BotaoInstalar.IsEnabled = false;
-        PainelStatusFinal.Visibility = Visibility.Collapsed;
-        CaixaLog.Clear();
+        MostrarTela(TelaProgresso);
+        ResetarPainelProgresso();
         IniciarInstalacao();
+    }
+
+    private void ResetarPainelProgresso()
+    {
+        CaixaLog.Clear();
+        _logCompleto.Clear();
+        TextoEtapaAtual.Text = "Iniciando...";
+        CaixaLog.Visibility = Visibility.Collapsed;
+        PainelPulso.Visibility = Visibility.Visible;
+        BotaoDetalhes.Content = "Ver detalhes ▾";
+    }
+
+    private void MostrarTela(FrameworkElement tela)
+    {
+        TelaBoasVindas.Visibility = ReferenceEquals(tela, TelaBoasVindas) ? Visibility.Visible : Visibility.Collapsed;
+        TelaProgresso.Visibility = ReferenceEquals(tela, TelaProgresso) ? Visibility.Visible : Visibility.Collapsed;
+        TelaFinal.Visibility = ReferenceEquals(tela, TelaFinal) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void IniciarInstalacao()
@@ -84,8 +112,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AdicionarLinhaLog($"Falha ao iniciar o instalador: {ex.Message}", ehErro: true);
-            MostrarStatusFinal(sucesso: false, "Nao foi possivel iniciar o processo de instalacao.");
-            BotaoInstalar.IsEnabled = true;
+            MostrarTelaFinal(sucesso: false, "Nao foi possivel iniciar o processo de instalacao.");
         }
     }
 
@@ -108,20 +135,27 @@ public partial class MainWindow : Window
                 PainelRede.Visibility = Visibility.Visible;
                 return;
             }
+            if (linha.StartsWith(PrefixoEtapa, StringComparison.Ordinal))
+            {
+                TextoEtapaAtual.Text = linha[PrefixoEtapa.Length..].TrimEnd('.');
+            }
             AdicionarLinhaLog(linha, ehErro);
         });
     }
 
     private void AdicionarLinhaLog(string linha, bool ehErro)
     {
+        _logCompleto.AppendLine(linha);
         CaixaLog.AppendText(linha + Environment.NewLine);
         CaixaLog.ScrollToEnd();
-        if (ehErro)
-        {
-            // TextBox nao colore linha a linha sem RichTextBox -- log de erro
-            // ja vem prefixado pelo PowerShell (throw/Write-Error), suficiente
-            // pra v1; RichTextBox com coloracao por linha fica como melhoria.
-        }
+    }
+
+    private void BotaoDetalhes_Click(object sender, RoutedEventArgs e)
+    {
+        var mostrando = CaixaLog.Visibility == Visibility.Visible;
+        CaixaLog.Visibility = mostrando ? Visibility.Collapsed : Visibility.Visible;
+        PainelPulso.Visibility = mostrando ? Visibility.Visible : Visibility.Collapsed;
+        BotaoDetalhes.Content = mostrando ? "Ver detalhes ▾" : "Ocultar detalhes ▴";
     }
 
     private void CampoSenhaPostgres_KeyDown(object sender, KeyEventArgs e)
@@ -167,21 +201,89 @@ public partial class MainWindow : Window
     private void FinalizarInstalacao()
     {
         var sucesso = _processo?.ExitCode == 0;
-        MostrarStatusFinal(sucesso,
+        MostrarTelaFinal(sucesso,
             sucesso
-                ? "Instalacao concluida. O sistema esta rodando em http://localhost:8080."
-                : "A instalacao falhou -- revise o log acima. Os passos ja concluidos (banco, segredos) nao sao refeitos numa nova tentativa.");
-        BotaoInstalar.IsEnabled = true;
-        BotaoInstalar.Content = "Tentar novamente";
+                ? "O sistema esta rodando nesta maquina e pronto pra receber o primeiro cadastro."
+                : "A instalacao nao terminou -- veja os detalhes abaixo. Os passos ja concluidos (banco, segredos) nao sao refeitos numa nova tentativa.");
     }
 
-    private void MostrarStatusFinal(bool sucesso, string mensagem)
+    private void MostrarTelaFinal(bool sucesso, string mensagem)
     {
-        TextoStatusFinal.Text = mensagem;
-        PainelStatusFinal.Background = new SolidColorBrush(sucesso
-            ? (Color)ColorConverter.ConvertFromString("#143D2E")
-            : (Color)ColorConverter.ConvertFromString("#3D1420"));
-        TextoStatusFinal.Foreground = (Brush)FindResource(sucesso ? "CorSucesso" : "CorErro");
-        PainelStatusFinal.Visibility = Visibility.Visible;
+        _ultimaInstalacaoComSucesso = sucesso;
+        MostrarTela(TelaFinal);
+
+        TituloFinal.Text = sucesso ? "Instalacao concluida" : "A instalacao falhou";
+        TextoFinal.Text = mensagem;
+
+        var corBadge = sucesso ? "#143D2E" : "#3D1420";
+        BadgeFinal.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(corBadge));
+        BadgeFinal.Effect = new DropShadowEffect
+        {
+            Color = Colors.Black,
+            Opacity = 0.35,
+            BlurRadius = 16,
+            ShadowDepth = 4,
+        };
+        IconeFinal.Text = sucesso ? "✓" : "✕";
+        IconeFinal.Foreground = (Brush)FindResource(sucesso ? "CorSucesso" : "CorErro");
+
+        BotaoAcaoFinal.Content = sucesso ? "Abrir o sistema" : "Tentar novamente";
+        CaixaLogFinal.Text = _logCompleto.ToString();
+    }
+
+    private void BotaoVerLogFinal_Click(object sender, RoutedEventArgs e)
+    {
+        var mostrando = CaixaLogFinal.Visibility == Visibility.Visible;
+        CaixaLogFinal.Visibility = mostrando ? Visibility.Collapsed : Visibility.Visible;
+        BotaoVerLog.Content = mostrando ? "Ver detalhes" : "Ocultar detalhes";
+    }
+
+    private static readonly string[] CaminhosNavegadorAppMode =
+    [
+        Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+        Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+        Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+    ];
+
+    private void BotaoAcaoFinal_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ultimaInstalacaoComSucesso)
+        {
+            const string url = "http://localhost:8080";
+            try
+            {
+                // --kiosk (nao --app): tela cheia de verdade, sem nenhuma barra de
+                // titulo -- --app ainda deixa uma faixa minima com os botoes de
+                // minimizar/fechar. Alt+F4 fecha a janela normalmente. Cai pro
+                // navegador padrao (com toda a moldura normal) se nenhum dos dois
+                // for encontrado.
+                var navegador = CaminhosNavegadorAppMode.FirstOrDefault(File.Exists);
+                if (navegador is not null)
+                {
+                    Process.Start(new ProcessStartInfo(navegador) { Arguments = $"--kiosk {url}", UseShellExecute = false });
+                }
+                else
+                {
+                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                }
+            }
+            catch
+            {
+                MessageBox.Show($"Nao foi possivel abrir o navegador -- acesse {url} manualmente.",
+                    "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        else
+        {
+            BotaoAcaoFinal_TentarNovamente();
+        }
+    }
+
+    private void BotaoAcaoFinal_TentarNovamente()
+    {
+        MostrarTela(TelaProgresso);
+        ResetarPainelProgresso();
+        IniciarInstalacao();
     }
 }
