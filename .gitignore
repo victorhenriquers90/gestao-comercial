@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+.output/
 .vercel/
 .tanstack/
 .env
@@ -8,3 +9,13 @@ build/
 *.log
 .DS_Store
 .node_modules.lock
+
+# Instaladores de terceiros (Node/PostgreSQL/Tailscale, NSSM) usados pelo
+# instalador WPF -- baixados manualmente, nunca versionados.
+installer/vendor/
+
+# Build do instalador WPF (.NET) -- installer-gui/ e codigo-fonte, o resto e
+# artefato gerado.
+installer-gui/**/bin/
+installer-gui/**/obj/
+installer-gui/publish*/

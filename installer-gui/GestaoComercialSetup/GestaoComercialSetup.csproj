@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>GestaoComercialSetup</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Publicacao como um unico .exe autocontido -ver installer\README.md.
+         IncludeAllContentForSelfExtract e o que realmente embute os itens
+         Content abaixo (scripts, nssm.exe, .output\) DENTRO do exe; sem essa
+         flag especifica eles ficam soltos do lado de fora mesmo com
+         PublishSingleFile ligado. Validado com um projeto descartavel antes
+         de integrar aqui (ver plano da sessao). -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- installer\ continua a unica fonte de verdade do motor de instalacao
+         -referenciado por caminho relativo (Link), nunca copiado pra
+         dentro deste projeto, entao editar o PowerShell ja reflete no
+         proximo dotnet publish sem duplicacao. -->
+    <Content Include="..\..\installer\lib\**\*.ps1" Link="installer\lib\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\Install-GestaoComercial.ps1" Link="installer\Install-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\Finish-TailscaleSetup.ps1" Link="installer\Finish-TailscaleSetup.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\Uninstall-GestaoComercial.ps1" Link="installer\Uninstall-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\vendor\nssm.exe" Link="installer\vendor\nssm.exe" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Link tem que comecar com ".output\" (com o ponto) -e literalmente o
+         nome de pasta que Install-GestaoComercial.ps1 procura dentro de
+         -AppSourceDir (Copy-AppFiles faz Join-Path $AppSourceDir ".output"). -->
+    <Content Include="..\..\.output\**\*" Link=".output\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

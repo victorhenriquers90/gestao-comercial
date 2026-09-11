@@ -97,6 +97,15 @@ const explicitBaseURL = env("BETTER_AUTH_URL");
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
+// Self-hosted single-PC deployments (this app's LAN IP for in-store terminals,
+// a Tailscale/VPN IP for remote access, …) reach this same server over a host
+// that is neither localhost nor the preview sandbox. Bare hosts, comma-separated
+// — e.g. EXTRA_AUTH_HOSTS="192.168.1.217,100.101.64.83". Optional; a deployment
+// behind one public BETTER_AUTH_URL doesn't need this.
+const extraAuthHosts: string[] = (env("EXTRA_AUTH_HOSTS") ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
 // Local `npm run dev` (port 8080 contract). Browsers may send Origin as any of
 // these for the same server — trusting only `localhost` rejects `127.0.0.1` and
 // breaks email/password with "Invalid origin".
@@ -104,11 +113,12 @@ const LOCAL_DEV_ORIGINS: string[] = [
   "http://localhost:8080",
   "http://127.0.0.1:8080",
   "http://[::1]:8080",
+  ...extraAuthHosts.map((h) => `http://${h}:8080`),
 ];
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
   // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
+  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]", ...extraAuthHosts],
   // `auto` → trust both http:// and https:// expansions of allowedHosts
   // (preview is https; local dev is http).
   protocol: "auto" as const,
