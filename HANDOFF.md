@@ -59,8 +59,8 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 
 ## Invariantes (não quebrar)
 
-1. **Desktop-first.** Layout de caixa, não app de celular. PDV em duas colunas
-   (peças | cupom).
+1. **Desktop-first.** Layout de caixa, não app de celular. PDV: vitrine de
+   peças (tiles) + cupom à direita + dock F4–F10 embaixo.
 2. **Caixa aberto** para finalizar venda (`checkoutFn`).
 3. **Um caixa aberto por loja** (índice parcial `cash_registers_one_open_idx`).
 4. **CPF/CNPJ:** vazio ok; preenchido = módulo 11; único por empresa
@@ -122,7 +122,13 @@ produto sem variantes, uma por variante quando há grade de cor/tamanho.
 Token `--space-beat` aplicado no `.kpi-card` (escopo reduzido de propósito).
 NFC-e via Focus NFe (`src/lib/nfce.ts`, `src/lib/server/nfce.ts`), homologação
 por padrão — configura em Configurações → Impostos (IE, regime tributário,
-`nfce_enabled`); emissão faz sentido a partir de `vendas.tsx`. Papel
+`nfce_enabled`); emissão no comprovante do PDV e no detalhe em `vendas.tsx`.
+Cancelamento: `DELETE /v2/nfce/{ref}` na Focus (justificativa 15–255) **antes**
+de baixar a venda. Nota `processando_autorizacao` bloqueia o cancelamento do
+cupom. Permissão `pdv.cancel` (admin/gerente). Estorno no caixa: o
+cancelamento lança `cancelamento` com o **valor em dinheiro** da venda (o
+esperado do caixa desconta); PIX/cartão não entram no gaveteiro — estorno
+TEF fica fora. Crediário só cancela se a conta ainda está pendente/parcial. Papel
 "Operador de PDV" com permissão real no servidor (ver "Papéis" acima).
 Mensagens de erro do login em pt-BR (mapeadas pelo `code` do Better Auth, não
 pela `message` em inglês — ver `src/routes/login.tsx`). Token
@@ -152,10 +158,40 @@ texto no tema do app.
    (migrations automáticas no `npm run build`), mas o usuário ainda não
    confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
    em deploy/env vars de produção.
+2. NFC-e no PDV: comprovante pós-venda tem “Emitir NFC-e” quando
+   `nfce_enabled`. Papel caixa/pdv emite com `pdv.sell` (não precisa
+   `sales.write`). Listagem de vendas mostra coluna NFC-e. Sem token Focus
+   a ação aparece desabilitada com o aviso.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
+
+## Sessão Grok (2026-09-12) — PDV, motion, a11y
+
+Já no código (não refazer):
+
+- **PDV estilo caixa varejo:** grade de peças (vitrine com `searchPosFn` vazio
+  = 24 itens), cupom com total grande, dock F4/F6/F8/F9/F10. Toggle claro/escuro
+  e alto contraste no próprio caixa.
+- **`--duration-quick: 150ms`** no `@theme` (vira `duration-quick`).
+  `--ease-out-soft`. Default de `transition` aponta pra esses tokens.
+- **`prefers-reduced-motion`:** um media query; tokens caem a 0.01ms; ken-burns,
+  skeleton e View Transition param. `motion-reduce:animate-none` em dialog/sheet.
+- **Alto contraste:** classe `html.contrast` (`gc-contrast` on/off, ou SO
+  `prefers-contrast: more`). `src/lib/contrast.ts` + `use-contrast`. Windows
+  `forced-colors` nas bordas do PDV.
+- **VirtualKeyboard (Android):** `useVirtualKeyboard(true)` só no PDV.
+  `--keyboard-inset` encolhe o stage; F10 sobe. iOS cai no `visualViewport`.
+- **CSRF** comparação em tempo constante; senha: dummy hash no miss
+  (`password.server.ts`).
+- **NFC-e:** cancelamento Focus (`DELETE`) com justificativa SEFAZ 15–255
+  *antes* de baixar a venda; `NfcePanel` em vendas.
+
+Arquivos novos desta fatia: `src/hooks/use-contrast.ts`,
+`use-virtual-keyboard.ts`, `use-overlay-history.ts`, `src/lib/contrast.ts`,
+`virtual-keyboard.ts`, `overlay-history.ts`, `view-transition.ts`,
+`src/components/nfce-panel.tsx`.
 
 ## Como a próxima IA deve trabalhar
 

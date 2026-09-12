@@ -19,7 +19,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "theme-color", content: "#1F5C4D" },
+      { name: "theme-color", content: "#0E5D4C" },
       {
         name: "description",
         content: "Plataforma profissional de gestão comercial para lojas.",
@@ -69,7 +69,7 @@ function RootDocument() {
         <PreviewHostBridge />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("gc-theme");var d=t?t==="dark":window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.classList.add("dark");}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem("gc-theme");var d=t?t==="dark":window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.classList.add("dark");var c=localStorage.getItem("gc-contrast");var more=window.matchMedia("(prefers-contrast: more)").matches;if(c==="on"||(c!=="off"&&more))document.documentElement.classList.add("contrast");}catch(e){}})();`,
           }}
         />
         <AuthProvider>

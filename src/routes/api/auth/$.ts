@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CsrfError, assertCsrfOnRequest } from "@/lib/auth/csrf.server";
+import { isEmailPasswordSignIn, runWithPasswordDummyPad } from "@/lib/auth/password.server";
 import { auth } from "@/lib/auth/server";
 
 function handleAuth(request: Request): Promise<Response> {
@@ -15,6 +16,11 @@ function handleAuth(request: Request): Promise<Response> {
       );
     }
     throw err;
+  }
+  // Better Auth hashes with a fresh salt when the email/credential is missing.
+  // Pad that miss through the same scrypt+compare as a real verify.
+  if (isEmailPasswordSignIn(request)) {
+    return runWithPasswordDummyPad(() => auth.handler(request));
   }
   return auth.handler(request);
 }

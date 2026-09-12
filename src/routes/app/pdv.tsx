@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { IdCard, Minus, Pause, Play, Plus, Search, Trash2, UserRound, X } from "lucide-react";
+import { IdCard, Contrast, Minus, Moon, Plus, Search, Sun, Trash2, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
+import { useContrast } from "@/hooks/use-contrast";
 import { useSelection } from "@/hooks/use-selection";
+import { useTheme } from "@/hooks/use-theme";
+import { useVirtualKeyboard } from "@/hooks/use-virtual-keyboard";
 import { CARD_BRANDS, PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { maskBrDoc, parseBrDocument } from "@/lib/document";
@@ -37,6 +40,9 @@ const emptyPay = (): PayRow => ({
 
 function PdvPage() {
   const storeId = useSelection((s) => s.storeId);
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { contrast, toggle: toggleContrast } = useContrast();
+  useVirtualKeyboard(true);
   const qc = useQueryClient();
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const activeStore = storeId ?? tenant.data?.defaultStoreId ?? 0;
@@ -119,16 +125,16 @@ function PdvPage() {
 
   useEffect(() => {
     const t = setTimeout(async () => {
-      if (!q.trim() || !activeStore) {
+      if (!activeStore) {
         setHits([]);
         return;
       }
-      const rows = await searchPosFn({ data: { q: q.trim(), storeId: activeStore } });
+      const query = q.trim();
+      const rows = await searchPosFn({ data: { q: query, storeId: activeStore } });
       setHits(rows);
-      if (rows.length === 1 && /^\d{8,}$/.test(q.trim())) {
+      if (rows.length === 1 && /^\d{8,}$/.test(query)) {
         add(rows[0]!);
         setQ("");
-        setHits([]);
       }
     }, 120);
     return () => clearTimeout(t);
@@ -387,9 +393,8 @@ function PdvPage() {
 
   return (
     <div className="pdv-stage">
-      <section className="pdv-catalog border-b border-border p-6 md:border-r md:border-b-0">
-        <p className="ed-label mb-block">Peças</p>
-        <div className="relative">
+      <header className="pdv-toolbar">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
@@ -397,13 +402,51 @@ function PdvPage() {
             onChange={(e) => setQ(e.target.value)}
             placeholder="F2  ·  nome, SKU ou código de barras"
             className="h-12 pl-10 text-base"
+            aria-label="Buscar peça"
           />
         </div>
+        {register.data?.register ? (
+          <p className="ed-label shrink-0 text-success">Caixa aberto</p>
+        ) : activeStore ? (
+          <p className="ed-label shrink-0 text-warning">Caixa fechado</p>
+        ) : null}
+        {lastSale ? (
+          <button
+            type="button"
+            className="truncate text-left text-sm text-primary"
+            onClick={() => setReceiptOpen(true)}
+          >
+            nº {lastSale.number} · {formatBRL(lastSale.total)}
+          </button>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-12 shrink-0"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Usar tema claro no caixa" : "Usar tema escuro no caixa"}
+          aria-pressed={theme === "dark"}
+        >
+          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-12 shrink-0"
+          onClick={toggleContrast}
+          aria-label={contrast ? "Desligar alto contraste" : "Ligar alto contraste"}
+          aria-pressed={contrast}
+        >
+          <Contrast className="size-4" />
+        </Button>
+      </header>
+
+      <section className="pdv-catalog">
         {!register.data?.register && activeStore ? (
-          <div className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3">
-            <p className="min-w-0 flex-1 text-sm">
-              Caixa fechado. Abra para registrar as vendas desta loja.
-            </p>
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3">
+            <p className="min-w-0 flex-1 text-sm">Abra o caixa para registrar as vendas desta loja.</p>
             <Input
               className="h-10 w-28"
               value={openAmt}
@@ -431,57 +474,42 @@ function PdvPage() {
             </Button>
           </div>
         ) : null}
-        <div className="mt-4 flex min-h-0 flex-1 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+        <div className="pdv-grid">
           {hits.map((h) => (
             <button
               key={h.variantId}
               type="button"
               onClick={() => add(h)}
-              className="flex items-center gap-3 bg-card p-3 text-left hover:bg-muted"
+              className="pdv-sku"
+              data-stock={h.stock <= 0 ? "out" : undefined}
             >
-              <span className="tile-photo size-12 shrink-0">
-                {h.imageUrl ? (
-                  <img src={h.imageUrl} alt="" />
-                ) : (
-                  <span className="tile-photo-fallback">{h.label.slice(0, 1)}</span>
-                )}
+              <span className="tile-photo pdv-sku-photo">
+                {h.imageUrl ? <img src={h.imageUrl} alt="" /> : <span className="tile-photo-fallback">{h.label.slice(0, 1)}</span>}
               </span>
-              <span className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{h.label}</p>
+              <span className="min-w-0">
+                <p className="truncate text-sm font-medium leading-tight">{h.label}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {h.sku} · estoque {h.stock}
+                  {h.sku} · {h.stock} un
                 </p>
               </span>
-              <p className="font-display text-lg tabular shrink-0">{formatBRL(h.price)}</p>
+              <p className="font-display text-base tabular">{formatBRL(h.price)}</p>
             </button>
           ))}
         </div>
-        {lastSale ? (
-          <button
-            type="button"
-            className="mt-auto pt-4 text-left text-sm text-primary"
-            onClick={() => setReceiptOpen(true)}
-          >
-            Última venda: nº {lastSale.number} · {formatBRL(lastSale.total)} · ver comprovante
-          </button>
-        ) : (
-          <p className="mt-auto pt-4 ed-label">
-            F2 busca · F4 cliente · F6 desconto · F8 pagamento · F9 espera · F10 finaliza
-          </p>
-        )}
       </section>
 
-      <aside className="pdv-ticket bg-card p-6">
-        <p className="ed-label mb-block">Cupom</p>
-        <div className="flex flex-wrap gap-2">
+      <aside className="pdv-ticket">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="ed-label mr-auto">Cupom</p>
           <Button variant="outline" size="sm" onClick={() => setCustOpen(true)}>
             <UserRound className="size-3.5" />
-            {customer?.name ?? (cpfNota ? formatDoc(cpfNota) : "Cliente (F4)")}
+            {customer?.name ?? (cpfNota ? formatDoc(cpfNota) : "Cliente")}
           </Button>
           <Select
-            className="h-8 w-auto min-w-36 text-xs"
+            className="h-8 w-auto min-w-32 text-xs"
             value={sellerId ?? ""}
             onChange={(e) => setSellerId(e.target.value ? Number(e.target.value) : null)}
+            aria-label="Vendedor"
           >
             <option value="">Vendedor</option>
             {(sellers.data ?? []).map((s) => (
@@ -492,75 +520,79 @@ function PdvPage() {
           </Select>
         </div>
 
-        <div className="mt-block min-h-0 flex-1 space-y-2 overflow-y-auto">
+        <div className="pdv-lines mt-block">
           {cart.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm font-medium">Carrinho vazio</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Busque pelo nome, SKU ou código de barras para começar a venda.
+            <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+              <p className="text-sm font-medium">Cupom vazio</p>
+              <p className="mt-1 max-w-[16rem] text-sm text-muted-foreground">
+                Toque numa peça ou leia o código de barras.
               </p>
             </div>
           ) : (
             priced.map((l, idx) => {
               const commLine = comm.data?.lines[idx];
               return (
-              <div key={l.variantId} className="rounded-lg border border-border p-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium">{l.label}</p>
-                    {l.promoName ? (
-                      <p className="text-xs text-primary">{l.promoName}</p>
-                    ) : null}
+                <div key={l.variantId} className="pdv-line">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{l.label}</p>
+                    {l.promoName ? <p className="text-xs text-primary">{l.promoName}</p> : null}
                     {commLine ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {commLine.amount <= 0
                           ? `sem comissão · ${commLine.ruleName}`
                           : `${formatBRL(commLine.amount)} · ${commLine.ruleName}`}
                       </p>
                     ) : null}
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Diminuir quantidade"
+                        onClick={() =>
+                          setCart((c) =>
+                            c.map((x) => (x.variantId === l.variantId ? { ...x, qty: Math.max(1, x.qty - 1) } : x)),
+                          )
+                        }
+                      >
+                        <Minus className="size-3" />
+                      </Button>
+                      <span className="w-8 text-center tabular">{l.qty}</span>
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Aumentar quantidade"
+                        onClick={() =>
+                          setCart((c) => c.map((x) => (x.variantId === l.variantId ? { ...x, qty: x.qty + 1 } : x)))
+                        }
+                      >
+                        <Plus className="size-3" />
+                      </Button>
+                      <button
+                        type="button"
+                        className="ml-1 p-1 text-muted-foreground"
+                        aria-label={`Remover ${l.label}`}
+                        onClick={() => setCart((c) => c.filter((x) => x.variantId !== l.variantId))}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <button type="button" onClick={() => setCart((c) => c.filter((x) => x.variantId !== l.variantId))}>
-                    <Trash2 className="size-3.5 text-muted-foreground" />
-                  </button>
+                  <p className="font-display text-base tabular">{formatBRL(l.sellPrice * l.qty - l.lineDiscount)}</p>
                 </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="icon-sm"
-                      variant="outline"
-                      onClick={() =>
-                        setCart((c) =>
-                          c.map((x) => (x.variantId === l.variantId ? { ...x, qty: Math.max(1, x.qty - 1) } : x)),
-                        )
-                      }
-                    >
-                      <Minus className="size-3" />
-                    </Button>
-                    <span className="w-8 text-center tabular">{l.qty}</span>
-                    <Button
-                      size="icon-sm"
-                      variant="outline"
-                      onClick={() =>
-                        setCart((c) => c.map((x) => (x.variantId === l.variantId ? { ...x, qty: x.qty + 1 } : x)))
-                      }
-                    >
-                      <Plus className="size-3" />
-                    </Button>
-                  </div>
-                  <p className="tabular text-sm font-medium">
-                    {formatBRL(l.sellPrice * l.qty - l.lineDiscount)}
-                  </p>
-                </div>
-              </div>
-            );
+              );
             })
           )}
         </div>
 
-        <div className="mt-block space-y-1 border-t border-border pt-3 text-sm">
+        <div className="border-t border-border pt-2 text-sm">
           <Row label="Subtotal" value={formatBRL(subtotal)} />
           <Row label="Desconto" value={formatBRL(discount)} />
-          <Row label="Total" value={formatBRL(total)} big />
+          <div className="pdv-total">
+            <span className="ed-label">Total</span>
+            <p className="pdv-total-value tabular" aria-live="polite">
+              {formatBRL(total)}
+            </p>
+          </div>
           {sellerId && priced.length ? (
             <>
               <Row label="Comissão bruta" value={formatBRL(comm.data?.amount ?? 0)} />
@@ -582,9 +614,7 @@ function PdvPage() {
               {h.name}: {h.bonusHint}
             </p>
           ))}
-          {comm.data?.bonusNote ? (
-            <p className="text-xs text-primary">{comm.data.bonusNote}</p>
-          ) : null}
+          {comm.data?.bonusNote ? <p className="text-xs text-primary">{comm.data.bonusNote}</p> : null}
         </div>
         <Input
           className="mt-2 h-9"
@@ -592,35 +622,51 @@ function PdvPage() {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div className="mt-block grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={() => setDiscOpen(true)}>
-            Desconto (F6)
-          </Button>
-          <Button variant="outline" onClick={openPay}>
-            Pagamento (F8)
-          </Button>
-          <Button variant="outline" onClick={() => void holdCart()} disabled={!cart.length}>
-            <Pause className="size-3.5" />
-            Esperar (F9)
-          </Button>
-          <Button variant="outline" onClick={() => setHeldOpen(true)}>
-            <Play className="size-3.5" />
-            Em espera{held.data?.length ? ` (${held.data.length})` : ""}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setCart([]);
-              setHeaderDisc(0);
-            }}
-          >
-            Limpar
-          </Button>
-          <Button onClick={() => void finish()} disabled={busy || !register.data?.register}>
-            {busy ? "Salvando…" : "Finalizar (F10)"}
-          </Button>
-        </div>
       </aside>
+
+      <nav className="pdv-dock" aria-label="Atalhos do caixa">
+        <button type="button" className="pdv-dock-btn" onClick={() => setCustOpen(true)}>
+          <kbd>F4</kbd>
+          Cliente
+        </button>
+        <button type="button" className="pdv-dock-btn" onClick={() => setDiscOpen(true)}>
+          <kbd>F6</kbd>
+          Desconto
+        </button>
+        <button type="button" className="pdv-dock-btn" onClick={openPay}>
+          <kbd>F8</kbd>
+          Pagamento
+        </button>
+        <button type="button" className="pdv-dock-btn" onClick={() => void holdCart()} disabled={!cart.length}>
+          <kbd>F9</kbd>
+          Esperar
+        </button>
+        <button type="button" className="pdv-dock-btn" onClick={() => setHeldOpen(true)}>
+          <kbd>·</kbd>
+          Espera{held.data?.length ? ` (${held.data.length})` : ""}
+        </button>
+        <button
+          type="button"
+          className="pdv-dock-btn"
+          onClick={() => {
+            setCart([]);
+            setHeaderDisc(0);
+          }}
+        >
+          <kbd>·</kbd>
+          Limpar
+        </button>
+        <button
+          type="button"
+          className="pdv-dock-btn"
+          data-primary
+          onClick={() => void finish()}
+          disabled={busy || !register.data?.register}
+        >
+          <kbd>F10</kbd>
+          {busy ? "Salvando…" : "Finalizar"}
+        </button>
+      </nav>
 
       <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
         <DialogContent>

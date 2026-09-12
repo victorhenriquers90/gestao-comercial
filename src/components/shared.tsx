@@ -18,7 +18,7 @@ export function PageHeader({
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         {description ? <p className="ed-label mb-2">{description}</p> : null}
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+        <h1 className="font-display text-[clamp(1.65rem,1.2rem+1.4vw,2.15rem)] font-semibold tracking-tight text-foreground">
           {title}
         </h1>
       </div>
@@ -103,7 +103,7 @@ export function KpiCard({
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto border-y border-border bg-card">
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
       {children}
     </div>
   );

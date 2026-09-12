@@ -37,6 +37,7 @@ export const NFCE_STATUS_LABELS: Record<string, string> = {
   erro_autorizacao: "Erro",
   erro: "Erro",
   cancelado: "Cancelada",
+  erro_cancelamento: "Erro no cancelamento",
 };
 
 export const PURCHASE_STATUS = [

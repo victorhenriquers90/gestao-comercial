@@ -299,9 +299,26 @@ export const searchPosFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     await assertStore(sql, tenant.companyId, data.storeId);
     const q = data.q.trim();
-    if (!q) return [];
-    const rows = await sql.query<Row>(
-      `select v.id as variant_id, p.id as product_id, p.name, v.color, v.size, v.model,
+    const mapRow = (r: Row) => ({
+      variantId: num(r.variant_id),
+      productId: num(r.product_id),
+      name: String(r.name),
+      color: strN(r.color),
+      size: strN(r.size),
+      model: strN(r.model),
+      sku: strN(r.sku),
+      barcode: strN(r.barcode),
+      price: num(r.promo_price) > 0 ? num(r.promo_price) : num(r.price),
+      listPrice: num(r.price),
+      cost: num(r.cost),
+      unit: String(r.unit ?? "UN"),
+      stock: num(r.stock),
+      categoryId: r.category_id == null ? null : num(r.category_id),
+      parentCategoryId: r.category_parent_id == null ? null : num(r.category_parent_id),
+      imageUrl: strN(r.image_url),
+      label: [r.name, r.color, r.size].filter(Boolean).join(" · "),
+    });
+    const select = `select v.id as variant_id, p.id as product_id, p.name, v.color, v.size, v.model,
               coalesce(v.sku, p.sku) as sku, coalesce(v.barcode, p.barcode) as barcode,
               coalesce(v.price, p.price) as price, p.promo_price, coalesce(v.cost, p.cost) as cost,
               p.unit, coalesce(i.quantity,0) as stock, p.category_id, c.parent_id as category_parent_id,
@@ -309,8 +326,19 @@ export const searchPosFn = createServerFn({ method: "POST" })
          from product_variants v
          join products p on p.id = v.product_id
          left join categories c on c.id = p.category_id
-         left join inventories i on i.variant_id = v.id and i.store_id = $3
-        where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null and p.is_active = true and v.is_active = true
+         left join inventories i on i.variant_id = v.id and i.store_id = $2
+        where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null and p.is_active = true and v.is_active = true`;
+    if (!q) {
+      const rows = await sql.query<Row>(
+        `${select}
+        order by (coalesce(i.quantity,0) > 0) desc, p.name
+        limit 24`,
+        [tenant.companyId, data.storeId],
+      );
+      return rows.map(mapRow);
+    }
+    const rows = await sql.query<Row>(
+      `${select.replace("i.store_id = $2", "i.store_id = $3")}
           and (
             v.barcode = $2
             or p.barcode = $2
@@ -330,25 +358,7 @@ export const searchPosFn = createServerFn({ method: "POST" })
         limit 30`,
       [tenant.companyId, q, data.storeId, prefixLike(q), ftsPrefix(q)],
     );
-    return rows.map((r) => ({
-      variantId: num(r.variant_id),
-      productId: num(r.product_id),
-      name: String(r.name),
-      color: strN(r.color),
-      size: strN(r.size),
-      model: strN(r.model),
-      sku: strN(r.sku),
-      barcode: strN(r.barcode),
-      price: num(r.promo_price) > 0 ? num(r.promo_price) : num(r.price),
-      listPrice: num(r.price),
-      cost: num(r.cost),
-      unit: String(r.unit ?? "UN"),
-      stock: num(r.stock),
-      categoryId: r.category_id == null ? null : num(r.category_id),
-      parentCategoryId: r.category_parent_id == null ? null : num(r.category_parent_id),
-      imageUrl: strN(r.image_url),
-      label: [r.name, r.color, r.size].filter(Boolean).join(" · "),
-    }));
+    return rows.map(mapRow);
   });
 
 export const listStockFn = createServerFn({ method: "POST" })

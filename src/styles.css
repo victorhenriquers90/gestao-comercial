@@ -70,9 +70,17 @@
      HANDOFF.md — not a global find-replace, since some gap-3/mt-3 usages are
      unrelated local spacing, not block rhythm. */
   --spacing-block: 0.75rem;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-quick: 150ms;
+  --motion-quick: var(--duration-quick);
+  --motion-fast: 220ms;
+  --default-transition-duration: var(--duration-quick);
+  --default-transition-timing-function: var(--ease-out-soft);
 }
 
 :root {
+  color-scheme: light;
   --background: #f3f0e8;
   --foreground: #1a1916;
   --card: #fbf9f4;
@@ -109,6 +117,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #121110;
   --foreground: #edeae2;
   --card: #1c1b18;
@@ -243,6 +252,22 @@
   }
 }
 
+.app-sidebar {
+  view-transition-name: app-sidebar;
+}
+
+.app-header {
+  view-transition-name: app-header;
+}
+
+.app-main {
+  view-transition-name: app-main;
+}
+
+[data-sonner-toaster] {
+  view-transition-name: app-toasts;
+}
+
 /* Reset global em vez de listar classe por classe: o tw-animate-css (usado
    nos diálogos, nas abas e no card do login) não trata reduced-motion
    sozinho, então guardar só os keyframes daqui deixaria metade das
@@ -250,6 +275,17 @@
    `animation: none` pra que quem escuta `animationend` ainda receba o
    evento. */
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-quick: 0.01ms;
+    --motion-quick: 0.01ms;
+    --motion-fast: 0.01ms;
+    --default-transition-duration: 0.01ms;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
@@ -257,6 +293,30 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .login-scene,
+  .skeleton-sweep,
+  .page-enter {
+    animation: none !important;
+  }
+
+  .login-scene {
+    transform: none;
+  }
+
+  .app-sidebar,
+  .app-header,
+  .app-main,
+  [data-sonner-toaster] {
+    view-transition-name: none !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(app-main),
+  ::view-transition-new(app-main) {
+    animation: none !important;
   }
 }
 
@@ -686,14 +746,26 @@
 
   .pdv-stage {
     display: grid;
-    /* height fixo (não min-height): sem isso a grade cresce pra caber todo o
-       conteudo e a pagina inteira rola, em vez de so a lista de produtos ou
-       o carrinho rolarem por dentro. */
-    height: calc(100dvh - 4rem);
+    height: calc(100dvh - 4rem - var(--keyboard-inset, 0px));
     overflow: hidden;
+    color-scheme: inherit;
+    background: var(--background);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-    grid-template-areas: "catalog" "ticket";
+    grid-template-rows: auto minmax(0, 1fr) minmax(16rem, 42%) auto;
+    grid-template-areas:
+      "toolbar"
+      "catalog"
+      "ticket"
+      "dock";
+  }
+
+  .pdv-toolbar {
+    grid-area: toolbar;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem 0;
   }
 
   .pdv-catalog {
@@ -702,6 +774,51 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
+    padding: 0.75rem 1rem 0.5rem;
+  }
+
+  .pdv-grid {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    gap: 0.65rem;
+    overflow: auto;
+    padding-bottom: 0.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    align-content: start;
+  }
+
+  .pdv-sku {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--card-foreground);
+    text-align: left;
+    padding: 0.5rem;
+    transition: background-color var(--duration-quick) var(--ease-out-soft),
+      border-color var(--duration-quick) var(--ease-out-soft);
+  }
+
+  .pdv-sku:hover {
+    background: var(--muted);
+  }
+
+  .pdv-sku:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .pdv-sku-photo {
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+  }
+
+  .pdv-sku[data-stock="out"] {
+    opacity: 0.55;
   }
 
   .pdv-ticket {
@@ -710,14 +827,129 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
+    margin: 0.5rem 0.75rem;
+    padding: 0.85rem 1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    color: var(--card-foreground);
+  }
+
+  .pdv-lines {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0;
+    overflow: auto;
+  }
+
+  .pdv-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.15rem 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .pdv-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0 0.35rem;
+  }
+
+  .pdv-total-value {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3vw, 2.35rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--primary);
+  }
+
+  .pdv-dock {
+    grid-area: dock;
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.55rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
+    background: var(--sidebar);
+    color: var(--sidebar-foreground);
+  }
+
+  .pdv-dock-btn {
+    display: flex;
+    min-height: 2.75rem;
+    min-width: 5.5rem;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.1rem;
+    padding: 0.35rem 0.65rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-foreground);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    transition: background-color var(--duration-quick) var(--ease-out-soft),
+      opacity var(--duration-quick) var(--ease-out-soft);
+  }
+
+  .pdv-dock-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--sidebar-accent) 82%, var(--sidebar-foreground));
+  }
+
+  .pdv-dock-btn:disabled {
+    opacity: 0.4;
+  }
+
+  .pdv-dock-btn[data-primary] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .pdv-dock-btn kbd {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: inherit;
+    opacity: 0.7;
   }
 
   @media (min-width: 768px) {
     .pdv-stage {
-      grid-template-columns: [catalog] minmax(0, 1fr) [ticket] minmax(22rem, 26rem);
-      grid-template-rows: minmax(0, 1fr);
-      grid-template-areas: "catalog ticket";
+      grid-template-columns: minmax(0, 1fr) minmax(22rem, 28rem);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "toolbar ticket"
+        "catalog ticket"
+        "dock ticket";
     }
+
+    .pdv-ticket {
+      margin: 0.75rem 0.75rem 0.75rem 0;
+    }
+
+    .pdv-grid {
+      grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    }
+  }
+
+  .dark .pdv-sku {
+    background: color-mix(in oklab, var(--card) 92%, var(--foreground));
+  }
+
+  .dark .pdv-ticket {
+    box-shadow: var(--shadow-pop);
+  }
+
+  .dark .pdv-dock {
+    border-top: 1px solid color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
   }
 
   @container topbar (max-width: 44rem) {
@@ -751,16 +983,67 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+html.contrast {
+  --muted-foreground: #3a413c;
+  --border: color-mix(in oklab, var(--foreground) 48%, transparent);
+  --input: color-mix(in oklab, var(--foreground) 55%, transparent);
+  --ring: #06352c;
+  --sidebar-muted: color-mix(in oklab, var(--sidebar-foreground) 88%, transparent);
+}
+
+html.contrast.dark {
+  --muted-foreground: #d5ddd7;
+  --border: color-mix(in oklab, var(--foreground) 44%, transparent);
+  --input: color-mix(in oklab, var(--foreground) 52%, transparent);
+  --ring: #c5eee0;
+}
+
+html.contrast .app-header {
+  background: var(--background);
+  backdrop-filter: none;
+}
+
+html.contrast .ed-label {
+  font-weight: 650;
+  letter-spacing: 0.1em;
+}
+
+html.contrast :focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+html.contrast .pdv-sku,
+html.contrast .pdv-ticket,
+html.contrast .pdv-line {
+  border-width: 2px;
+}
+
+html.vk-open [role="dialog"] {
+  top: calc(50% - (var(--keyboard-inset, 0px) * 0.4));
+  max-height: calc(100dvh - var(--keyboard-inset, 0px) - 2rem);
+  overflow: auto;
+}
+
+@media (forced-colors: active) {
+  .pdv-sku,
+  .pdv-ticket,
+  .pdv-dock-btn,
+  .pdv-line {
+    border: 1px solid CanvasText;
+  }
+
+  .pdv-dock-btn[data-primary] {
+    border: 2px solid Highlight;
+  }
+
+  .pdv-total-value {
+    color: Highlight;
+  }
 }
 
 @media print {

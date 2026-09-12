@@ -119,7 +119,7 @@ function LoginPage() {
         />
       </div>
       <section className="login-panel">
-        <div className="login-card animate-in fade-in-0 zoom-in-95 duration-300 rounded-2xl p-6 lg:p-8">
+        <div className="login-card motion-reduce:animate-none animate-in fade-in-0 zoom-in-95 duration-300 rounded-[1.5rem] p-7 lg:p-9">
             <div className="mb-7 flex items-center gap-3">
               <BrandMark className="size-10" />
               <p className="ed-label">{APP_NAME}</p>
