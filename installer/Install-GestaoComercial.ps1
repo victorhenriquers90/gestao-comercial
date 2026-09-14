@@ -190,7 +190,15 @@ function Add-AppShortcut {
     # --kiosk (nao --app): tela cheia de verdade, sem nenhuma barra de titulo --
     # --app ainda deixa uma faixa minima com os botoes de minimizar/fechar.
     # Alt+F4 fecha a janela normalmente.
-    $shortcut.Arguments = "--kiosk http://localhost:$Port"
+    #
+    # --user-data-dir com perfil proprio: se o Chrome do usuario ja estiver
+    # aberto por qualquer outro motivo (nota fiscal, e-mail), o Chrome
+    # repassa o lancamento pra instancia existente e IGNORA --kiosk -- visto
+    # ao vivo na maquina piloto (abriu como app instalado normal, com barra
+    # de titulo). Um perfil separado forca sempre um processo novo e
+    # independente, garantindo o kiosk mesmo com outro Chrome ja rodando.
+    $kioskProfileDir = Join-Path $StateDir "chrome-kiosk-profile"
+    $shortcut.Arguments = "--kiosk --user-data-dir=`"$kioskProfileDir`" http://localhost:$Port"
     $shortcut.IconLocation = $BrowserExePath
     $shortcut.Description = "Gestao Comercial"
     $shortcut.Save()
