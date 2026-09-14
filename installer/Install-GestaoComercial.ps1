@@ -197,8 +197,13 @@ function Add-AppShortcut {
     # ao vivo na maquina piloto (abriu como app instalado normal, com barra
     # de titulo). Um perfil separado forca sempre um processo novo e
     # independente, garantindo o kiosk mesmo com outro Chrome ja rodando.
+    # --no-first-run/--no-default-browser-check: um perfil novo em folha
+    # (--user-data-dir acima) faz o Chrome mostrar a tela de boas-vindas/
+    # login na primeira vez -- essa tela e uma janela normal, com barra de
+    # titulo, que trava o kiosk ate alguem clicar nela manualmente (visto ao
+    # vivo na maquina piloto). Essas duas flags pulam essa tela direto.
     $kioskProfileDir = Join-Path $StateDir "chrome-kiosk-profile"
-    $shortcut.Arguments = "--kiosk --user-data-dir=`"$kioskProfileDir`" http://localhost:$Port"
+    $shortcut.Arguments = "--kiosk --no-first-run --no-default-browser-check --user-data-dir=`"$kioskProfileDir`" http://localhost:$Port"
     $shortcut.IconLocation = $BrowserExePath
     $shortcut.Description = "Gestao Comercial"
     $shortcut.Save()
