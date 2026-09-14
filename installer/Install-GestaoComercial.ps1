@@ -228,7 +228,14 @@ function Save-InstallState {
 }
 
 function Test-AppHealthy {
-    param([int]$TimeoutSeconds = 30)
+    <#
+        90s, nao 30s: visto ao vivo na maquina piloto um caso em que o app
+        subiu e ficou saudavel poucos segundos depois do timeout antigo
+        estourar (provavelmente antivirus escaneando os arquivos recem-
+        copiados, ou a primeira conexao com o Postgres) -- o script relatava
+        "falhou" mesmo com o servico no ar e funcionando normalmente.
+    #>
+    param([int]$TimeoutSeconds = 90)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         try {

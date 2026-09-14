@@ -39,7 +39,11 @@ if ($RemoveData) {
     Write-Host "AVISO: -RemoveData foi passado -- apagando variaveis de ambiente e o marcador de instalacao." -ForegroundColor Yellow
     Write-Host "O BANCO DE DADOS EM SI (Postgres) NAO e apagado por este script -- remova manualmente se for isso mesmo que voce quer." -ForegroundColor Yellow
     foreach ($name in @("DATABASE_URL", "VITE_AUTH_ENABLED", "BETTER_AUTH_SECRET", "EXTRA_AUTH_HOSTS", "HOST", "PORT")) {
-        Set-MachineEnvVar -Name $name -Value $null
+        # [Environment]::SetEnvironmentVariable direto, nao Set-MachineEnvVar --
+        # essa funcao exige um $Value string obrigatorio (nem aceita $null),
+        # entao chama-la aqui quebraria o -RemoveData inteiro com erro de
+        # parametro antes de apagar qualquer coisa. $null e o jeito certo de
+        # REMOVER uma variavel de ambiente (nao so deixar vazia).
         [Environment]::SetEnvironmentVariable($name, $null, "Machine")
     }
     Remove-Item "C:\ProgramData\GestaoComercial" -Recurse -Force -ErrorAction SilentlyContinue
