@@ -5,8 +5,11 @@ import {
   buildNfceRef,
   crtForRegime,
   icmsCodeForRegime,
+  nfceBlocksSaleCancel,
+  nfceNeedsSefazCancel,
   paymentCode,
   pisCofinsCst,
+  validateNfceCancelJustificativa,
   validateNfceReadiness,
   type BuildNfceInput,
 } from "./nfce.ts";
@@ -114,6 +117,32 @@ describe("validateNfceReadiness", () => {
     const errors = validateNfceReadiness(baseInput({ payments: [{ method: "dinheiro", amount: 79.94 }] }));
     assert.deepEqual(errors, []);
   });
+
+  it("rejeita CNPJ do emitente com dígito verificador errado (SEFAZ homologação)", () => {
+    const errors = validateNfceReadiness(
+      baseInput({ emitter: { ...baseInput().emitter, cnpj: "11222333000180" } }),
+    );
+    assert.equal(errors.some((e) => /CNPJ da empresa inválido/.test(e)), true);
+  });
+
+  it("rejeita NCM que não tem 8 dígitos", () => {
+    const errors = validateNfceReadiness(
+      baseInput({ items: [{ ...baseInput().items[0]!, ncm: "6109" }] }),
+    );
+    assert.deepEqual(errors, ['Produto "Camiseta Algodão Premium" com NCM inválido (use 8 dígitos).']);
+  });
+
+  it("rejeita CFOP que não tem 4 dígitos", () => {
+    const errors = validateNfceReadiness(
+      baseInput({ items: [{ ...baseInput().items[0]!, cfop: "51" }] }),
+    );
+    assert.deepEqual(errors, ['Produto "Camiseta Algodão Premium" com CFOP inválido.']);
+  });
+
+  it("rejeita CPF na nota inválido", () => {
+    const errors = validateNfceReadiness(baseInput({ buyer: { document: "11111111111", name: "Ana" } }));
+    assert.equal(errors.some((e) => /CPF na nota inválido/.test(e)), true);
+  });
 });
 
 describe("buildNfcePayload", () => {
@@ -178,5 +207,25 @@ describe("buildNfcePayload", () => {
     ) as Record<string, any>;
     assert.equal(cnpj.cnpj_destinatario, "11222333000181");
     assert.equal("cpf_destinatario" in cnpj, false);
+  });
+});
+
+describe("cancelamento NFC-e (SEFAZ/Focus)", () => {
+  it("justificativa precisa ter 15 a 255 caracteres", () => {
+    assert.match(validateNfceCancelJustificativa("curto") ?? "", /15 caracteres/);
+    assert.equal(validateNfceCancelJustificativa("Cancelamento da venda no PDV."), null);
+    assert.match(validateNfceCancelJustificativa("x".repeat(256)) ?? "", /255 caracteres/);
+  });
+
+  it("só nota autorizada exige cancelamento na SEFAZ", () => {
+    assert.equal(nfceNeedsSefazCancel("autorizado"), true);
+    assert.equal(nfceNeedsSefazCancel("processando_autorizacao"), false);
+    assert.equal(nfceNeedsSefazCancel("erro"), false);
+    assert.equal(nfceNeedsSefazCancel(null), false);
+  });
+
+  it("nota em processamento bloqueia cancelar a venda", () => {
+    assert.equal(nfceBlocksSaleCancel("processando_autorizacao"), true);
+    assert.equal(nfceBlocksSaleCancel("autorizado"), false);
   });
 });

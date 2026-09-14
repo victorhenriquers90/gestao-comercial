@@ -32,6 +32,6 @@ export function statusBadgeVariant(status: string): VariantProps<typeof badgeVar
   const s = status.toLowerCase();
   if (["pago", "recebido", "finalizada", "ativa", "open", "venda", "autorizado"].includes(s)) return "success";
   if (["pendente", "parcial", "orcamento", "pedido", "enviado", "processando_autorizacao"].includes(s)) return "warning";
-  if (["cancelado", "cancelada", "vencido", "perdido", "erro", "erro_autorizacao"].includes(s)) return "danger";
+  if (["cancelado", "cancelada", "vencido", "perdido", "erro", "erro_autorizacao", "erro_cancelamento"].includes(s)) return "danger";
   return "muted";
 }

@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { KpiCard, PageHeader, PageSkeleton } from "@/components/shared";
+import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -25,6 +25,7 @@ import { NAV_ITEMS } from "@/lib/nav";
 import { dashboardFn } from "@/lib/server/insight";
 import { listSellersFn } from "@/lib/server/party";
 import { getTenantFn } from "@/lib/server/session";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/")({ component: DashboardPage });
 
@@ -61,19 +62,12 @@ function DashboardPage() {
   );
 
   if (tenant.data && !can(tenant.data.role, "dashboard.read")) {
-    // Papel sem acesso ao painel (ex.: pdv) — manda pra primeira tela que
-    // ele realmente pode ver, em vez de cair num erro de permissão no
-    // primeiro login.
     const firstAllowed = NAV_ITEMS.find((i) => i.href !== "/app" && can(tenant.data!.role, i.perm));
     return <Navigate to={firstAllowed?.href ?? "/login"} />;
   }
-  if (dash.isPending) return <PageSkeleton cards={8} />;
+  if (dash.isPending) return <PageSkeleton cards={6} />;
   if (dash.error) {
-    return (
-      <p className="text-sm text-destructive">
-        {dash.error instanceof Error ? dash.error.message : "Erro ao carregar o painel."}
-      </p>
-    );
+    return <QueryError error={dash.error} fallback="Erro ao carregar o painel." />;
   }
   const d = dash.data!;
 
@@ -81,7 +75,7 @@ function DashboardPage() {
     <div>
       <PageHeader
         title="Painel"
-        description={`${tenant.data?.companyName ?? "Sua loja"}`}
+        description={tenant.data?.companyName ?? "Sua loja"}
         actions={
           <div className="flex flex-wrap gap-2">
             <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)}>
@@ -107,78 +101,106 @@ function DashboardPage() {
       />
 
       <div className="dash-stage">
-      <div className="dash-kpis kpi-grid">
-        <KpiCard label="Faturamento hoje" value={formatBRL(d.todayRevenue)} hint={`${d.todaySales} venda(s)`} />
-        <KpiCard label="Faturamento do mês" value={formatBRL(d.monthRevenue)} />
-        <KpiCard
-          label="Faturamento do período"
-          value={formatBRL(d.revenue)}
-          trend={{ value: d.trend.revenue, label: "vs período anterior" }}
-        />
-        <KpiCard
-          label="Ticket médio"
-          value={formatBRL(d.ticket)}
-          hint={`${d.salesCount} vendas`}
-          trend={{ value: d.trend.ticket, label: "vs anterior" }}
-        />
-        <KpiCard
-          label="Lucro estimado"
-          value={formatBRL(d.profit)}
-          tone="success"
-          trend={{ value: d.trend.profit, label: "vs anterior" }}
-        />
-        <KpiCard label="Contas a receber" value={formatBRL(d.receivables)} />
-        <KpiCard label="Contas a pagar" value={formatBRL(d.payables)} tone="warning" />
-        <KpiCard
-          label="Saldo financeiro"
-          value={formatBRL(d.balance)}
-          tone={d.balance >= 0 ? "success" : "danger"}
-        />
-      </div>
+        <div className="dash-hero">
+          <div>
+            <p className="ed-label">Faturamento hoje</p>
+            <p className="dash-hero-value mt-2">{formatBRL(d.todayRevenue)}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{d.todaySales} venda(s)</p>
+          </div>
+          <div>
+            <p className="ed-label">Faturamento do mês</p>
+            <p className="dash-hero-value mt-2">{formatBRL(d.monthRevenue)}</p>
+            <p className="mt-2 text-sm text-muted-foreground">acumulado no calendário</p>
+          </div>
+        </div>
 
-      <Card className="dash-chart dash-fill">
+        <div className="dash-kpis kpi-grid">
+          <KpiCard
+            label="Faturamento do período"
+            value={formatBRL(d.revenue)}
+            trend={{ value: d.trend.revenue, label: "vs período anterior" }}
+          />
+          <KpiCard
+            label="Ticket médio"
+            value={formatBRL(d.ticket)}
+            hint={`${d.salesCount} vendas`}
+            trend={{ value: d.trend.ticket, label: "vs anterior" }}
+          />
+          <KpiCard
+            label="Lucro estimado"
+            value={formatBRL(d.profit)}
+            tone="success"
+            trend={{ value: d.trend.profit, label: "vs anterior" }}
+          />
+          <KpiCard label="Contas a receber" value={formatBRL(d.receivables)} />
+          <KpiCard label="Contas a pagar" value={formatBRL(d.payables)} tone="warning" />
+          <KpiCard
+            label="Saldo financeiro"
+            value={formatBRL(d.balance)}
+            tone={d.balance >= 0 ? "success" : "danger"}
+          />
+        </div>
+
+        <Card className="dash-chart dash-fill">
           <CardHeader>
             <CardTitle>Vendas do período</CardTitle>
           </CardHeader>
-          <CardContent className="h-full min-h-0">
+          <CardContent className="h-full min-h-0 pt-3">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chart}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+              <AreaChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="dashSalesFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="var(--color-border)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  stroke="transparent"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  stroke="transparent"
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
+                />
                 <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
                 <Area
                   type="monotone"
                   dataKey="total"
                   stroke="var(--color-chart-1)"
-                  fill="var(--color-chart-1)"
-                  fillOpacity={0.15}
+                  strokeWidth={2}
+                  fill="url(#dashSalesFill)"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
+
         <Card className="dash-metas dash-fill">
           <CardHeader>
             <CardTitle>Metas</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 overflow-y-auto">
+          <CardContent className="space-y-5 overflow-y-auto">
             {d.targets.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma meta no período.</p>
             ) : (
               d.targets.map((t) => (
                 <div key={t.id}>
-                  <div className="flex justify-between text-sm">
-                    <span>{t.name}</span>
-                    <span className="tabular">{formatPct(t.progress)}</span>
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate">{t.name}</span>
+                    <span className="tabular font-medium">{formatPct(t.progress)}</span>
                   </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${Math.min(100, t.progress)}%` }}
-                    />
+                  <div className="dash-track mt-2">
+                    <span style={{ width: `${Math.min(100, t.progress)}%` }} />
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1.5 text-xs text-muted-foreground">
                     {formatBRL(t.realized)} de {formatBRL(t.amount)}
                     {t.bonusHint ? ` · ${t.bonusHint}` : ""}
                   </p>
@@ -195,24 +217,12 @@ function DashboardPage() {
           <CardHeader>
             <CardTitle>Folha e retenções</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-block text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Comissões a pagar</span>
-              <span className="tabular font-medium">{formatBRL(d.pendingCommissionNet)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Retido no mês</span>
-              <span className="tabular">{formatBRL(d.monthTaxWithheld)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Encargos (INSS/FGTS)</span>
-              <span className="tabular">{formatBRL(d.monthEmployerCharges)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Folha paga no mês</span>
-              <span className="tabular">{formatBRL(d.monthCommissionNet)}</span>
-            </div>
-            <div className="flex flex-wrap gap-3">
+          <CardContent className="text-sm">
+            <DashRow label="Comissões a pagar" value={formatBRL(d.pendingCommissionNet)} strong />
+            <DashRow label="Retido no mês" value={formatBRL(d.monthTaxWithheld)} />
+            <DashRow label="Encargos (INSS/FGTS)" value={formatBRL(d.monthEmployerCharges)} />
+            <DashRow label="Folha paga no mês" value={formatBRL(d.monthCommissionNet)} />
+            <div className="mt-3 flex flex-wrap gap-3">
               <Link to="/app/vendedores" className="text-xs text-primary hover:underline">
                 Guia de retenções
               </Link>
@@ -226,17 +236,19 @@ function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="dash-products dash-list">
           <CardHeader>
             <CardTitle>Produtos mais vendidos</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-block">
+          <CardContent>
             {d.topProducts.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ainda não há vendas neste período.</p>
             ) : (
-              d.topProducts.map((p) => (
-                <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate">{p.name}</span>
+              d.topProducts.map((p, i) => (
+                <div key={p.name} className="dash-row text-sm">
+                  <span className="dash-rank">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
                   <span className="tabular text-muted-foreground">
                     {formatQty(p.qty)} · {formatBRL(p.total)}
                   </span>
@@ -245,34 +257,37 @@ function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
         <Card className="dash-sellers dash-list">
           <CardHeader>
             <CardTitle>Vendedores</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-block">
+          <CardContent>
             {d.topSellers.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma comissão neste período.</p>
             ) : (
-              d.topSellers.map((p) => (
-                <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate">{p.name}</span>
-                  <span className="tabular">{formatBRL(p.total)}</span>
+              d.topSellers.map((p, i) => (
+                <div key={p.name} className="dash-row text-sm">
+                  <span className="dash-rank">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <span className="tabular font-medium">{formatBRL(p.total)}</span>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
+
         <Card className="dash-stock dash-list">
           <CardHeader>
             <CardTitle>Estoque baixo</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-block">
+          <CardContent>
             {d.lowStock.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum alerta no momento.</p>
             ) : (
               d.lowStock.map((p) => (
-                <div key={p.name + p.store} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0">
+                <div key={p.name + p.store} className="dash-row text-sm">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate">{p.name}</p>
                     <p className="text-xs text-muted-foreground">{p.store}</p>
                   </div>
@@ -285,23 +300,45 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-      <Card className="dash-monthly dash-fill">
-        <CardHeader>
-          <CardTitle>Evolução mensal</CardTitle>
-        </CardHeader>
-        <CardContent className="min-h-0 h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthly}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
-              <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        <Card className="dash-monthly dash-fill">
+          <CardHeader>
+            <CardTitle>Evolução mensal</CardTitle>
+          </CardHeader>
+          <CardContent className="h-full min-h-0 pt-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="var(--color-border)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  stroke="transparent"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  stroke="transparent"
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
+                />
+                <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
+                <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} maxBarSize={42} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+function DashRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="dash-row">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("tabular", strong && "font-medium")}>{value}</span>
     </div>
   );
 }

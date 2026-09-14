@@ -11,6 +11,7 @@
  * garantia fiscal — revisar com o contador antes da primeira emissão real.
  */
 import type { PaymentMethod } from "./constants";
+import { isValidCnpj, isValidCpf, onlyDigits } from "./document.ts";
 
 export type TaxRegime = "mei" | "simples" | "presumido" | "real";
 
@@ -116,11 +117,26 @@ export type BuildNfceInput = {
  */
 export function validateNfceReadiness(input: BuildNfceInput): string[] {
   const errors: string[] = [];
-  if (!input.emitter.cnpj) errors.push("Configure o CNPJ da empresa em Configurações.");
-  if (!input.emitter.ie) errors.push("Configure a Inscrição Estadual da empresa em Configurações.");
+  const cnpj = onlyDigits(input.emitter.cnpj);
+  if (!cnpj) errors.push("Configure o CNPJ da empresa em Configurações.");
+  else if (!isValidCnpj(cnpj)) errors.push("CNPJ da empresa inválido — a SEFAZ rejeita na homologação.");
+  const ie = (input.emitter.ie ?? "").trim();
+  if (!ie) errors.push("Configure a Inscrição Estadual da empresa em Configurações.");
   if (!input.items.length) errors.push("Venda sem itens.");
   for (const item of input.items) {
+    const ncm = onlyDigits(item.ncm);
     if (!item.ncm) errors.push(`Produto "${item.description}" sem NCM cadastrado.`);
+    else if (ncm.length !== 8) errors.push(`Produto "${item.description}" com NCM inválido (use 8 dígitos).`);
+    const cfop = onlyDigits(item.cfop);
+    if (cfop.length !== 4) errors.push(`Produto "${item.description}" com CFOP inválido.`);
+  }
+  const buyerDoc = onlyDigits(input.buyer.document);
+  if (buyerDoc) {
+    if (buyerDoc.length <= 11 && !isValidCpf(buyerDoc)) {
+      errors.push("CPF na nota inválido — a SEFAZ rejeita na homologação.");
+    } else if (buyerDoc.length > 11 && !isValidCnpj(buyerDoc)) {
+      errors.push("CNPJ do destinatário inválido — a SEFAZ rejeita na homologação.");
+    }
   }
   if (input.items.length) {
     const itemsTotal = input.items.reduce((a, i) => a + i.total, 0);
@@ -141,18 +157,18 @@ export function buildNfcePayload(input: BuildNfceInput): Record<string, unknown>
     data_emissao: input.soldAt,
     presenca_comprador: 1, // operação presencial
     modalidade_frete: 9, // sem frete (venda de balcão)
-    cnpj_emitente: input.emitter.cnpj,
+    cnpj_emitente: onlyDigits(input.emitter.cnpj),
     ...(input.buyer.document
-      ? input.buyer.document.length > 11
-        ? { cnpj_destinatario: input.buyer.document, nome_destinatario: input.buyer.name ?? undefined }
-        : { cpf_destinatario: input.buyer.document, nome_destinatario: input.buyer.name ?? undefined }
+      ? onlyDigits(input.buyer.document).length > 11
+        ? { cnpj_destinatario: onlyDigits(input.buyer.document), nome_destinatario: input.buyer.name ?? undefined }
+        : { cpf_destinatario: onlyDigits(input.buyer.document), nome_destinatario: input.buyer.name ?? undefined }
       : {}),
     items: input.items.map((item, i) => ({
       numero_item: i + 1,
       codigo_produto: String(i + 1),
       descricao: item.description.slice(0, 120),
-      ncm: item.ncm,
-      cfop: item.cfop,
+      ncm: onlyDigits(item.ncm),
+      cfop: onlyDigits(item.cfop) || item.cfop,
       unidade_comercial: item.unit,
       quantidade_comercial: item.quantity,
       valor_unitario_comercial: item.unitPrice,
@@ -172,3 +188,29 @@ export function buildNfcePayload(input: BuildNfceInput): Record<string, unknown>
     })),
   };
 }
+
+/** SEFAZ/Focus: justificativa do evento de cancelamento. */
+export const NFCE_CANCEL_JUSTIFICATIVA_MIN = 15;
+export const NFCE_CANCEL_JUSTIFICATIVA_MAX = 255;
+
+export function validateNfceCancelJustificativa(raw: string): string | null {
+  const j = raw.trim();
+  if (j.length < NFCE_CANCEL_JUSTIFICATIVA_MIN) {
+    return "A justificativa da SEFAZ precisa ter pelo menos 15 caracteres.";
+  }
+  if (j.length > NFCE_CANCEL_JUSTIFICATIVA_MAX) {
+    return "A justificativa da SEFAZ pode ter no máximo 255 caracteres.";
+  }
+  return null;
+}
+
+/** Nota já autorizada — precisa de DELETE na Focus antes de baixar a venda. */
+export function nfceNeedsSefazCancel(status: string | null | undefined): boolean {
+  return status === "autorizado";
+}
+
+/** Ainda na fila da SEFAZ — não dá para cancelar o cupom nem a nota. */
+export function nfceBlocksSaleCancel(status: string | null | undefined): boolean {
+  return status === "processando_autorizacao";
+}
+

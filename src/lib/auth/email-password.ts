@@ -6,5 +6,6 @@
  * `authClient.signIn.email` from `@/lib/auth/client` (see the auth skill).
  *
  * Do NOT edit `server.ts` for this — that file is frozen pre-wired config.
+ * Password KDF / dummy-hash-on-miss lives in `./password.server`.
  */
 export const emailAndPasswordEnabled = true;

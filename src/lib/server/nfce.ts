@@ -10,17 +10,19 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can, type Role } from "@/lib/permissions";
 import { num, nullableStr, str } from "@/lib/utils";
 import {
   buildNfcePayload,
   buildNfceRef,
   isTaxRegime,
+  nfceNeedsSefazCancel,
+  validateNfceCancelJustificativa,
   validateNfceReadiness,
   type BuildNfceInput,
 } from "@/lib/nfce";
 import type { PaymentMethod } from "@/lib/constants";
-import { audit, requireTenant } from "./context";
+import { audit, requireTenant, type Tenant } from "./context";
 import { type Row } from "@/lib/json";
 
 type FocusEnv = "homologacao" | "producao";
@@ -38,9 +40,15 @@ function focusToken(): string | undefined {
   return process.env.FOCUS_NFE_TOKEN || undefined;
 }
 
+function assertCanEmitNfce(role: Role) {
+  if (!can(role, "sales.write") && !can(role, "pdv.sell")) {
+    throw new Error("Sem permissão para emitir nota fiscal.");
+  }
+}
+
 async function focusRequest(
   path: string,
-  method: "POST" | "GET",
+  method: "POST" | "GET" | "DELETE",
   body?: unknown,
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const token = focusToken();
@@ -125,7 +133,7 @@ export const emitNfceFn = createServerFn({ method: "POST" })
   .validator((d: { saleId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
-    assertCan(tenant.role, "sales.write");
+    assertCanEmitNfce(tenant.role);
 
     const loaded = await loadEmitInput(sql, tenant.companyId, data.saleId);
     if ("error" in loaded) throw new Error(loaded.error);
@@ -161,6 +169,7 @@ export const refreshNfceStatusFn = createServerFn({ method: "POST" })
   .validator((d: { saleId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCanEmitNfce(tenant.role);
     const [sale] = await sql<{ nfce_ref: string | null }>`
       select nfce_ref from sales where id = ${data.saleId} and company_id = ${tenant.companyId}
     `;
@@ -190,3 +199,57 @@ export const refreshNfceStatusFn = createServerFn({ method: "POST" })
     `;
     return { status, chave, numero, serie, danfeUrl, xmlUrl, error };
   });
+
+export async function cancelNfceOnFocus(
+  sql: Awaited<ReturnType<typeof requireTenant>>["sql"],
+  tenant: Tenant,
+  saleId: number,
+  justificativa: string,
+): Promise<{ ok: true; status: string } | { ok: false; errors: string[] }> {
+  const reasonError = validateNfceCancelJustificativa(justificativa);
+  if (reasonError) return { ok: false, errors: [reasonError] };
+
+  const [sale] = await sql<{ nfce_ref: string | null; nfce_status: string | null }>`
+    select nfce_ref, nfce_status from sales
+     where id = ${saleId} and company_id = ${tenant.companyId}
+  `;
+  if (!sale) throw new Error("Venda não encontrada.");
+  if (!sale.nfce_ref || !nfceNeedsSefazCancel(sale.nfce_status)) {
+    return { ok: true, status: sale.nfce_status ?? "" };
+  }
+
+  const justificativaTrim = justificativa.trim();
+  const res = await focusRequest(`/v2/nfce/${encodeURIComponent(sale.nfce_ref)}`, "DELETE", {
+    justificativa: justificativaTrim,
+  });
+  const status = nullableStr(res.body.status);
+  if (res.status === 200 && (status === "cancelado" || !status)) {
+    await sql`
+      update sales set nfce_status = 'cancelado', nfce_error = null
+       where id = ${saleId} and company_id = ${tenant.companyId}
+    `;
+    await audit(sql, tenant, "cancel", "nfce", saleId, { status: sale.nfce_status }, { ref: sale.nfce_ref });
+    return { ok: true, status: "cancelado" };
+  }
+
+  const message =
+    nullableStr(res.body.mensagem_sefaz) ??
+    nullableStr(res.body.mensagem) ??
+    nullableStr(res.body.erro) ??
+    `Falha ao cancelar a nota (HTTP ${res.status}).`;
+  await sql`
+    update sales set nfce_status = 'erro_cancelamento', nfce_error = ${message}
+     where id = ${saleId} and company_id = ${tenant.companyId}
+  `;
+  return { ok: false, errors: [message] };
+}
+
+export const cancelNfceFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { saleId: number; justificativa: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "pdv.cancel");
+    return cancelNfceOnFocus(sql, tenant, data.saleId, data.justificativa);
+  });
+

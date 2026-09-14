@@ -11,6 +11,8 @@ import { sanitizeMultiline } from "@/lib/sanitize";
 import { loadCommissionRules, loadSellerTargetBonuses, parseBreakdown, sellerMonthRevenue, taxForSeller, taxInsert } from "./commission";
 import { assertStore, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
+import { cancelNfceOnFocus } from "./nfce";
+import { nfceBlocksSaleCancel, nfceNeedsSefazCancel } from "@/lib/nfce";
 
 export type CartItemIn = {
   variantId: number;
@@ -436,7 +438,7 @@ export const listSalesFn = createServerFn({ method: "POST" })
     assertCan(tenant.role, "sales.read");
     return dump(await sql.query<Row>(
       `select s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
-              c.name as customer_name, sl.name as seller_name, st.name as store_name
+              s.nfce_status, c.name as customer_name, sl.name as seller_name, st.name as store_name
          from sales s
          left join customers c on c.id = s.customer_id
          left join sellers sl on sl.id = s.seller_id
@@ -541,11 +543,25 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.cancel");
-    const [sale] = await sql<{ id: number; status: string; store_id: number; number: number }>`
-      select id, status, store_id, number from sales where id = ${data.id} and company_id = ${tenant.companyId}
+    const [sale] = await sql<{
+      id: number;
+      status: string;
+      store_id: number;
+      number: number;
+      nfce_status: string | null;
+    }>`
+      select id, status, store_id, number, nfce_status
+        from sales where id = ${data.id} and company_id = ${tenant.companyId}
     `;
     if (!sale) throw new Error("Venda não encontrada.");
     if (sale.status === "cancelada") throw new Error("Venda já cancelada.");
+    if (nfceBlocksSaleCancel(sale.nfce_status)) {
+      throw new Error("A nota ainda está em processamento na SEFAZ. Atualize o status antes de cancelar a venda.");
+    }
+    if (nfceNeedsSefazCancel(sale.nfce_status)) {
+      const nfce = await cancelNfceOnFocus(sql, tenant, sale.id, data.reason);
+      if (!nfce.ok) throw new Error(nfce.errors[0] ?? "Não foi possível cancelar a NFC-e.");
+    }
     const items = await sql<{ variant_id: number; quantity: string | number }>`
       select variant_id, quantity from sale_items where sale_id = ${sale.id}
     `;
@@ -575,13 +591,23 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
       update commissions set status = 'cancelado'
        where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
     `;
+    const cashPaid = (
+      await sql<{ v: string | number }>`
+        select coalesce(sum(amount),0) as v from payments
+         where sale_id = ${sale.id} and company_id = ${tenant.companyId} and method = 'dinheiro'
+      `
+    )[0];
+    const cashRefund = num(cashPaid?.v);
     const [reg] = await sql<{ id: number }>`
       select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
     `;
     if (reg) {
       await sql`
-        insert into cash_movements (company_id, store_id, register_id, user_id, type, amount, description, sale_id)
-        values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento', 0, ${"Cancelamento venda nº " + sale.number}, ${sale.id})
+        insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description, sale_id)
+        values (
+          ${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento', 'dinheiro',
+          ${cashRefund}, ${"Cancelamento venda nº " + sale.number}, ${sale.id}
+        )
       `;
     }
     await sql`

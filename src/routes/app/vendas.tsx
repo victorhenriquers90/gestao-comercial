@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { NfcePanel } from "@/components/nfce-panel";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
@@ -14,10 +15,11 @@ import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { SALE_STATUS_LABELS, ACCOUNT_STATUS_LABELS, NFCE_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc, formatPct } from "@/lib/format";
+import { nfceBlocksSaleCancel, nfceNeedsSefazCancel, validateNfceCancelJustificativa } from "@/lib/nfce";
 import { parseTaxBreakdown } from "@/lib/tax";
 import { cancelSaleFn, getSaleFn, listSalesFn } from "@/lib/server/commerce";
 import { getSettingsFn } from "@/lib/server/session";
-import { emitNfceFn, nfceStatusFn, refreshNfceStatusFn } from "@/lib/server/nfce";
+import { nfceStatusFn } from "@/lib/server/nfce";
 import { num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/vendas")({
@@ -48,43 +50,11 @@ function VendasPage() {
   });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
-  const [nfceBusy, setNfceBusy] = useState(false);
   const nfceEnabled = Boolean((settings.data?.settings as Record<string, unknown> | null)?.nfce_enabled);
 
   useEffect(() => {
     if (searchId) setOpenId(searchId);
   }, [searchId]);
-
-  async function emitNfce() {
-    if (openId == null) return;
-    setNfceBusy(true);
-    try {
-      const res = await emitNfceFn({ data: { saleId: openId } });
-      if (res.ok) toast.success("Nota fiscal enviada — processando na SEFAZ.");
-      else res.errors.forEach((e) => toast.error(e));
-      void qc.invalidateQueries({ queryKey: ["sale", openId] });
-      void qc.invalidateQueries({ queryKey: ["sales"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao emitir.");
-    } finally {
-      setNfceBusy(false);
-    }
-  }
-
-  async function refreshNfce() {
-    if (openId == null) return;
-    setNfceBusy(true);
-    try {
-      const res = await refreshNfceStatusFn({ data: { saleId: openId } });
-      if (res.error) toast.error(res.error);
-      void qc.invalidateQueries({ queryKey: ["sale", openId] });
-      void qc.invalidateQueries({ queryKey: ["sales"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao consultar status.");
-    } finally {
-      setNfceBusy(false);
-    }
-  }
 
   if (list.isPending) return <PageSkeleton />;
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar vendas." />;
@@ -111,6 +81,7 @@ function VendasPage() {
               <Th>Loja</Th>
               <Th>Total</Th>
               <Th>Status</Th>
+              {nfceEnabled ? <Th>NFC-e</Th> : null}
             </tr>
           }
         >
@@ -132,6 +103,17 @@ function VendasPage() {
                   {SALE_STATUS_LABELS[String(s.status)] ?? String(s.status)}
                 </Badge>
               </Td>
+              {nfceEnabled ? (
+                <Td>
+                  {s.nfce_status ? (
+                    <Badge variant={statusBadgeVariant(String(s.nfce_status))}>
+                      {NFCE_STATUS_LABELS[String(s.nfce_status)] ?? String(s.nfce_status)}
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </Td>
+              ) : null}
             </tr>
           ))}
         </DataTable>
@@ -148,44 +130,19 @@ function VendasPage() {
                 data={saleToReceipt(detail.data)}
                 company={receiptCompany(settings.data)}
               />
-              {nfceEnabled && String(detail.data.sale.status) === "finalizada" ? (
-                <div className="no-print rounded-lg border border-border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium">Nota fiscal (NFC-e)</p>
-                    {detail.data.sale.nfce_status ? (
-                      <Badge variant={statusBadgeVariant(String(detail.data.sale.nfce_status))}>
-                        {NFCE_STATUS_LABELS[String(detail.data.sale.nfce_status)] ?? String(detail.data.sale.nfce_status)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  {detail.data.sale.nfce_error ? (
-                    <p className="mt-1 text-xs text-destructive">{String(detail.data.sale.nfce_error)}</p>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {!detail.data.sale.nfce_status || detail.data.sale.nfce_status === "erro" ? (
-                      <Button size="sm" disabled={nfceBusy || !nfceStatus.data?.available} onClick={() => void emitNfce()}>
-                        {nfceBusy ? "Emitindo…" : "Emitir NFC-e"}
-                      </Button>
-                    ) : null}
-                    {detail.data.sale.nfce_status === "processando_autorizacao" ? (
-                      <Button size="sm" variant="outline" disabled={nfceBusy} onClick={() => void refreshNfce()}>
-                        {nfceBusy ? "Consultando…" : "Atualizar status"}
-                      </Button>
-                    ) : null}
-                    {detail.data.sale.nfce_danfe_url ? (
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={String(detail.data.sale.nfce_danfe_url)} target="_blank" rel="noreferrer">
-                          Ver DANFE
-                        </a>
-                      </Button>
-                    ) : null}
-                  </div>
-                  {!nfceStatus.data?.available ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Emissão não configurada no servidor (FOCUS_NFE_TOKEN).
-                    </p>
-                  ) : null}
-                </div>
+              {nfceEnabled && String(detail.data.sale.status) === "finalizada" && openId != null ? (
+                <NfcePanel
+                  saleId={openId}
+                  status={detail.data.sale.nfce_status != null ? String(detail.data.sale.nfce_status) : null}
+                  error={detail.data.sale.nfce_error != null ? String(detail.data.sale.nfce_error) : null}
+                  danfeUrl={detail.data.sale.nfce_danfe_url != null ? String(detail.data.sale.nfce_danfe_url) : null}
+                  allowCancel
+                  tokenAvailable={Boolean(nfceStatus.data?.available)}
+                  onChanged={() => {
+                    void qc.invalidateQueries({ queryKey: ["sale", openId] });
+                    void qc.invalidateQueries({ queryKey: ["sales"] });
+                  }}
+                />
               ) : null}
               {detail.data.commission ? (
                 <div className="rounded-lg border border-border bg-muted/40 p-3">
@@ -241,9 +198,22 @@ function VendasPage() {
                     variant="destructive"
                     onClick={async () => {
                       if (!reason.trim()) return toast.error("Informe o motivo.");
+                      const nfceStatusNow =
+                        detail.data.sale.nfce_status != null ? String(detail.data.sale.nfce_status) : null;
+                      if (nfceBlocksSaleCancel(nfceStatusNow)) {
+                        return toast.error("A nota ainda está em processamento na SEFAZ. Atualize o status.");
+                      }
+                      if (nfceNeedsSefazCancel(nfceStatusNow)) {
+                        const sefaz = validateNfceCancelJustificativa(reason);
+                        if (sefaz) return toast.error(sefaz);
+                      }
                       try {
                         await cancelSaleFn({ data: { id: openId!, reason } });
-                        toast.success("Venda cancelada. Estoque restaurado.");
+                        toast.success(
+                          nfceNeedsSefazCancel(nfceStatusNow)
+                            ? "NFC-e cancelada na SEFAZ. Venda cancelada e estoque restaurado."
+                            : "Venda cancelada. Estoque restaurado.",
+                        );
                         setOpenId(null);
                         void qc.invalidateQueries({ queryKey: ["sales"] });
                       } catch (e) {

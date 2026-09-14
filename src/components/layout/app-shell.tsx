@@ -4,6 +4,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ChevronsUpDown,
+  Contrast,
   Menu,
   Moon,
   Search,
@@ -27,6 +28,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSelection } from "@/hooks/use-selection";
+import { useContrast } from "@/hooks/use-contrast";
 import { useTheme } from "@/hooks/use-theme";
 import { UserButton } from "@/lib/auth/gates";
 import { ensureCsrfCookie } from "@/lib/auth/client";
@@ -63,7 +65,8 @@ export function AppShell({
       <div className="min-h-screen bg-background">
         <aside
           className={cn(
-            "no-print fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground md:flex",
+            "app-sidebar no-print fixed z-30 hidden flex-col overflow-hidden bg-sidebar text-sidebar-foreground md:flex",
+            "inset-y-3 left-3 rounded-2xl",
             collapsed ? "w-16" : "w-64",
             isPdv && "md:hidden",
           )}
@@ -71,7 +74,7 @@ export function AppShell({
           <SidebarBody tenant={tenant} items={items} collapsed={collapsed} pathname={pathname} />
           <button
             type="button"
-            className="flex h-12 items-center gap-2 border-t border-sidebar-foreground/10 px-3 text-xs text-sidebar-muted hover:text-sidebar-foreground"
+            className="flex h-11 items-center gap-2 border-t border-sidebar-foreground/8 px-3 text-xs text-sidebar-muted transition-colors hover:text-sidebar-foreground"
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
           >
@@ -98,8 +101,8 @@ export function AppShell({
           </SheetContent>
         </Sheet>
 
-        <div className={cn("app-frame", isPdv ? "" : "md:pl-64", !isPdv && collapsed && "md:pl-16")}>
-          <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border bg-background/85 px-6 backdrop-blur-md">
+        <div className={cn("app-frame", isPdv ? "" : "md:pl-[17.5rem]", !isPdv && collapsed && "md:pl-[5.5rem]")}>
+          <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border/70 bg-background/72 px-5 backdrop-blur-xl md:px-7">
             <div className="topbar-start">
               <Button
                 variant="ghost"
@@ -120,6 +123,7 @@ export function AppShell({
               <StorePicker tenant={tenant} />
               <NotifBell />
               <ThemeToggle />
+              <ContrastToggle />
               <UserMenu tenant={tenant} />
             </div>
           </header>
@@ -155,7 +159,7 @@ function SidebarBody({
 
   return (
     <>
-      <div className={cn("flex items-center gap-2.5 px-3 py-4", collapsed && "justify-center px-2")}>
+      <div className={cn("flex items-center gap-2.5 px-3 py-5", collapsed && "justify-center px-2")}>
         <BrandMark tone="inverse" className="size-8 shrink-0" />
         {!collapsed ? (
           <div className="min-w-0">
@@ -181,12 +185,12 @@ function SidebarBody({
                     aria-label={item.label}
                     onClick={onNavigate}
                     className={cn(
-                      "relative flex h-10 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-150",
+                      "relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-[background-color,color,opacity] duration-quick ease-out-soft",
                       "focus-visible:ring-2 focus-visible:ring-sidebar-foreground/60 focus-visible:outline-none",
-                      "before:absolute before:top-1/2 before:left-0 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-sidebar-foreground before:transition-opacity before:duration-150",
+                      "before:absolute before:top-1/2 before:left-0 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-primary-foreground before:transition-opacity before:duration-quick",
                       active
                         ? "bg-sidebar-accent text-sidebar-foreground before:opacity-100"
-                        : "text-sidebar-muted before:opacity-0 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+                        : "text-sidebar-muted before:opacity-0 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground",
                       item.accent && !active && "text-sidebar-foreground",
                       collapsed && "justify-center px-0",
                     )}
@@ -245,6 +249,21 @@ function ThemeToggle() {
   return (
     <Button variant="ghost" size="icon" onClick={toggle} aria-label="Alternar tema">
       {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+    </Button>
+  );
+}
+
+function ContrastToggle() {
+  const { contrast, toggle } = useContrast();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggle}
+      aria-label={contrast ? "Desligar alto contraste" : "Ligar alto contraste"}
+      aria-pressed={contrast}
+    >
+      <Contrast className="size-4" />
     </Button>
   );
 }
@@ -396,7 +415,7 @@ function GlobalSearch() {
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 180)}
           placeholder="Buscar produto, cliente ou venda…"
-          className="h-10 bg-muted pl-9 pr-14"
+          className="h-10 bg-muted/80 pl-9 pr-14"
         />
         <kbd className="topbar-kbd pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-sm border border-border bg-card px-1.5 text-xs text-muted-foreground">
           ⌘K
