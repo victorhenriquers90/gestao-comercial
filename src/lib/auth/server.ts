@@ -106,14 +106,18 @@ const extraAuthHosts: string[] = (env("EXTRA_AUTH_HOSTS") ?? "")
   .split(",")
   .map((h) => h.trim())
   .filter(Boolean);
-// Local `npm run dev` (port 8080 contract). Browsers may send Origin as any of
-// these for the same server — trusting only `localhost` rejects `127.0.0.1` and
-// breaks email/password with "Invalid origin".
+// Local dev. Browsers may send Origin as any of these for the same server —
+// trusting only `localhost` rejects `127.0.0.1` and breaks email/password
+// with "Invalid origin". Wildcard port (`:*`, Better Auth's own glob syntax
+// — see trusted-origins.mjs) rather than a fixed `:8080`: this same machine
+// can have the real service already bound to 8080 (self-hosted install),
+// so `npm run dev` falls back to another port, and a fixed-port allowlist
+// would reject that dev server's own Origin.
 const LOCAL_DEV_ORIGINS: string[] = [
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "http://[::1]:8080",
-  ...extraAuthHosts.map((h) => `http://${h}:8080`),
+  "http://localhost:*",
+  "http://127.0.0.1:*",
+  "http://[::1]:*",
+  ...extraAuthHosts.map((h) => `http://${h}:*`),
 ];
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
