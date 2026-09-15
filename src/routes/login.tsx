@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { useState, type FormEvent, useEffect } from "react";
 import { BrandMark } from "@/components/brand";
@@ -31,10 +31,22 @@ function authErrorMessage(code: string | undefined, fallback: string): string {
   return (code && AUTH_ERROR_MESSAGES[code]) || fallback;
 }
 
+/**
+ * Cadastro so acessivel via "/login?cadastro" (sem link visivel na tela
+ * normal) -- quem instala o sistema usa esse endereco uma vez pra criar a
+ * primeira conta/empresa; no dia a dia da loja o login nao deve convidar
+ * ninguem a criar uma empresa nova por engano.
+ */
+function useWantsSignup(): boolean {
+  const loc = useLocation();
+  return new URLSearchParams(loc.searchStr.replace(/^\?/, "")).has("cadastro");
+}
+
 function LoginPage() {
   const { user, isPending } = useCurrentUserState();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const wantsSignup = useWantsSignup();
+  const [mode, setMode] = useState<"in" | "up">(wantsSignup ? "up" : "in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -211,16 +223,18 @@ function LoginPage() {
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              {signingUp ? "Já tem acesso?" : "Não tem conta?"}{" "}
-              <button
-                type="button"
-                className="inline-flex h-11 items-center font-medium text-primary"
-                onClick={switchMode}
-              >
-                {signingUp ? "Entrar" : "Criar agora"}
-              </button>
-            </p>
+            {signingUp ? (
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                Já tem uma loja cadastrada?{" "}
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center font-medium text-primary"
+                  onClick={switchMode}
+                >
+                  Entrar
+                </button>
+              </p>
+            ) : null}
               </>
             ) : (
               <p className="mt-7 text-sm text-muted-foreground">Acesso desativado neste ambiente.</p>

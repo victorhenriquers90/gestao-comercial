@@ -150,7 +150,12 @@
   --card: #fbf9f4;
   --card-foreground: #1a1916;
   --muted: #ece7dc;
-  --muted-foreground: #5c5850;
+  /* Preto do --foreground em opacidade menor, nao um cinza-oliva separado
+     (#5c5850, o valor antigo) -- um tom PROPRIO se mistura com o fundo
+     colorido e desfocado da foto (agora que o card e vidro fosco) e vira
+     uma cor "estranha" amarronzada; a mesma tinta so mais clara nunca cria
+     um tom novo, sempre le como preto suave. */
+  --muted-foreground: color-mix(in oklab, #1a1916 62%, transparent);
   --primary: #1f5c4d;
   --primary-foreground: #f4f7f5;
   --secondary: #e7e1d6;
@@ -210,7 +215,14 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 58% 32%;
+  /* A foto fonte e retrato (1152x1728) usada como fundo paisagem em tela
+     cheia -- o navegador precisa descartar a maior parte da altura pra
+     cobrir a largura, entao a janela vertical visivel e estreita (~30% da
+     foto original em telas widescreen tipicas). 22% deixa essa janela
+     terminar nos ombros/maquininha ainda fechada na mao da vendedora, em
+     vez de cortar a maquininha na metade (o que acontecia em 32% e lia
+     como "pessoas cortadas" -- ver historico do login-store.jpg). */
+  object-position: 58% 22%;
   animation: login-ken-burns 24s ease-in-out infinite alternate;
 }
 
@@ -288,12 +300,41 @@
 
 .login-card {
   width: min(100%, 26rem);
-  background: #fbf9f4;
+  /* Vidro fosco. Mais transparente que uma tentativa inicial de 82% --
+     em telas estreitas o card cobre quase 100% da largura/altura, entao
+     opacidade alta escondia a foto quase inteira atras dele (o pedido foi
+     literalmente "essa parte precisa ficar mais transparente pra nao
+     cortar tanto a foto"). 58% ainda segura o contraste do texto
+     (#1a1916) porque o blur mistura a foto por baixo antes da cor entrar --
+     ver o bug de contraste ja corrigido uma vez no commit "rotulos e botao
+     do login ilegiveis" antes de baixar mais que isso. */
+  /* 25% + blur(40px) foi longe demais: o desfoque apagava os contornos da
+     loja e virava uma mancha de cor sem forma reconhecivel ("parece que
+     ficou estranho"). Descoberto depois que o problema era o BLUR alto,
+     nao a opacidade em si -- com --muted-foreground agora sendo a mesma
+     tinta (nao um tom separado que podia ficar "sujo"), da pra baixar a
+     opacidade de novo sem repetir o problema, desde que o blur fique
+     moderado o suficiente pra loja continuar reconhecivel por tras. */
+  background: color-mix(in oklab, #fbf9f4 20%, transparent);
   color: #1a1916;
-  border: 1px solid color-mix(in oklab, #1a1916 14%, transparent);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  backdrop-filter: blur(24px) saturate(165%);
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
   box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
     0 1px 2px rgb(0 0 0 / 0.12),
     0 24px 48px -12px rgb(0 0 0 / 0.35);
+  /* Nesse nivel de transparencia o contraste do texto varia com o trecho
+     da foto atras dele (parte clara do corredor vs roupa escura), entao
+     nao da pra confiar so na cor -- um halo claro por tras do texto
+     escuro garante leitura em qualquer trecho, sem precisar opacificar o
+     vidro de novo. text-shadow herda pros filhos (label, h1, paragrafo,
+     link); atras do texto branco do botao "Entrar" fica imperceptivel, e
+     em cima dos campos (fundo solido) nao faz diferenca visivel -- por
+     isso nao precisa de seletor mais especifico. */
+  text-shadow:
+    0 1px 3px rgb(255 255 255 / 0.75),
+    0 1px 18px rgb(255 255 255 / 0.55);
 }
 
 @media (min-width: 1024px) {
@@ -728,7 +769,11 @@
 
   @container topbar (max-width: 36rem) {
     .topbar-kbd {
-      display: none;
+      /* !important porque o componente Kbd traz a propria utility de display
+         (grid, pra centrar a tecla), e utility do Tailwind vence esta camada
+         -- sem isto a tecla reaparece em tela estreita e cai por cima do
+         logo "PDV". Esconder tem que ganhar de qualquer display. */
+      display: none !important;
     }
     .store-picker {
       width: 9rem;
@@ -764,6 +809,75 @@
 }
 
 @media print {
+  /* Mesmo bug do commit "rotulos e botao do login ilegiveis", agora no
+     papel: `text-foreground`/`text-muted-foreground` etc. leem o alias
+     --color-* do @theme, resolvido UMA VEZ contra .dark quando o visitante
+     imprime com o app no escuro (o padrao real: o kicker "REGISTROS"/
+     "TOTAL" e o valor do KpiCard usam esses utilitarios). "body { color:
+     black }" abaixo nao alcanca isso -- so troca a cor herdada do body,
+     nao a variavel que os utilitarios de cor leem direto no elemento.
+     Confirmado ao vivo: com <html class="dark">, o valor de um KpiCard
+     (text-foreground) saia em #edeae2 (quase branco) sobre o papel branco
+     do PDF -- quase ilegivel, visto no export real de "Vendas detalhadas". */
+  :root,
+  :root.dark {
+    --background: #f3f0e8;
+    --foreground: #1a1916;
+    --card: #fbf9f4;
+    --card-foreground: #1a1916;
+    --popover: #fffcf7;
+    --popover-foreground: #1a1916;
+    --primary: #1f5c4d;
+    --primary-foreground: #f4f7f5;
+    --secondary: #e7e1d6;
+    --secondary-foreground: #1a1916;
+    --muted: #ece7dc;
+    --muted-foreground: #6b675e;
+    --accent: #dce8e3;
+    --accent-foreground: #1f5c4d;
+    --destructive: #9b3a32;
+    --destructive-foreground: #fbf6f4;
+    --border: color-mix(in oklab, #1a1916 12%, transparent);
+    --input: color-mix(in oklab, #1a1916 14%, transparent);
+    --ring: #1f5c4d;
+    --success: #2f6f4e;
+    --success-foreground: #f3f8f5;
+    --warning: #8a5a22;
+    --warning-foreground: #fbf6ee;
+    --info: #2c5864;
+    --info-foreground: #f3f8f8;
+    --chart-1: #1f5c4d;
+    --chart-2: #3d7a6a;
+    --chart-3: #8a5a22;
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-info: var(--info);
+    --color-info-foreground: var(--info-foreground);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+  }
   .no-print {
     display: none !important;
   }
