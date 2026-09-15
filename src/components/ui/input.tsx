@@ -35,6 +35,14 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
   );
 }
 
+/**
+ * O elemento raiz e um <label> de proposito: antes era uma <div> com um
+ * <Label> solto dentro, sem `htmlFor` e sem envolver o campo -- ou seja, o
+ * rotulo aparecia na tela mas nao estava associado a nada. Leitor de tela
+ * anunciava o campo sem nome, e clicar no texto do rotulo nao focava o
+ * campo (num balcao com touch, isso e area de toque desperdicada).
+ * Envolver da a associacao implicita, sem precisar gerar id.
+ */
 export function Field({
   label,
   children,
@@ -45,9 +53,9 @@ export function Field({
   className?: string;
 }) {
   return (
-    <div className={cn("grid gap-1.5", className)}>
-      <Label className="ed-label">{label}</Label>
+    <label className={cn("grid gap-1.5", className)}>
+      <span className="ed-label">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

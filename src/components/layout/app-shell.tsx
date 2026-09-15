@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
 import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -359,6 +360,18 @@ function GlobalSearch() {
     [],
   );
 
+  // O atalho aceita Ctrl E Cmd (ver onKey abaixo), mas a DICA precisa mostrar
+  // a tecla que existe no teclado de quem esta olhando -- os terminais de loja
+  // sao Windows, e "⌘" nem existe la. Comeca em "Ctrl K" (igual no SSR e no
+  // primeiro render do cliente, senao da hydration mismatch) e so vira "⌘K"
+  // depois de montar, se for mesmo um Mac.
+  const [shortcutHint, setShortcutHint] = useState("Ctrl K");
+  useEffect(() => {
+    if (/mac|iphone|ipad|ipod/i.test(`${navigator.platform} ${navigator.userAgent}`)) {
+      setShortcutHint("⌘K");
+    }
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -398,9 +411,7 @@ function GlobalSearch() {
           placeholder="Buscar produto, cliente ou venda…"
           className="h-10 bg-muted pl-9 pr-14"
         />
-        <kbd className="topbar-kbd pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-sm border border-border bg-card px-1.5 text-xs text-muted-foreground">
-          ⌘K
-        </kbd>
+        <Kbd className="topbar-kbd absolute top-1/2 right-2 -translate-y-1/2">{shortcutHint}</Kbd>
         {open && hits.length > 0 ? (
           <Card className="absolute top-11 z-40 w-full overflow-hidden p-1 shadow-pop">
             {hits.map((h) => (
@@ -429,7 +440,7 @@ function GlobalSearch() {
         ) : null}
       </div>
     ),
-    [hits, navigate, open, q],
+    [hits, navigate, open, q, shortcutHint],
   );
 
   return box;

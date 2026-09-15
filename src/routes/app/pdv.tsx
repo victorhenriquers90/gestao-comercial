@@ -1,11 +1,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { IdCard, Minus, Pause, Play, Plus, Search, Trash2, UserRound, X } from "lucide-react";
+import {
+  Check,
+  CreditCard,
+  IdCard,
+  Minus,
+  Pause,
+  Percent,
+  Play,
+  Plus,
+  Search,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
 import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { useSelection } from "@/hooks/use-selection";
@@ -27,6 +41,9 @@ type Hit = Awaited<ReturnType<typeof searchPosFn>>[number];
 type Line = Hit & { qty: number; lineDiscount: number; override?: number; promoName?: string | null };
 type PayRow = { method: PaymentMethod; amount: string; received: string; installments: number; brand: string };
 
+/** Mesma altura, mesmo raio e mesmo alinhamento nos seis botoes de acao. */
+const pdvActionClass = "h-11 justify-between rounded-lg px-3";
+
 const emptyPay = (): PayRow => ({
   method: "dinheiro",
   amount: "",
@@ -43,6 +60,8 @@ function PdvPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
+  /** Venda em espera aguardando confirmacao de descarte (acao irreversivel). */
+  const [descartarId, setDescartarId] = useState<number | null>(null);
   const [cart, setCart] = useState<Line[]>([]);
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [cpfNota, setCpfNota] = useState("");
@@ -183,6 +202,17 @@ function PdvPage() {
     enabled: Boolean(sellerId) && priced.length > 0,
   });
 
+  /** Dicas de comissao (faixa, volume, metas, bonus) agrupadas numa lista so. */
+  const commissionHints: { key: string; text: string; tone?: "bonus" }[] = [
+    ...(comm.data?.note ? [{ key: "note", text: comm.data.note }] : []),
+    ...(comm.data?.volumeNote ? [{ key: "volume", text: comm.data.volumeNote }] : []),
+    ...(comm.data?.targetHints ?? []).map((h) => ({
+      key: `target-${h.id}`,
+      text: `${h.name}: ${h.bonusHint}`,
+    })),
+    ...(comm.data?.bonusNote ? [{ key: "bonus", text: comm.data.bonusNote, tone: "bonus" as const }] : []),
+  ];
+
   function openPay() {
     setPayments((prev) => {
       if (prev.some((p) => num(p.amount) > 0)) return prev;
@@ -195,6 +225,14 @@ function PdvPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Escape continua passando (fecha o que estiver aberto), mas os atalhos
+      // de acao ficam suspensos enquanto houver dialogo aberto. Sem isto o
+      // handler escuta no window inteiro e dispara POR TRAS do modal: com o
+      // pedido de CPF aberto (que o proprio PDV abre ao iniciar a venda), um
+      // F10 por reflexo FINALIZAVA a venda -- gravando, baixando estoque e
+      // perdendo o CPF que estava sendo pedido naquele instante.
+      const dialogoAberto = document.querySelector('[role="dialog"][data-state="open"]') !== null;
+      if (dialogoAberto && e.key !== "Escape") return;
       if (e.key === "F2") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -389,27 +427,37 @@ function PdvPage() {
     <div className="pdv-stage">
       <section className="pdv-catalog border-b border-border p-6 md:border-r md:border-b-0">
         <p className="ed-label mb-block">Peças</p>
+        {/* F2 como tecla a direita, nao dentro do placeholder: no placeholder
+            ela sumia junto com o texto assim que o operador comecava a digitar
+            -- justo quando ainda esta aprendendo o atalho. Como chip, fica. */}
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="F2  ·  nome, SKU ou código de barras"
-            className="h-12 pl-10 text-base"
+            placeholder="Nome, SKU ou código de barras"
+            className="h-12 pr-14 pl-10 text-base"
           />
+          <Kbd className="absolute top-1/2 right-3 -translate-y-1/2">F2</Kbd>
         </div>
         {!register.data?.register && activeStore ? (
           <div className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3">
             <p className="min-w-0 flex-1 text-sm">
               Caixa fechado. Abra para registrar as vendas desta loja.
             </p>
-            <Input
-              className="h-10 w-28"
-              value={openAmt}
-              onChange={(e) => setOpenAmt(e.target.value)}
-              aria-label="Fundo inicial"
-            />
+            <Field label="Fundo inicial" className="w-32">
+              <div className="relative">
+                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                  R$
+                </span>
+                <Input
+                  className="h-10 pl-9"
+                  value={openAmt}
+                  onChange={(e) => setOpenAmt(e.target.value)}
+                />
+              </div>
+            </Field>
             <Button
               type="button"
               disabled={openingCaixa}
@@ -432,7 +480,17 @@ function PdvPage() {
           </div>
         ) : null}
         <div className="mt-4 flex min-h-0 flex-1 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
-          {hits.map((h) => (
+          {hits.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+              <p className="text-sm font-medium">{q ? "Nenhum resultado" : "Busque uma peça"}</p>
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                {q
+                  ? "Confira o nome, SKU ou código de barras digitado."
+                  : "Digite o nome, SKU ou código de barras para começar a venda."}
+              </p>
+            </div>
+          ) : (
+          hits.map((h) => (
             <button
               key={h.variantId}
               type="button"
@@ -454,8 +512,14 @@ function PdvPage() {
               </span>
               <p className="font-display text-lg tabular shrink-0">{formatBRL(h.price)}</p>
             </button>
-          ))}
+          ))
+          )}
         </div>
+        {/* A legenda "F2 busca · F4 cliente · …" saiu daqui: cada uma dessas
+            teclas agora aparece no proprio controle (busca, cliente e os
+            botoes de acao), entao a lista virava uma segunda definicao da
+            mesma coisa -- e ocupava altura numa tela que precisa caber
+            inteira. Sem ela, a lista de resultados ganha o espaco. */}
         {lastSale ? (
           <button
             type="button"
@@ -464,19 +528,21 @@ function PdvPage() {
           >
             Última venda: nº {lastSale.number} · {formatBRL(lastSale.total)} · ver comprovante
           </button>
-        ) : (
-          <p className="mt-auto pt-4 ed-label">
-            F2 busca · F4 cliente · F6 desconto · F8 pagamento · F9 espera · F10 finaliza
-          </p>
-        )}
+        ) : null}
       </section>
 
       <aside className="pdv-ticket bg-card p-6">
         <p className="ed-label mb-block">Cupom</p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCustOpen(true)}>
+          {/* A tecla fica sempre visivel: antes o "(F4)" so aparecia enquanto
+              nenhum cliente estava escolhido, sumindo junto com o rotulo
+              assim que virava o nome do cliente. */}
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setCustOpen(true)}>
             <UserRound className="size-3.5" />
-            {customer?.name ?? (cpfNota ? formatDoc(cpfNota) : "Cliente (F4)")}
+            <span className="max-w-40 truncate">
+              {customer?.name ?? (cpfNota ? formatDoc(cpfNota) : "Cliente")}
+            </span>
+            <Kbd>F4</Kbd>
           </Button>
           <Select
             className="h-8 w-auto min-w-36 text-xs"
@@ -492,9 +558,19 @@ function PdvPage() {
           </Select>
         </div>
 
-        <div className="mt-block min-h-0 flex-1 space-y-2 overflow-y-auto">
+        {/* min-h-32, nao min-h-0: com min-h-0 o carrinho era o unico bloco
+            elastico do painel, entao levava todo o aperto -- com 2 itens ele
+            colapsava pra 28px de altura para 200px de conteudo, e o operador
+            via menos de um item da venda que estava fazendo. O piso garante
+            que a VENDA e o ultimo bloco a ceder espaco, nao o primeiro. */}
+        <div className="mt-block min-h-32 flex-1 space-y-2 overflow-y-auto">
+          {/* Estado vazio com h-full + padding curto, nao flex-1 + py-16:
+              128px de padding fixo faziam ele ficar MAIOR que o painel (192px
+              de conteudo em 117px de espaco), criando barra de rolagem num
+              carrinho vazio -- justamente na tela que precisa caber inteira
+              sem scroll. Mesma correcao no estado vazio do catalogo. */}
           {cart.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center">
               <p className="text-sm font-medium">Carrinho vazio</p>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                 Busque pelo nome, SKU ou código de barras para começar a venda.
@@ -519,15 +595,25 @@ function PdvPage() {
                       </p>
                     ) : null}
                   </div>
-                  <button type="button" onClick={() => setCart((c) => c.filter((x) => x.variantId !== l.variantId))}>
-                    <Trash2 className="size-3.5 text-muted-foreground" />
-                  </button>
+                  {/* Era um <button> cru, sem classe: alvo de toque do tamanho
+                      do icone (~14px), sem hover, sem anel de foco e sem nome
+                      acessivel -- num balcao com touch isso erra o clique. */}
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="-mt-1 -mr-1 shrink-0"
+                    aria-label={`Remover ${l.label} do cupom`}
+                    onClick={() => setCart((c) => c.filter((x) => x.variantId !== l.variantId))}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     <Button
                       size="icon-sm"
                       variant="outline"
+                      aria-label={`Diminuir quantidade de ${l.label}`}
                       onClick={() =>
                         setCart((c) =>
                           c.map((x) => (x.variantId === l.variantId ? { ...x, qty: Math.max(1, x.qty - 1) } : x)),
@@ -536,10 +622,13 @@ function PdvPage() {
                     >
                       <Minus className="size-3" />
                     </Button>
-                    <span className="w-8 text-center tabular">{l.qty}</span>
+                    <span className="w-8 text-center tabular" aria-live="polite">
+                      {l.qty}
+                    </span>
                     <Button
                       size="icon-sm"
                       variant="outline"
+                      aria-label={`Aumentar quantidade de ${l.label}`}
                       onClick={() =>
                         setCart((c) => c.map((x) => (x.variantId === l.variantId ? { ...x, qty: x.qty + 1 } : x)))
                       }
@@ -569,21 +658,27 @@ function PdvPage() {
               ) : null}
             </>
           ) : null}
-          {comm.data?.note ? (
-            <p className="text-xs text-muted-foreground">{comm.data.note}</p>
-          ) : !sellerId && priced.length ? (
+          {/* O aviso de "sem vendedor" fica sempre visivel -- e uma condicao
+              que muda o resultado da venda. Ja as dicas de faixa/meta sao
+              acompanhamento, nao operacao: ficavam ate 4 linhas fixas
+              roubando altura do carrinho, entao vao pra um detalhe que abre
+              sob demanda. */}
+          {!comm.data?.note && !sellerId && priced.length ? (
             <p className="text-xs text-warning">Sem vendedor — a venda não gera comissão.</p>
           ) : null}
-          {comm.data?.volumeNote ? (
-            <p className="text-xs text-muted-foreground">{comm.data.volumeNote}</p>
-          ) : null}
-          {comm.data?.targetHints?.map((h) => (
-            <p key={h.id} className="text-xs text-muted-foreground">
-              {h.name}: {h.bonusHint}
-            </p>
-          ))}
-          {comm.data?.bonusNote ? (
-            <p className="text-xs text-primary">{comm.data.bonusNote}</p>
+          {commissionHints.length ? (
+            <details className="group">
+              <summary className="cursor-pointer list-none text-xs text-muted-foreground underline-offset-2 hover:underline">
+                Detalhes da comissão ({commissionHints.length})
+              </summary>
+              <div className="mt-1 space-y-1">
+                {commissionHints.map((h) => (
+                  <p key={h.key} className={cn("text-xs", h.tone === "bonus" ? "text-primary" : "text-muted-foreground")}>
+                    {h.text}
+                  </p>
+                ))}
+              </div>
+            </details>
           ) : null}
         </div>
         <Input
@@ -592,33 +687,82 @@ function PdvPage() {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div className="mt-block grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={() => setDiscOpen(true)}>
-            Desconto (F6)
-          </Button>
-          <Button variant="outline" onClick={openPay}>
-            Pagamento (F8)
-          </Button>
-          <Button variant="outline" onClick={() => void holdCart()} disabled={!cart.length}>
-            <Pause className="size-3.5" />
-            Esperar (F9)
-          </Button>
-          <Button variant="outline" onClick={() => setHeldOpen(true)}>
-            <Play className="size-3.5" />
-            Em espera{held.data?.length ? ` (${held.data.length})` : ""}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setCart([]);
-              setHeaderDisc(0);
-            }}
-          >
-            Limpar
-          </Button>
-          <Button onClick={() => void finish()} disabled={busy || !register.data?.register}>
-            {busy ? "Salvando…" : "Finalizar (F10)"}
-          </Button>
+        {/* Duas faixas, nao uma grade de seis iguais: em cima as acoes que
+            MUDAM a venda (desconto, pagamento, espera), embaixo as que a
+            ENCERRAM (limpar, finalizar). Antes os seis botoes tinham o mesmo
+            peso visual e o olho do operador nao tinha ancora nenhuma. */}
+        {/* Altura e raio IGUAIS nos seis (h-11/rounded-lg): antes a linha de
+            baixo misturava h-10 com h-12 e rounded-md com rounded-lg, e o
+            desencontro era o que fazia o bloco parecer inacabado. A hierarquia
+            vem da cor e da largura, nao de tamanhos desalinhados. */}
+        <div className="mt-block space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className={pdvActionClass} onClick={() => setDiscOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Percent className="size-4" />
+                Desconto
+              </span>
+              <Kbd>F6</Kbd>
+            </Button>
+            <Button variant="outline" className={pdvActionClass} onClick={openPay}>
+              <span className="flex items-center gap-2">
+                <CreditCard className="size-4" />
+                Pagamento
+              </span>
+              <Kbd>F8</Kbd>
+            </Button>
+            <Button
+              variant="outline"
+              className={pdvActionClass}
+              onClick={() => void holdCart()}
+              disabled={!cart.length}
+            >
+              <span className="flex items-center gap-2">
+                <Pause className="size-4" />
+                Esperar
+              </span>
+              <Kbd>F9</Kbd>
+            </Button>
+            <Button variant="outline" className={pdvActionClass} onClick={() => setHeldOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Play className="size-4" />
+                Em espera
+              </span>
+              {held.data?.length ? (
+                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-foreground/8 px-1.5 text-[0.625rem] leading-none font-semibold tabular text-muted-foreground">
+                  {held.data.length}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+          <div className="grid grid-cols-[1fr_2fr] gap-2">
+            {/* Limpar em ghost: descarta a venda inteira, entao nao deve
+                disputar atencao com Finalizar -- so precisa estar ao alcance. */}
+            <Button
+              variant="ghost"
+              className={pdvActionClass}
+              onClick={() => {
+                setCart([]);
+                setHeaderDisc(0);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Trash2 className="size-4" />
+                Limpar
+              </span>
+            </Button>
+            <Button
+              className={pdvActionClass}
+              onClick={() => void finish()}
+              disabled={busy || !register.data?.register}
+            >
+              <span className="flex items-center gap-2">
+                <Check className="size-4" />
+                {busy ? "Salvando…" : "Finalizar"}
+              </span>
+              <Kbd tone="on-primary">F10</Kbd>
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -641,21 +785,43 @@ function PdvPage() {
                       {h.notes ? ` · ${h.notes}` : ""}
                     </p>
                   </div>
-                  <div className="flex gap-1">
-                    <Button size="sm" onClick={() => void resumeHeld(h.id)}>
-                      Recuperar
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={async () => {
-                        await discardHeldFn({ data: { id: h.id } });
-                        void qc.invalidateQueries({ queryKey: ["held"] });
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
+                  {/* Descarte em duas etapas: apagar uma venda em espera e
+                      irreversivel (e o carrinho guardado de um cliente), e o
+                      botao ficava a um clique do "Recuperar", sem confirmar e
+                      sem nome acessivel -- um erro de clique perdia a venda. */}
+                  {descartarId === h.id ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className="text-xs text-muted-foreground">Descartar?</span>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={async () => {
+                          setDescartarId(null);
+                          await discardHeldFn({ data: { id: h.id } });
+                          void qc.invalidateQueries({ queryKey: ["held"] });
+                        }}
+                      >
+                        Sim
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setDescartarId(null)}>
+                        Não
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex shrink-0 gap-1">
+                      <Button size="sm" onClick={() => void resumeHeld(h.id)}>
+                        Recuperar
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Descartar venda em espera de ${h.customerName ?? "Consumidor"}`}
+                        onClick={() => setDescartarId(h.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -675,12 +841,15 @@ function PdvPage() {
           <Field label="CPF ou CNPJ na nota">
             <div className="relative">
               <IdCard className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              {/* Sem aria-label aqui: o Field ja da o nome acessivel ("CPF ou
+                  CNPJ na nota"), e um aria-label sobrepoe o rotulo visivel --
+                  o operador leria uma coisa e o leitor de tela anunciaria
+                  outra. */}
               <Input
                 inputMode="numeric"
                 placeholder="Só números"
                 value={cpfNota}
                 onChange={(e) => setCpfNota(maskBrDoc(e.target.value))}
-                aria-label="Documento na nota"
                 className="pl-9"
                 autoFocus
               />
@@ -786,19 +955,37 @@ function PdvPage() {
             <DialogTitle>Desconto</DialogTitle>
           </DialogHeader>
           <div className="flex gap-2">
-            <Button variant={discMode === "value" ? "default" : "outline"} onClick={() => setDiscMode("value")}>
+            <Button
+              variant={discMode === "value" ? "default" : "outline"}
+              aria-pressed={discMode === "value"}
+              onClick={() => setDiscMode("value")}
+            >
               Valor
             </Button>
-            <Button variant={discMode === "pct" ? "default" : "outline"} onClick={() => setDiscMode("pct")}>
+            <Button
+              variant={discMode === "pct" ? "default" : "outline"}
+              aria-pressed={discMode === "pct"}
+              onClick={() => setDiscMode("pct")}
+            >
               Percentual
             </Button>
           </div>
-          <Input
-            className="mt-block"
-            value={discInput}
-            onChange={(e) => setDiscInput(e.target.value)}
-            placeholder={discMode === "pct" ? "% " : "R$"}
-          />
+          {/* A unidade (R$ ou %) era o placeholder, entao sumia no primeiro
+              digito -- e aqui ela decide o valor: "10" pode ser R$ 10 ou 10%.
+              Como prefixo fixo, a referencia fica na tela enquanto digita. */}
+          <Field label={discMode === "pct" ? "Desconto em percentual" : "Desconto em reais"} className="mt-block">
+            <div className="relative">
+              <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                {discMode === "pct" ? "%" : "R$"}
+              </span>
+              <Input
+                className="pl-9"
+                inputMode="decimal"
+                value={discInput}
+                onChange={(e) => setDiscInput(e.target.value)}
+              />
+            </div>
+          </Field>
           <p className="text-xs text-muted-foreground">Limite do seu perfil: {tenant.data?.discountLimit ?? 0}%</p>
           <Button className="mt-block" onClick={applyDisc}>
             Aplicar
@@ -825,34 +1012,51 @@ function PdvPage() {
           <div className="mt-block space-y-block">
             {payments.map((p, idx) => (
               <div key={idx} className="rounded-lg border border-border p-3">
-                <div className="flex gap-2">
-                  <Select
-                    value={p.method}
-                    onChange={(e) => {
-                      const next = [...payments];
-                      next[idx] = { ...p, method: e.target.value as PaymentMethod };
-                      setPayments(next);
-                    }}
-                  >
-                    {PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {PAYMENT_LABELS[m]}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    placeholder="Valor"
-                    value={p.amount}
-                    onChange={(e) => {
-                      const next = [...payments];
-                      next[idx] = { ...p, amount: e.target.value };
-                      setPayments(next);
-                    }}
-                  />
+                {/* Campos rotulados, nao so placeholder: placeholder some no
+                    primeiro digito -- num campo de DINHEIRO isso deixa o
+                    operador sem saber se aquele numero e o valor cobrado ou o
+                    valor recebido. Prefixo R$ pelo mesmo motivo do "Fundo
+                    inicial" la no caixa. */}
+                <div className="flex items-end gap-2">
+                  <Field label="Forma" className="min-w-0 flex-1">
+                    <Select
+                      value={p.method}
+                      onChange={(e) => {
+                        const next = [...payments];
+                        next[idx] = { ...p, method: e.target.value as PaymentMethod };
+                        setPayments(next);
+                      }}
+                    >
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {PAYMENT_LABELS[m]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Valor" className="min-w-0 flex-1">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+                      <Input
+                        className="pl-9"
+                        inputMode="decimal"
+                        value={p.amount}
+                        onChange={(e) => {
+                          const next = [...payments];
+                          next[idx] = { ...p, amount: e.target.value };
+                          setPayments(next);
+                        }}
+                      />
+                    </div>
+                  </Field>
                   {payments.length > 1 ? (
                     <Button
                       size="icon-sm"
                       variant="ghost"
+                      className="mb-1 shrink-0"
+                      aria-label={`Remover forma de pagamento ${PAYMENT_LABELS[p.method]}`}
                       onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
                     >
                       <X className="size-4" />
@@ -860,32 +1064,42 @@ function PdvPage() {
                   ) : null}
                 </div>
                 {p.method === "dinheiro" ? (
-                  <Input
-                    className="mt-2"
-                    placeholder="Valor recebido"
-                    value={p.received}
-                    onChange={(e) => {
-                      const next = [...payments];
-                      next[idx] = { ...p, received: e.target.value };
-                      setPayments(next);
-                    }}
-                  />
+                  <Field label="Valor recebido" className="mt-2">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                        R$
+                      </span>
+                      <Input
+                        className="pl-9"
+                        inputMode="decimal"
+                        value={p.received}
+                        onChange={(e) => {
+                          const next = [...payments];
+                          next[idx] = { ...p, received: e.target.value };
+                          setPayments(next);
+                        }}
+                      />
+                    </div>
+                  </Field>
                 ) : null}
                 {p.method === "credito" ? (
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Select
-                      value={p.brand}
-                      onChange={(e) => {
-                        const next = [...payments];
-                        next[idx] = { ...p, brand: e.target.value };
-                        setPayments(next);
-                      }}
-                    >
-                      {CARD_BRANDS.map((b) => (
-                        <option key={b}>{b}</option>
-                      ))}
-                    </Select>
-                    <Input
+                    <Field label="Bandeira">
+                      <Select
+                        value={p.brand}
+                        onChange={(e) => {
+                          const next = [...payments];
+                          next[idx] = { ...p, brand: e.target.value };
+                          setPayments(next);
+                        }}
+                      >
+                        {CARD_BRANDS.map((b) => (
+                          <option key={b}>{b}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Parcelas">
+                      <Input
                       type="number"
                       min={1}
                       max={18}
@@ -895,13 +1109,24 @@ function PdvPage() {
                         next[idx] = { ...p, installments: Number(e.target.value) };
                         setPayments(next);
                       }}
-                    />
+                      />
+                    </Field>
                   </div>
                 ) : null}
               </div>
             ))}
           </div>
-          {change > 0 ? <p className="mt-2 text-sm">Troco: {formatBRL(change)}</p> : null}
+          {/* Troco em destaque: e o numero que o operador le em voz alta e
+              conta da gaveta. Como <p> pequeno, do mesmo peso de todo o resto,
+              era a informacao mais facil de errar no fim da venda. */}
+          {change > 0 ? (
+            <div className="mt-block flex items-baseline justify-between rounded-lg border border-success/40 bg-success/10 px-4 py-3">
+              <span className="ed-label text-success">Troco</span>
+              <span className="font-display text-2xl font-semibold tabular text-success">
+                {formatBRL(change)}
+              </span>
+            </div>
+          ) : null}
           <div className="mt-block flex gap-2">
             <Button
               variant="outline"
@@ -918,7 +1143,8 @@ function PdvPage() {
                 ])
               }
             >
-              + forma
+              <Plus className="size-4" />
+              Forma
             </Button>
             <Button className="flex-1" onClick={() => void finish()} disabled={busy}>
               Confirmar e finalizar
