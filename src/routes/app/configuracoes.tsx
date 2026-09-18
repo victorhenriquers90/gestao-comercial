@@ -69,6 +69,30 @@ function ConfigPage() {
   });
   const [invite, setInvite] = useState({ email: "", role: "vendedor" });
   const [storeName, setStoreName] = useState("");
+  const [salvando, setSalvando] = useState<string | null>(null);
+
+  /**
+   * Caminho unico de gravacao desta tela. Quatro botoes daqui (nova loja,
+   * convidar, modelo de impressao e configuracao de nota fiscal) chamavam o
+   * servidor sem try/catch: numa recusa, o toast de sucesso nem chegava a
+   * rodar e nenhum erro aparecia -- a tela ficava igual, como se o clique
+   * nao tivesse pego. Na aba de impostos isso e pior que confuso: o usuario
+   * sai achando que a NFC-e ficou configurada quando nada foi salvo. Sem
+   * trava, os cliques repetidos ainda criavam lojas e convites duplicados.
+   */
+  async function salvar(chave: string, acao: () => Promise<unknown>, sucesso: string, depois?: () => void) {
+    if (salvando) return;
+    setSalvando(chave);
+    try {
+      await acao();
+      toast.success(sucesso);
+      depois?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao salvar.");
+    } finally {
+      setSalvando(null);
+    }
+  }
 
   useEffect(() => {
     const c = settings.data?.company as Record<string, unknown> | undefined;
@@ -245,13 +269,17 @@ function ConfigPage() {
               <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} />
             </Field>
             <Button
-              onClick={async () => {
-                if (!storeName.trim()) return;
-                await saveStoreFn({ data: { name: storeName } });
-                setStoreName("");
-                toast.success("Loja criada.");
-                void qc.invalidateQueries({ queryKey: ["settings"] });
-                void qc.invalidateQueries({ queryKey: ["tenant"] });
+              disabled={salvando === "loja"}
+              onClick={() => {
+                if (!storeName.trim()) {
+                  toast.error("Informe o nome da loja.");
+                  return;
+                }
+                void salvar("loja", () => saveStoreFn({ data: { name: storeName } }), "Loja criada.", () => {
+                  setStoreName("");
+                  void qc.invalidateQueries({ queryKey: ["settings"] });
+                  void qc.invalidateQueries({ queryKey: ["tenant"] });
+                });
               }}
             >
               Adicionar loja
@@ -297,11 +325,15 @@ function ConfigPage() {
               ))}
             </Select>
             <Button
-              onClick={async () => {
-                await inviteMemberFn({ data: invite });
-                toast.success("Convite enviado. A pessoa entra ao autenticar com este e-mail.");
-                void qc.invalidateQueries({ queryKey: ["settings"] });
-              }}
+              disabled={salvando === "convite"}
+              onClick={() =>
+                void salvar(
+                  "convite",
+                  () => inviteMemberFn({ data: invite }),
+                  "Convite enviado. A pessoa entra ao autenticar com este e-mail.",
+                  () => void qc.invalidateQueries({ queryKey: ["settings"] }),
+                )
+              }
             >
               Convidar
             </Button>
@@ -319,10 +351,10 @@ function ConfigPage() {
               <Textarea value={form.receiptMessage} onChange={(e) => setForm({ ...form, receiptMessage: e.target.value })} />
             </Field>
             <Button
-              onClick={async () => {
-                await saveCompanyFn({ data: companyPayload() });
-                toast.success("Modelo de impressão salvo.");
-              }}
+              disabled={salvando === "impressao"}
+              onClick={() =>
+                void salvar("impressao", () => saveCompanyFn({ data: companyPayload() }), "Modelo de impressão salvo.")
+              }
             >
               Salvar impressão
             </Button>
@@ -368,11 +400,15 @@ function ConfigPage() {
               Cada produto precisa de NCM cadastrado pra emitir — configure em Produtos.
             </p>
             <Button
-              onClick={async () => {
-                await saveCompanyFn({ data: companyPayload() });
-                toast.success("Configuração de nota fiscal salva.");
-                void qc.invalidateQueries({ queryKey: ["settings"] });
-              }}
+              disabled={salvando === "nfce"}
+              onClick={() =>
+                void salvar(
+                  "nfce",
+                  () => saveCompanyFn({ data: companyPayload() }),
+                  "Configuração de nota fiscal salva.",
+                  () => void qc.invalidateQueries({ queryKey: ["settings"] }),
+                )
+              }
             >
               Salvar
             </Button>

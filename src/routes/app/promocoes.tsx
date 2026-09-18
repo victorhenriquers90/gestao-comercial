@@ -25,6 +25,7 @@ function PromocoesPage() {
     startsAt: "",
     endsAt: "",
   });
+  const [salvando, setSalvando] = useState(false);
   const list = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
   if (list.isPending) return <PageSkeleton />;
 
@@ -89,25 +90,43 @@ function PromocoesPage() {
               <Input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
             </Field>
           </div>
+          {/* Sem try/catch, uma recusa do servidor nao mostrava NADA: nao vinha
+              o toast de sucesso (o throw pula ele), o dialogo nao fechava e
+              nenhum erro aparecia -- o usuario clicava de novo achando que o
+              botao nao pegou. Sem trava, esses cliques repetidos criavam
+              promocoes duplicadas, que entram no preco do PDV via bestPromo. */}
           <Button
             className="mt-4"
+            disabled={salvando}
             onClick={async () => {
-              await savePromotionFn({
-                data: {
-                  name: form.name,
-                  kind: form.kind,
-                  percent: Number(form.percent),
-                  minQty: Number(form.minQty),
-                  startsAt: form.startsAt,
-                  endsAt: form.endsAt,
-                },
-              });
-              toast.success("Promoção criada.");
-              setOpen(false);
-              void qc.invalidateQueries({ queryKey: ["promos"] });
+              if (salvando) return;
+              if (!form.name.trim()) {
+                toast.error("Dê um nome à promoção.");
+                return;
+              }
+              setSalvando(true);
+              try {
+                await savePromotionFn({
+                  data: {
+                    name: form.name,
+                    kind: form.kind,
+                    percent: Number(form.percent),
+                    minQty: Number(form.minQty),
+                    startsAt: form.startsAt,
+                    endsAt: form.endsAt,
+                  },
+                });
+                toast.success("Promoção criada.");
+                setOpen(false);
+                void qc.invalidateQueries({ queryKey: ["promos"] });
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Falha ao criar a promoção.");
+              } finally {
+                setSalvando(false);
+              }
             }}
           >
-            Salvar
+            {salvando ? "Salvando…" : "Salvar"}
           </Button>
         </DialogContent>
       </Dialog>
