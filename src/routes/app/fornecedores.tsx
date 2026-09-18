@@ -18,6 +18,7 @@ function FornecedoresPage() {
   const qc = useQueryClient();
   const searchId = useSearchId();
   const [open, setOpen] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [form, setForm] = useState({
     legalName: "",
@@ -116,7 +117,10 @@ function FornecedoresPage() {
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
             <Button
+              disabled={salvando}
               onClick={async () => {
+                if (salvando) return;
+                setSalvando(true);
                 try {
                   parseCnpj(form.document);
                   await saveSupplierFn({ data: form });
@@ -125,10 +129,12 @@ function FornecedoresPage() {
                   void qc.invalidateQueries({ queryKey: ["suppliers"] });
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Falha");
+                } finally {
+                  setSalvando(false);
                 }
               }}
             >
-              Salvar
+              {salvando ? "Salvando…" : "Salvar"}
             </Button>
           </div>
         </DialogContent>

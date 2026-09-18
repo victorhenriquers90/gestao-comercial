@@ -22,6 +22,10 @@ function ClientesPage() {
   const searchId = useSearchId();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  // Risco menor que em compras/devolucoes (o documento e unico por empresa,
+  // migration 0020, entao a duplicata esbarra na restricao) -- mas documento
+  // em branco e permitido, e ai o duplo clique cria dois cadastros iguais.
+  const [salvando, setSalvando] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [form, setForm] = useState({ kind: "pf", name: "", document: "", phone: "", email: "", city: "", creditLimit: 0, notes: "" });
 
@@ -121,7 +125,10 @@ function ClientesPage() {
             </Field>
             <Textarea placeholder="Observações" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <Button
+              disabled={salvando}
               onClick={async () => {
+                if (salvando) return;
+                setSalvando(true);
                 try {
                   parseBrDocument(form.document, form.kind === "pj" ? "cnpj" : "cpf");
                   await saveCustomerFn({
@@ -142,10 +149,12 @@ function ClientesPage() {
                   void qc.invalidateQueries({ queryKey: ["customers"] });
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Falha");
+                } finally {
+                  setSalvando(false);
                 }
               }}
             >
-              Salvar
+              {salvando ? "Salvando…" : "Salvar"}
             </Button>
           </div>
         </DialogContent>

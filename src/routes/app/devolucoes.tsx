@@ -33,6 +33,12 @@ function DevolucoesPage() {
   const [saleId, setSaleId] = useState<number | null>(null);
   const [saleLabel, setSaleLabel] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
+  /**
+   * A trava que existia era `disabled={!saleId}` -- impedia confirmar sem
+   * venda escolhida, mas nao o duplo clique. Uma devolucao repetida devolve
+   * a peca ao estoque duas vezes E devolve o dinheiro duas vezes.
+   */
+  const [confirmando, setConfirmando] = useState(false);
   const list = useQuery({ queryKey: ["returns"], queryFn: () => listReturnsFn() });
   const recent = useQuery({
     queryKey: ["sales", "returns-pick"],
@@ -206,10 +212,10 @@ function DevolucoesPage() {
           </Field>
           <Button
             className="mt-4"
-            disabled={!saleId}
+            disabled={!saleId || confirmando}
             onClick={async () => {
               if (!reason.trim()) return toast.error("Informe o motivo.");
-              if (!saleId) return;
+              if (!saleId || confirmando) return;
               const items = lines
                 .filter((l) => l.qty > 0)
                 .map((l) => ({
@@ -219,6 +225,7 @@ function DevolucoesPage() {
                   amount: Number((l.unit * l.qty).toFixed(2)),
                 }));
               if (!items.length) return toast.error("Informe a quantidade a devolver.");
+              setConfirmando(true);
               try {
                 await createReturnFn({ data: { saleId, kind, reason, items } });
                 toast.success("Devolução registrada. Estoque e financeiro atualizados.");
@@ -229,10 +236,12 @@ function DevolucoesPage() {
                 void qc.invalidateQueries({ queryKey: ["sales"] });
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Falha");
+              } finally {
+                setConfirmando(false);
               }
             }}
           >
-            Confirmar
+            {confirmando ? "Confirmando…" : "Confirmar"}
           </Button>
         </DialogContent>
       </Dialog>

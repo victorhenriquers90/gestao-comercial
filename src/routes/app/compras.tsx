@@ -23,6 +23,14 @@ function ComprasPage() {
   const searchId = useSearchId();
   const [open, setOpen] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
+  /**
+   * Travas de envio. Uma compra da entrada no estoque E cria conta a pagar,
+   * entao um clique repetido nao gera "so" um registro a mais: duplica o
+   * saldo do produto e a divida com o fornecedor. `recebendoId` guarda o
+   * pedido especifico para nao travar a linha inteira da tabela.
+   */
+  const [salvandoPedido, setSalvandoPedido] = useState(false);
+  const [recebendoId, setRecebendoId] = useState<number | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState("pedido");
   const [freight, setFreight] = useState("0");
@@ -50,6 +58,8 @@ function ComprasPage() {
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar compras." />;
 
   async function receive(id: number) {
+    if (recebendoId != null) return;
+    setRecebendoId(id);
     try {
       await receivePurchaseFn({ data: { id } });
       toast.success("Pedido recebido. Estoque e contas atualizados.");
@@ -60,6 +70,8 @@ function ComprasPage() {
       void qc.invalidateQueries({ queryKey: ["suppliers"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha");
+    } finally {
+      setRecebendoId(null);
     }
   }
 
@@ -107,12 +119,13 @@ function ComprasPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={recebendoId != null}
                     onClick={(e) => {
                       e.stopPropagation();
                       void receive(row.id);
                     }}
                   >
-                    Receber
+                    {recebendoId === row.id ? "Recebendo…" : "Receber"}
                   </Button>
                 ) : null}
               </Td>
@@ -200,9 +213,12 @@ function ComprasPage() {
           </div>
           <Button
             className="mt-4 w-full"
+            disabled={salvandoPedido}
             onClick={async () => {
               if (!storeId) return toast.error("Selecione a loja.");
               if (!items.length) return toast.error("Inclua itens.");
+              if (salvandoPedido) return;
+              setSalvandoPedido(true);
               try {
                 await savePurchaseFn({
                   data: {
@@ -219,10 +235,12 @@ function ComprasPage() {
                 void qc.invalidateQueries({ queryKey: ["purchases"] });
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Falha");
+              } finally {
+                setSalvandoPedido(false);
               }
             }}
           >
-            Salvar pedido
+            {salvandoPedido ? "Salvando…" : "Salvar pedido"}
           </Button>
         </DialogContent>
       </Dialog>
