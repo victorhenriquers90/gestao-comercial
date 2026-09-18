@@ -222,7 +222,6 @@ function DevolucoesPage() {
                   saleItemId: l.saleItemId,
                   variantId: l.variantId,
                   quantity: l.qty,
-                  amount: Number((l.unit * l.qty).toFixed(2)),
                 }));
               if (!items.length) return toast.error("Informe a quantidade a devolver.");
               setConfirmando(true);

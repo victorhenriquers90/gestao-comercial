@@ -622,7 +622,9 @@ export const createReturnFn = createServerFn({ method: "POST" })
       saleId: number;
       kind: "total" | "parcial" | "troca";
       reason: string;
-      items: { saleItemId: number; variantId: number; quantity: number; amount: number }[];
+      // Sem `amount`: o valor e calculado no servidor a partir da venda
+      // original. Aceitar o campo e ignora-lo faria parecer que ele importa.
+      items: { saleItemId: number; variantId: number; quantity: number }[];
     }) => d,
   )
   .handler(async ({ context, data }) => {
@@ -651,16 +653,29 @@ export const createReturnFn = createServerFn({ method: "POST" })
     `;
     const used: Record<number, number> = {};
     for (const r of already) used[num(r.sale_item_id)] = num(r.qty);
+    // O valor devolvido e calculado AQUI, a partir do que a venda cobrou --
+    // nao e aceito do cliente. A quantidade ja era conferida (item pertence a
+    // venda, respeita o saldo devolvivel), mas `amount` entrava cru: dava para
+    // devolver 1 peca de R$ 10 registrando R$ 5.000 de credito. Nao ha
+    // desembolso automatico, mas e por esse numero que a loja reembolsa e que
+    // os relatorios de devolucao contam. O estorno de comissao, logo abaixo,
+    // ja derivava o unitario da venda original -- aqui passa a fazer igual.
+    const valorPorItem = new Map<number, number>();
     for (const item of data.items) {
       if (item.quantity <= 0) throw new Error("Quantidade inválida.");
       const orig = original.find((o) => o.id === item.saleItemId);
       if (!orig) throw new Error("Item não pertence a esta venda.");
-      const left = num(orig.quantity) - (used[item.saleItemId] ?? 0);
+      const qtdOriginal = num(orig.quantity);
+      const left = qtdOriginal - (used[item.saleItemId] ?? 0);
       if (item.quantity > left + 0.001) {
         throw new Error(`Quantidade acima do disponível para devolução (${left}).`);
       }
+      const unitario = qtdOriginal > 0 ? num(orig.total) / qtdOriginal : 0;
+      valorPorItem.set(item.saleItemId, Number((unitario * item.quantity).toFixed(2)));
     }
-    const total = Number(data.items.reduce((a, i) => a + i.amount, 0).toFixed(2));
+    const total = Number(
+      data.items.reduce((a, i) => a + (valorPorItem.get(i.saleItemId) ?? 0), 0).toFixed(2),
+    );
     const [ret] = await sql<{ id: number }>`
       insert into returns (company_id, store_id, sale_id, user_id, kind, reason, total)
       values (${tenant.companyId}, ${sale.store_id}, ${sale.id}, ${tenant.userId}, ${data.kind}, ${data.reason}, ${total})
@@ -669,7 +684,7 @@ export const createReturnFn = createServerFn({ method: "POST" })
     for (const item of data.items) {
       await sql`
         insert into return_items (company_id, return_id, sale_item_id, variant_id, quantity, amount)
-        values (${tenant.companyId}, ${ret!.id}, ${item.saleItemId}, ${item.variantId}, ${item.quantity}, ${item.amount})
+        values (${tenant.companyId}, ${ret!.id}, ${item.saleItemId}, ${item.variantId}, ${item.quantity}, ${valorPorItem.get(item.saleItemId) ?? 0})
       `;
       await applyStockChange(sql, {
         companyId: tenant.companyId,
