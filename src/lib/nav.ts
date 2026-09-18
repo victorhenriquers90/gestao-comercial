@@ -45,7 +45,11 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/app/promocoes", label: "Promoções", icon: Megaphone, perm: "promotions.write" },
   { href: "/app/devolucoes", label: "Devoluções", icon: RotateCcw, perm: "returns.write" },
   { href: "/app/relatorios", label: "Relatórios", icon: BarChart3, perm: "reports.read" },
-  { href: "/app/configuracoes", label: "Configurações", icon: Settings, perm: "settings.write" },
+  // users.read, nao settings.write: o gerente precisa chegar na aba de
+  // usuarios (e na auditoria), mas as abas de empresa, lojas, impressao e
+  // impostos continuam exigindo settings.write dentro da propria tela. Como
+  // so admin e gerente tem users.read, o menu aparece exatamente para eles.
+  { href: "/app/configuracoes", label: "Configurações", icon: Settings, perm: "users.read" },
 ];
 
 export const NAV_GROUPS: { label: string; hrefs: string[] }[] = [

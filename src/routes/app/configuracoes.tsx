@@ -43,14 +43,31 @@ function ConfigPage() {
     typeof (loc.search as { tab?: unknown }).tab === "string"
       ? (loc.search as { tab?: string }).tab
       : new URLSearchParams(loc.searchStr.replace(/^\?/, "")).get("tab");
-  const tab: ConfigTab = isConfigTab(rawTab) ? rawTab : "empresa";
-  const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
-  // O menu esconde Configuracoes de quem nao tem settings.write, mas a rota em
-  // si nao barra -- quem digitar a URL chega aqui. Sem isto, a aba Usuarios
-  // apareceria vazia e sem explicacao para quem nao pode ver a equipe, agora
-  // que o servidor deixou de mandar a lista.
-  const podeVerEquipe = tenant.data ? can(tenant.data.role, "users.read") : false;
+  const papel = tenant.data?.role;
+  // Cada aba com a sua permissao. O gerente entra aqui pela aba de usuarios,
+  // mas nao mexe em empresa, lojas, impressao nem impostos.
+  const podeConfigurar = papel ? can(papel, "settings.write") : false;
+  const podeVerEquipe = papel ? can(papel, "users.read") : false;
+  const podeVerAuditoria = papel ? can(papel, "audit.read") : false;
+  const abaPermitida: Record<ConfigTab, boolean> = {
+    empresa: podeConfigurar,
+    lojas: podeConfigurar,
+    equipe: podeVerEquipe,
+    print: podeConfigurar,
+    impostos: podeConfigurar,
+    audit: podeVerAuditoria,
+  };
+  // A inicial e a primeira que a pessoa pode ver -- para o gerente, "empresa"
+  // (o padrao antigo) seria uma aba vazia sem explicacao. Enquanto o papel
+  // nao carregou, mantem o padrao para nao piscar de aba.
+  const tabPedida: ConfigTab = isConfigTab(rawTab) ? rawTab : "empresa";
+  const tab: ConfigTab = !papel
+    ? tabPedida
+    : abaPermitida[tabPedida]
+      ? tabPedida
+      : (CONFIG_TABS.find((t) => abaPermitida[t]) ?? tabPedida);
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const audit = useQuery({ queryKey: ["audit"], queryFn: () => listAuditFn({ data: {} }) });
   const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
   const [form, setForm] = useState({
@@ -168,12 +185,12 @@ function ConfigPage() {
       <PageHeader title="Configurações" description="Empresa, lojas, equipe, ISS, impressão e auditoria." />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
-          <TabsTrigger value="empresa">Empresa</TabsTrigger>
-          <TabsTrigger value="lojas">Lojas</TabsTrigger>
+          {podeConfigurar ? <TabsTrigger value="empresa">Empresa</TabsTrigger> : null}
+          {podeConfigurar ? <TabsTrigger value="lojas">Lojas</TabsTrigger> : null}
           {podeVerEquipe ? <TabsTrigger value="equipe">Usuários</TabsTrigger> : null}
-          <TabsTrigger value="print">Impressão</TabsTrigger>
-          <TabsTrigger value="impostos">Impostos</TabsTrigger>
-          <TabsTrigger value="audit">Auditoria</TabsTrigger>
+          {podeConfigurar ? <TabsTrigger value="print">Impressão</TabsTrigger> : null}
+          {podeConfigurar ? <TabsTrigger value="impostos">Impostos</TabsTrigger> : null}
+          {podeVerAuditoria ? <TabsTrigger value="audit">Auditoria</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="empresa">
           <Card className="max-w-xl space-y-block p-5">
