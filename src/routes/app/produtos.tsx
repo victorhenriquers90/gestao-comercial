@@ -71,7 +71,10 @@ function ProdutosPage() {
     const productPrice = Number(product.price ?? 0);
     const productCode = product.barcode ? String(product.barcode) : product.sku ? String(product.sku) : null;
     if (!variants.length) {
-      return [{ key: "base", title: productName, price: productPrice, code: productCode }];
+      // Chave por produto, nao a constante "base": com a mesma key, o React
+      // reaproveitava a instancia (e o mesmo SVG) ao abrir a etiqueta de
+      // outro produto sem variantes.
+      return [{ key: `produto-${String(product.id)}`, title: productName, price: productPrice, code: productCode }];
     }
     return variants.map((v) => ({
       key: Number(v.id),

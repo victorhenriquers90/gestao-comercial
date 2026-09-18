@@ -43,9 +43,10 @@ function PriceTagCard({ item }: { item: PriceTagItem }) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (!svgRef.current || !item.code) return;
+    const svg = svgRef.current;
+    if (!svg || !item.code) return;
     try {
-      JsBarcode(svgRef.current, item.code, {
+      JsBarcode(svg, item.code, {
         format: "CODE128",
         displayValue: false,
         margin: 0,
@@ -53,7 +54,15 @@ function PriceTagCard({ item }: { item: PriceTagItem }) {
         width: 1.4,
       });
     } catch {
-      // An empty render beats crashing the whole tag sheet over one bad code.
+      // Limpar aqui e obrigatorio, nao zelo. O JsBarcode valida na CODIFICACAO
+      // e so limpa o SVG durante o desenho (prepareSVG), entao um codigo
+      // invalido lanca sem nunca tocar no elemento -- e o desenho anterior
+      // fica. Como o React reaproveita a instancia quando a key se repete,
+      // isso imprimia a etiqueta de um produto com as BARRAS de outro: nome,
+      // preco e digitos novos, codigo de barras velho. Bipada no caixa,
+      // registrava o produto errado. Sem barras a etiqueta e obviamente
+      // inutil; com as barras erradas, ninguem percebe.
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
     }
   }, [item.code]);
 
