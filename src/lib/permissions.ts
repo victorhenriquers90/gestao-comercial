@@ -62,6 +62,15 @@ export type Perm =
   | "promotions.write"
   | "returns.write"
   | "settings.write"
+  /**
+   * Ver a equipe (nomes, e-mails, papeis e limite de desconto de cada um) --
+   * separada de users.write porque gerenciar e ver sao coisas diferentes: o
+   * gerente precisa enxergar o time que toca, mas nao promove ninguem nem
+   * mexe em papel. Antes so existia users.write, entao getSettingsFn
+   * entregava a lista inteira a qualquer papel autenticado, incluindo o
+   * operador de PDV.
+   */
+  | "users.read"
   | "users.write"
   | "audit.read";
 
@@ -97,6 +106,7 @@ const ALL: Perm[] = [
   "promotions.write",
   "returns.write",
   "settings.write",
+  "users.read",
   "users.write",
   "audit.read",
 ];

@@ -229,7 +229,13 @@ export const getSettingsFn = createServerFn({ method: "GET" })
       from companies where id = ${tenant.companyId}
     `;
     const settings = await sql<Row>`select * from company_settings where company_id = ${tenant.companyId}`;
-    const members = await sql<{
+    // Equipe e convites so para quem pode ver gente. O resto do retorno
+    // (empresa, settings, lojas) fica aberto de proposito: o PDV depende dele
+    // para montar o comprovante e ler allow_negative_stock, entao fechar a
+    // funcao inteira quebraria a venda. Antes, sem separar, o operador de PDV
+    // recebia nome, e-mail, papel e limite de desconto de cada colega.
+    const podeVerEquipe = can(tenant.role, "users.read");
+    const members = !podeVerEquipe ? [] : await sql<{
       id: number;
       user_id: string;
       role: string;
@@ -243,10 +249,12 @@ export const getSettingsFn = createServerFn({ method: "GET" })
       where m.company_id = ${tenant.companyId} and m.is_active = true
       order by m.id
     `;
-    const invites = await sql<Row>`
-      select id, email, role, created_at from pending_invites
-      where company_id = ${tenant.companyId} and accepted_at is null
-    `;
+    const invites = !podeVerEquipe
+      ? []
+      : await sql<Row>`
+          select id, email, role, created_at from pending_invites
+          where company_id = ${tenant.companyId} and accepted_at is null
+        `;
     const stores = await sql<Row>`
       select id, name, code, phone, address, city, state, zip, is_active
       from stores where company_id = ${tenant.companyId} and deleted_at is null

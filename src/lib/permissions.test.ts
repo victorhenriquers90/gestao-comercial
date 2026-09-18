@@ -46,4 +46,27 @@ describe("fronteira de leitura por papel", () => {
   it("vendedor nao mexe em produto", () => {
     assert.equal(can("vendedor", "products.write"), false);
   });
+
+  /**
+   * users.read foi separada de users.write justamente para o gerente: ele
+   * precisa enxergar o time que toca, mas nao promove ninguem. Se as duas
+   * voltarem a andar juntas, a separacao perdeu o sentido e este teste avisa.
+   */
+  it("gerente ve a equipe mas nao a gerencia", () => {
+    assert.equal(can("gerente", "users.read"), true);
+    assert.equal(can("gerente", "users.write"), false);
+  });
+
+  it("quem gerencia tambem ve", () => {
+    const papeis: Role[] = ["admin", "gerente", "vendedor", "caixa", "pdv", "estoque", "financeiro"];
+    for (const papel of papeis) {
+      if (can(papel, "users.write")) assert.equal(can(papel, "users.read"), true, papel);
+    }
+  });
+
+  it("papeis de operacao nao veem a equipe", () => {
+    for (const papel of ["vendedor", "caixa", "pdv", "estoque", "financeiro"] as Role[]) {
+      assert.equal(can(papel, "users.read"), false, papel);
+    }
+  });
 });

@@ -10,9 +10,10 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader, PageSkeleton } from "@/components/shared";
-import { ROLE_LABELS, ROLES } from "@/lib/permissions";
+import { can, ROLE_LABELS, ROLES } from "@/lib/permissions";
 import {
   getSettingsFn,
+  getTenantFn,
   inviteMemberFn,
   listAuditFn,
   saveCompanyFn,
@@ -44,6 +45,12 @@ function ConfigPage() {
       : new URLSearchParams(loc.searchStr.replace(/^\?/, "")).get("tab");
   const tab: ConfigTab = isConfigTab(rawTab) ? rawTab : "empresa";
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
+  // O menu esconde Configuracoes de quem nao tem settings.write, mas a rota em
+  // si nao barra -- quem digitar a URL chega aqui. Sem isto, a aba Usuarios
+  // apareceria vazia e sem explicacao para quem nao pode ver a equipe, agora
+  // que o servidor deixou de mandar a lista.
+  const podeVerEquipe = tenant.data ? can(tenant.data.role, "users.read") : false;
   const audit = useQuery({ queryKey: ["audit"], queryFn: () => listAuditFn({ data: {} }) });
   const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
   const [form, setForm] = useState({
@@ -163,7 +170,7 @@ function ConfigPage() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="empresa">Empresa</TabsTrigger>
           <TabsTrigger value="lojas">Lojas</TabsTrigger>
-          <TabsTrigger value="equipe">Usuários</TabsTrigger>
+          {podeVerEquipe ? <TabsTrigger value="equipe">Usuários</TabsTrigger> : null}
           <TabsTrigger value="print">Impressão</TabsTrigger>
           <TabsTrigger value="impostos">Impostos</TabsTrigger>
           <TabsTrigger value="audit">Auditoria</TabsTrigger>
