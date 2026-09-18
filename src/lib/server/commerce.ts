@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { computeCommission } from "@/lib/commission";
 import { operatorDiscountPct } from "@/lib/discount";
+import { parsePaymentAmount, parsePaymentMethod, parseReceived } from "@/lib/payment-input";
 import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { bestPromo, type Promo } from "@/lib/promo";
@@ -241,7 +242,22 @@ export const checkoutFn = createServerFn({ method: "POST" })
       throw new Error(`Desconto acima do limite (${tenant.discountLimit}%). Solicite autorização.`);
     }
 
-    const paySum = data.payments.reduce((a, p) => a + num(p.amount), 0);
+    // Valida forma e valor ANTES de somar: a soma sozinha (paySum >= total)
+    // deixava passar um pagamento negativo compensado por outro positivo, e o
+    // negativo em dinheiro reduzia o caixa esperado no fechamento. Ver
+    // src/lib/payment-input.ts.
+    const pagamentos = data.payments.map((p) => {
+      const method = parsePaymentMethod(p.method);
+      const amount = parsePaymentAmount(num(p.amount));
+      return {
+        method,
+        amount,
+        received: method === "dinheiro" ? parseReceived(amount, p.received) : amount,
+        installments: p.installments ?? 1,
+        brand: p.brand ?? null,
+      };
+    });
+    const paySum = pagamentos.reduce((a, p) => a + p.amount, 0);
     if (paySum + 0.05 < total) throw new Error("Pagamento insuficiente.");
 
     const number = await nextNumber(sql, tenant.companyId, "sale");
@@ -281,14 +297,14 @@ export const checkoutFn = createServerFn({ method: "POST" })
 
     const reg = regOpen;
 
-    for (const pay of data.payments) {
-      const received = pay.method === "dinheiro" ? num(pay.received ?? pay.amount) : num(pay.amount);
-      const change = pay.method === "dinheiro" ? Math.max(0, received - num(pay.amount)) : 0;
+    for (const pay of pagamentos) {
+      const received = pay.received;
+      const change = pay.method === "dinheiro" ? Math.max(0, received - pay.amount) : 0;
       await sql`
         insert into payments (company_id, sale_id, method, amount, received, change_amount, installments, brand)
         values (
           ${tenant.companyId}, ${saleId}, ${pay.method}, ${pay.amount}, ${received}, ${change},
-          ${pay.installments ?? 1}, ${pay.brand ?? null}
+          ${pay.installments}, ${pay.brand}
         )
       `;
       if (pay.method === "crediario") {
