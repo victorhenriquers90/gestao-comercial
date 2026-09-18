@@ -271,9 +271,20 @@ export const addCustomerNoteFn = createServerFn({ method: "POST" })
   }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "crm.write");
+    // O customerId vinha cru do cliente direto para o insert -- era o unico
+    // lugar, entre as 94 server functions, onde um id externo entrava numa
+    // escrita sem conferir o dono. A nota nascia carimbada com a empresa de
+    // quem escreveu, mas apontando para um cliente que podia ser de outra
+    // (e o sucesso/erro do insert ainda revelava se aquele id existe).
+    const [cliente] = await sql<{ id: number }>`
+      select id from customers
+      where id = ${data.customerId} and company_id = ${tenant.companyId} and deleted_at is null
+    `;
+    if (!cliente) throw new Error("Cliente não encontrado.");
     await sql`
       insert into customer_notes (company_id, customer_id, user_id, body)
-      values (${tenant.companyId}, ${data.customerId}, ${tenant.userId}, ${data.body})
+      values (${tenant.companyId}, ${cliente.id}, ${tenant.userId}, ${data.body})
     `;
     return { ok: true };
   });
@@ -299,6 +310,10 @@ export const toggleCrmTaskFn = createServerFn({ method: "POST" })
   .validator((d: { id: number; done: boolean }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    // Escrita de CRM sem checagem de papel. O escopo por company_id ja estava
+    // certo (nao vazava entre lojas), mas qualquer papel autenticado podia
+    // concluir/reabrir tarefa de CRM -- inclusive os que nem enxergam a tela.
+    assertCan(tenant.role, "crm.write");
     await sql`
       update crm_tasks set done_at = ${data.done ? new Date().toISOString() : null}
       where id = ${data.id} and company_id = ${tenant.companyId}
