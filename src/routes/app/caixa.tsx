@@ -25,7 +25,41 @@ function CaixaPage() {
   const [closeAmt, setCloseAmt] = useState("");
   const [moveAmt, setMoveAmt] = useState("");
   const [moveDesc, setMoveDesc] = useState("");
+  const [movendo, setMovendo] = useState(false);
+  const [confirmandoFechamento, setConfirmandoFechamento] = useState(false);
+  const [fechando, setFechando] = useState(false);
   const [result, setResult] = useState<{ expected: number; counted: number; diff: number } | null>(null);
+
+  /**
+   * Sangria e suprimento partilham este caminho. Antes cada botao chamava
+   * cashMoveFn direto, sem try/catch, sem travar o duplo clique e sem validar
+   * o valor -- tres buracos no mesmo lugar, e o pior num registro de dinheiro
+   * fisico: uma falha do servidor nao dizia NADA (o operador assumia que deu
+   * certo), dois cliques lancavam duas retiradas, e o campo vazio virava
+   * Number("") = 0, registrando uma movimentacao de R$ 0,00.
+   */
+  async function registrarMovimento(type: "sangria" | "suprimento") {
+    if (movendo) return;
+    const valor = Number(moveAmt);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      toast.error("Informe um valor maior que zero.");
+      return;
+    }
+    setMovendo(true);
+    try {
+      await cashMoveFn({
+        data: { storeId: activeStore, type, amount: valor, description: moveDesc },
+      });
+      toast.success(type === "sangria" ? "Sangria registrada." : "Suprimento registrado.");
+      setMoveAmt("");
+      setMoveDesc("");
+      void qc.invalidateQueries({ queryKey: ["register"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao registrar a movimentação.");
+    } finally {
+      setMovendo(false);
+    }
+  }
 
   const reg = useQuery({
     queryKey: ["register", activeStore],
@@ -87,27 +121,17 @@ function CaixaPage() {
               <div className="mt-block flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={async () => {
-                    await cashMoveFn({
-                      data: { storeId: activeStore, type: "sangria", amount: Number(moveAmt), description: moveDesc },
-                    });
-                    toast.success("Sangria registrada.");
-                    void qc.invalidateQueries({ queryKey: ["register"] });
-                  }}
+                  disabled={movendo}
+                  onClick={() => void registrarMovimento("sangria")}
                 >
-                  Sangria
+                  {movendo ? "Registrando…" : "Sangria"}
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={async () => {
-                    await cashMoveFn({
-                      data: { storeId: activeStore, type: "suprimento", amount: Number(moveAmt), description: moveDesc },
-                    });
-                    toast.success("Suprimento registrado.");
-                    void qc.invalidateQueries({ queryKey: ["register"] });
-                  }}
+                  disabled={movendo}
+                  onClick={() => void registrarMovimento("suprimento")}
                 >
-                  Suprimento
+                  {movendo ? "Registrando…" : "Suprimento"}
                 </Button>
               </div>
             </Card>
@@ -119,21 +143,49 @@ function CaixaPage() {
               <Field label="Dinheiro informado" className="mt-block">
                 <Input value={closeAmt} onChange={(e) => setCloseAmt(e.target.value)} />
               </Field>
-              <Button
-                className="mt-4"
-                onClick={async () => {
-                  try {
-                    const r = await closeRegisterFn({ data: { storeId: activeStore, amount: Number(closeAmt) } });
-                    setResult({ expected: r.expected, counted: r.counted, diff: r.diff });
-                    toast.success("Caixa fechado.");
-                    void qc.invalidateQueries({ queryKey: ["register"] });
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Falha");
-                  }
-                }}
-              >
-                Fechar caixa
-              </Button>
+              {/* Fechar o caixa encerra o dia e nao tem volta (o indice parcial
+                  garante um unico caixa aberto por loja), mas estava a um
+                  clique so, do lado de campos que o operador acabou de digitar.
+                  Confirma antes. */}
+              {confirmandoFechamento ? (
+                <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                  <p className="text-sm">
+                    Fechar o caixa com {formatBRL(Number(closeAmt) || 0)} em dinheiro conferido? Não dá
+                    para reabrir depois.
+                  </p>
+                  <div className="mt-block flex gap-2">
+                    <Button
+                      variant="destructive"
+                      disabled={fechando}
+                      onClick={async () => {
+                        setFechando(true);
+                        try {
+                          const r = await closeRegisterFn({
+                            data: { storeId: activeStore, amount: Number(closeAmt) },
+                          });
+                          setResult({ expected: r.expected, counted: r.counted, diff: r.diff });
+                          setConfirmandoFechamento(false);
+                          toast.success("Caixa fechado.");
+                          void qc.invalidateQueries({ queryKey: ["register"] });
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Falha ao fechar o caixa.");
+                        } finally {
+                          setFechando(false);
+                        }
+                      }}
+                    >
+                      {fechando ? "Fechando…" : "Sim, fechar"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setConfirmandoFechamento(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button className="mt-4" onClick={() => setConfirmandoFechamento(true)}>
+                  Fechar caixa
+                </Button>
+              )}
               {result ? (
                 <div className="mt-4 space-y-1 text-sm">
                   <p>Esperado: {formatBRL(result.expected)}</p>
