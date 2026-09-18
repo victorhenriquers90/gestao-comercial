@@ -53,6 +53,7 @@ function MetasPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [salvando, setSalvando] = useState(false);
   const list = useQuery({ queryKey: ["targets"], queryFn: () => listTargetsFn() });
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const sellers = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
@@ -80,12 +81,23 @@ function MetasPage() {
   }
 
   async function save() {
+    if (salvando) return;
+    // Valor validado: vazio virava Number("") = 0 e criava uma meta de
+    // R$ 0,00. Nao quebra nada (o servidor guarda a divisao do progresso),
+    // mas nasce presa em 0% pra sempre, ocupando o card de Metas do painel e
+    // as dicas de bonus do PDV sem nunca poder ser batida.
+    const valor = Number(form.amount);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      toast.error("Informe um valor de meta maior que zero.");
+      return;
+    }
+    setSalvando(true);
     try {
       await saveTargetFn({
         data: {
           id: form.id,
           name: form.name,
-          amount: Number(form.amount),
+          amount: valor,
           periodStart: form.periodStart,
           periodEnd: form.periodEnd,
           storeId: form.storeId ? Number(form.storeId) : null,
@@ -101,6 +113,8 @@ function MetasPage() {
       void qc.invalidateQueries({ queryKey: ["dashboard"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível salvar a meta.");
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -240,8 +254,8 @@ function MetasPage() {
               Metas de loja acompanham o faturamento. Para pagar bônus, escolha um vendedor.
             </p>
           )}
-          <Button className="mt-4" onClick={() => void save()}>
-            Salvar
+          <Button className="mt-4" disabled={salvando} onClick={() => void save()}>
+            {salvando ? "Salvando…" : "Salvar"}
           </Button>
         </DialogContent>
       </Dialog>

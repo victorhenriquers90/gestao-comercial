@@ -28,6 +28,7 @@ function EstoquePage() {
   const [qty, setQty] = useState("1");
   const [note, setNote] = useState("");
   const [toStore, setToStore] = useState("");
+  const [registrando, setRegistrando] = useState(false);
 
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const stock = useQuery({
@@ -166,9 +167,20 @@ function EstoquePage() {
           </Field>
           <Button
             className="mt-4 w-full"
+            disabled={registrando}
             onClick={async () => {
-              if (!adj || !storeId) return;
+              if (!adj || !storeId || registrando) return;
               if (!note.trim() && !toStore) return toast.error("Informe o motivo.");
+              // Quantidade validada: campo vazio virava Number("") = 0 e
+              // registrava uma movimentacao de 0 unidade. E a trava evita que
+              // dois cliques movimentem o estoque duas vezes -- numa loja de
+              // roupa, estoque a mais que o real vira venda de peca que nao
+              // existe.
+              const quantidade = Number(qty);
+              if (!Number.isFinite(quantidade) || quantidade <= 0) {
+                return toast.error("Informe uma quantidade maior que zero.");
+              }
+              setRegistrando(true);
               try {
                 if (toStore) {
                   await transferStockFn({
@@ -176,7 +188,7 @@ function EstoquePage() {
                       fromStoreId: storeId,
                       toStoreId: Number(toStore),
                       variantId: adj.variantId,
-                      quantity: Number(qty),
+                      quantity: quantidade,
                       note,
                     },
                   });
@@ -186,7 +198,7 @@ function EstoquePage() {
                       storeId,
                       variantId: adj.variantId,
                       type,
-                      quantity: Number(qty),
+                      quantity: quantidade,
                       note,
                     },
                   });
@@ -197,10 +209,12 @@ function EstoquePage() {
                 void qc.invalidateQueries({ queryKey: ["moves"] });
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Falha");
+              } finally {
+                setRegistrando(false);
               }
             }}
           >
-            Registrar
+            {registrando ? "Registrando…" : "Registrar"}
           </Button>
         </DialogContent>
       </Dialog>
