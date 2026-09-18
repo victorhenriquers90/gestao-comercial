@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { APP_NAME } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
-import { assertCan, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
+import { assertCan, can, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { audit, requireTenant } from "./context";
 import { dump, type Row } from "@/lib/json";
@@ -35,7 +35,20 @@ export const globalSearchFn = createServerFn({ method: "POST" })
     const like = prefixLike(q);
     const fts = ftsPrefix(q);
     const contains = `%${q}%`;
-    const products = await sql<{ id: number; name: string; sku: string | null; barcode: string | null }>`
+    // A busca global devolvia as cinco secoes para QUALQUER papel autenticado:
+    // era o unico caminho de leitura sem assertCan, e furava o que as telas
+    // barram. Um "Operador de PDV" (so pdv.sell, pdv.discount, customers.read,
+    // cash.read, cash.write) recebia por aqui nome/SKU de produto, razao social
+    // de fornecedor e numero/total de venda e de compra -- justamente o que o
+    // papel nao pode ler, "nem no menu nem no servidor". Cada secao agora so e
+    // consultada se o papel tiver a permissao correspondente; clientes segue
+    // aparecendo para o PDV porque customers.read faz parte do papel.
+    const podeProdutos = can(tenant.role, "products.read");
+    const podeClientes = can(tenant.role, "customers.read");
+    const podeFornecedores = can(tenant.role, "suppliers.read");
+    const podeVendas = can(tenant.role, "sales.read");
+    const podeCompras = can(tenant.role, "purchases.read");
+    const products = !podeProdutos ? [] : await sql<{ id: number; name: string; sku: string | null; barcode: string | null }>`
       select id, name, sku, barcode from products
       where company_id = ${tenant.companyId} and deleted_at is null
         and (
@@ -46,7 +59,7 @@ export const globalSearchFn = createServerFn({ method: "POST" })
         )
       order by name limit 6
     `;
-    const customers = await sql<{ id: number; name: string; document: string | null }>`
+    const customers = !podeClientes ? [] : await sql<{ id: number; name: string; document: string | null }>`
       select id, name, document from customers
       where company_id = ${tenant.companyId} and deleted_at is null
         and (
@@ -57,7 +70,7 @@ export const globalSearchFn = createServerFn({ method: "POST" })
         )
       limit 5
     `;
-    const suppliers = await sql<{ id: number; legal_name: string; trade_name: string | null }>`
+    const suppliers = !podeFornecedores ? [] : await sql<{ id: number; legal_name: string; trade_name: string | null }>`
       select id, legal_name, trade_name from suppliers
       where company_id = ${tenant.companyId} and deleted_at is null
         and (
@@ -68,13 +81,13 @@ export const globalSearchFn = createServerFn({ method: "POST" })
         )
       limit 4
     `;
-    const sales = await sql<{ id: number; number: number; total: string | number }>`
+    const sales = !podeVendas ? [] : await sql<{ id: number; number: number; total: string | number }>`
       select id, number, total from sales
       where company_id = ${tenant.companyId} and deleted_at is null
         and (cast(number as text) = ${q} or cast(id as text) = ${q})
       limit 4
     `;
-    const purchases = await sql<{ id: number; number: number; total: string | number }>`
+    const purchases = !podeCompras ? [] : await sql<{ id: number; number: number; total: string | number }>`
       select id, number, total from purchases
       where company_id = ${tenant.companyId} and deleted_at is null
         and (cast(number as text) = ${q} or cast(id as text) = ${q})
