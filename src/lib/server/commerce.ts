@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { computeCommission } from "@/lib/commission";
+import { operatorDiscountPct } from "@/lib/discount";
 import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { bestPromo, type Promo } from "@/lib/promo";
@@ -153,6 +154,10 @@ export const checkoutFn = createServerFn({ method: "POST" })
 
     let subtotal = 0;
     let costTotal = 0;
+    // Parcela de desconto que o OPERADOR concedeu, separada da que a promocao
+    // concedeu: o limite do papel vale sobre a escolha do operador; promocao e
+    // regra do sistema e nao deve consumir o limite de ninguem.
+    let descontoOperador = 0;
     const lines: {
       variantId: number;
       productId: number;
@@ -191,8 +196,10 @@ export const checkoutFn = createServerFn({ method: "POST" })
       ) {
         assertCan(tenant.role, "pdv.price_override");
       }
-      const disc = Math.max(num(item.discount), promo?.discount ?? 0);
+      const descontoPromo = promo?.discount ?? 0;
+      const disc = Math.max(num(item.discount), descontoPromo);
       const line = Number((item.unitPrice * item.quantity - disc).toFixed(2));
+      descontoOperador += Math.max(0, disc - descontoPromo);
       subtotal += line;
       costTotal += num(cat.cost) * item.quantity;
       lines.push({
@@ -210,10 +217,26 @@ export const checkoutFn = createServerFn({ method: "POST" })
     }
 
     const headerDisc = num(data.discount);
-    if (headerDisc > 0) assertCan(tenant.role, "pdv.discount");
     const total = Number((subtotal - headerDisc).toFixed(2));
     if (total < 0) throw new Error("Total inválido.");
-    const discPct = subtotal > 0 ? (headerDisc / subtotal) * 100 : 0;
+
+    // O limite do papel vale sobre TODO desconto que o operador concedeu --
+    // linha e cabecalho somados -- medido sobre o preco depois das promocoes.
+    //
+    // Antes a conta era `headerDisc / subtotal`, e os descontos de linha ja
+    // estavam DENTRO do subtotal: bastava mandar o desconto no item em vez do
+    // cabecalho para o percentual dar zero e o teto nunca disparar. O
+    // item.discount tambem nao passava por assertCan. Ou seja, um operador com
+    // limite de 2% zerava a venda mandando o preco correto (passando na
+    // checagem de price_override) e o desconto na linha -- venda finalizada,
+    // estoque baixado, nenhum erro. O limite existe justamente para impedir
+    // que alguem entregue mercadoria por conta propria.
+    if (descontoOperador + headerDisc > 0.009) assertCan(tenant.role, "pdv.discount");
+    const discPct = operatorDiscountPct({
+      subtotal,
+      lineDiscount: descontoOperador,
+      headerDiscount: headerDisc,
+    });
     if (discPct > tenant.discountLimit + 0.05) {
       throw new Error(`Desconto acima do limite (${tenant.discountLimit}%). Solicite autorização.`);
     }
