@@ -35,6 +35,8 @@ function FinanceiroPage() {
   const range = resolvePeriod("month");
   const [openPay, setOpenPay] = useState(false);
   const [openRec, setOpenRec] = useState(false);
+  /** Trava o envio da despesa: dois cliques gravavam dois lancamentos iguais. */
+  const [lancandoDespesa, setLancandoDespesa] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState("");
@@ -245,31 +247,65 @@ function FinanceiroPage() {
             className="mb-4 flex flex-wrap gap-2"
             onSubmit={async (e) => {
               e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              await saveExpenseFn({
-                data: {
-                  description: String(fd.get("d")),
-                  category: String(fd.get("c")),
-                  amount: Number(fd.get("a")),
-                  spentAt: String(fd.get("dt")),
-                  storeId: storeId,
-                },
-              });
-              toast.success("Despesa lançada.");
-              void qc.invalidateQueries({ queryKey: ["expenses"] });
-              void qc.invalidateQueries({ queryKey: ["flow"] });
-              e.currentTarget.reset();
+              if (lancandoDespesa) return;
+              // O <form> precisa ser guardado ANTES do await: depois dele o
+              // React zera e.currentTarget, e o reset() estourava
+              // "Cannot read properties of null" -- dentro de um handler async
+              // sem catch, ou seja, em silencio. Na pratica: aparecia "Despesa
+              // lancada." mas os campos continuavam preenchidos, o operador
+              // achava que nao tinha salvo e clicava de novo. Sem trava de
+              // envio, isso gravava a despesa DUPLICADA.
+              const form = e.currentTarget;
+              const fd = new FormData(form);
+              setLancandoDespesa(true);
+              try {
+                await saveExpenseFn({
+                  data: {
+                    description: String(fd.get("d")),
+                    category: String(fd.get("c")),
+                    amount: Number(fd.get("a")),
+                    spentAt: String(fd.get("dt")),
+                    storeId: storeId,
+                  },
+                });
+                toast.success("Despesa lançada.");
+                void qc.invalidateQueries({ queryKey: ["expenses"] });
+                void qc.invalidateQueries({ queryKey: ["flow"] });
+                form.reset();
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Falha ao lançar a despesa.");
+              } finally {
+                setLancandoDespesa(false);
+              }
             }}
           >
-            <Input name="d" placeholder="Descrição" required />
-            <Select name="c">
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </Select>
-            <Input name="a" type="number" step="0.01" placeholder="Valor" required />
-            <Input name="dt" type="date" required />
-            <Button type="submit">Lançar</Button>
+            {/* Os quatro campos nao tinham rotulo nenhum -- e o de data nem
+                placeholder: um campo vazio, sem nada dizendo que e a data da
+                despesa. E um lancamento de dinheiro SAINDO do caixa. */}
+            <Field label="Descrição" className="min-w-48 flex-1">
+              <Input name="d" required />
+            </Field>
+            <Field label="Categoria">
+              <Select name="c">
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Valor" className="w-36">
+              <div className="relative">
+                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+                  R$
+                </span>
+                <Input name="a" type="number" step="0.01" className="pl-9" required />
+              </div>
+            </Field>
+            <Field label="Data da despesa">
+              <Input name="dt" type="date" required />
+            </Field>
+            <Button type="submit" className="mb-0.5 self-end" disabled={lancandoDespesa}>
+              {lancandoDespesa ? "Lançando…" : "Lançar"}
+            </Button>
           </form>
           <DataTable
             headers={

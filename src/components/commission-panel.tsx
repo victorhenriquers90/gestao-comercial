@@ -95,6 +95,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
   });
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  /** Regra aguardando confirmacao de exclusao (muda quanto o vendedor recebe). */
+  const [excluirId, setExcluirId] = useState<number | null>(null);
 
   function startNew() {
     setForm(emptyForm);
@@ -285,17 +287,45 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
                 <Badge variant={r.isActive ? "success" : "muted"}>{r.isActive ? "Ativa" : "Pausada"}</Badge>
               </Td>
               <Td>
-                <div className="flex flex-wrap justify-end gap-1">
-                  <Button size="sm" variant="outline" onClick={() => startEdit(r)}>
-                    Editar
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void toggleActive(r)}>
-                    {r.isActive ? "Pausar" : "Ativar"}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void remove(r.id)}>
-                    Excluir
-                  </Button>
-                </div>
+                {/* Excluir em duas etapas e em vermelho: apagar uma regra muda
+                    quanto o vendedor recebe, e o botao estava em ghost --
+                    visualmente identico ao "Pausar" ao lado, que e reversivel.
+                    Nada distinguia um do outro nem pedia confirmacao. */}
+                {excluirId === r.id ? (
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    <span className="text-xs text-muted-foreground">Excluir regra?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setExcluirId(null);
+                        void remove(r.id);
+                      }}
+                    >
+                      Sim
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setExcluirId(null)}>
+                      Não
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <Button size="sm" variant="outline" onClick={() => startEdit(r)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void toggleActive(r)}>
+                      {r.isActive ? "Pausar" : "Ativar"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setExcluirId(r.id)}
+                    >
+                      Excluir
+                    </Button>
+                  </div>
+                )}
               </Td>
             </tr>
           ))}
@@ -427,6 +457,7 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
                     size="icon-sm"
                     variant="ghost"
                     className="mb-0.5"
+                    aria-label={`Remover faixa ${i + 1}`}
                     onClick={() => setForm({ ...form, tiers: form.tiers.filter((_, idx) => idx !== i) })}
                     disabled={form.tiers.length <= 1}
                   >

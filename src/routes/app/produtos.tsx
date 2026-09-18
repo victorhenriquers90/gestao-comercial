@@ -264,10 +264,14 @@ function ProdutosPage() {
                 <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativo" : "Inativo"}</Badge>
               </Td>
               <Td>
+                {/* aria-label alem do title: title vira tooltip no mouse, mas
+                    nem todo leitor de tela o anuncia como nome, e no toque ele
+                    nao aparece nunca. */}
                 <Button
                   size="icon-sm"
                   variant="ghost"
                   title="Imprimir etiqueta"
+                  aria-label={`Imprimir etiqueta de ${p.name}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setTagsFor(p.id);
