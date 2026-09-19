@@ -168,9 +168,12 @@ function DashboardPage() {
             ) : (
               d.targets.map((t) => (
                 <div key={t.id}>
-                  <div className="flex justify-between text-sm">
-                    <span>{t.name}</span>
-                    <span className="tabular">{formatPct(t.progress)}</span>
+                  {/* gap-3 junto com o truncate: sem folga, o nome cortado
+                      encosta no percentual, porque o truncate faz o texto
+                      ocupar toda a largura livre. */}
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="truncate">{t.name}</span>
+                    <span className="shrink-0 whitespace-nowrap tabular">{formatPct(t.progress)}</span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
                     <div
@@ -198,19 +201,26 @@ function DashboardPage() {
           <CardContent className="space-y-block text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Comissões a pagar</span>
-              <span className="tabular font-medium">{formatBRL(d.pendingCommissionNet)}</span>
+              {/* shrink-0 + nowrap em todo valor destas listas: sem isso o
+                  numero encolhe junto com o rotulo e quebra no meio ("4 /"
+                  em cima do "8"). Quem deve absorver a falta de espaco e o
+                  texto, que corta com reticencias; o valor precisa continuar
+                  legivel de uma olhada. */}
+              <span className="shrink-0 whitespace-nowrap tabular font-medium">
+                {formatBRL(d.pendingCommissionNet)}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Retido no mês</span>
-              <span className="tabular">{formatBRL(d.monthTaxWithheld)}</span>
+              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthTaxWithheld)}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Encargos (INSS/FGTS)</span>
-              <span className="tabular">{formatBRL(d.monthEmployerCharges)}</span>
+              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthEmployerCharges)}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Folha paga no mês</span>
-              <span className="tabular">{formatBRL(d.monthCommissionNet)}</span>
+              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthCommissionNet)}</span>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link to="/app/vendedores" className="text-xs text-primary hover:underline">
@@ -237,7 +247,7 @@ function DashboardPage() {
               d.topProducts.map((p) => (
                 <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
                   <span className="truncate">{p.name}</span>
-                  <span className="tabular text-muted-foreground">
+                  <span className="shrink-0 whitespace-nowrap tabular text-muted-foreground">
                     {formatQty(p.qty)} · {formatBRL(p.total)}
                   </span>
                 </div>
@@ -256,7 +266,7 @@ function DashboardPage() {
               d.topSellers.map((p) => (
                 <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
                   <span className="truncate">{p.name}</span>
-                  <span className="tabular">{formatBRL(p.total)}</span>
+                  <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(p.total)}</span>
                 </div>
               ))
             )}
@@ -276,7 +286,7 @@ function DashboardPage() {
                     <p className="truncate">{p.name}</p>
                     <p className="text-xs text-muted-foreground">{p.store}</p>
                   </div>
-                  <Badge variant="warning">
+                  <Badge variant="warning" className="shrink-0 whitespace-nowrap">
                     {formatQty(p.quantity)} / {formatQty(p.minStock)}
                   </Badge>
                 </div>

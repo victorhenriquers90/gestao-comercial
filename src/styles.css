@@ -441,6 +441,9 @@
     }
     .kpi-card {
       display: grid;
+      /* Mesmo motivo do .dash-list (ver comentario la embaixo): faixa
+         implicita `auto` estoura com conteudo que nao quebra. */
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: subgrid;
       grid-row: span 4;
       row-gap: var(--space-beat);
@@ -516,6 +519,7 @@
     }
     .tile {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: subgrid;
       grid-row: span 4;
       row-gap: 0.35rem;
@@ -558,6 +562,7 @@
     }
     .board-col {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: subgrid;
       grid-row: 1 / -1;
     }
@@ -669,8 +674,24 @@
   .dash-stock { grid-area: stock; min-width: 0; }
   .dash-monthly { grid-area: monthly; min-width: 0; }
 
+  /*
+    A coluna PRECISA ser declarada nestes grids de uma coluna so.
+
+    Sem `grid-template-columns`, a coluna implicita e `auto`, e uma faixa
+    `auto` cresce ate o min-content dos itens -- que aqui e enorme, porque
+    `truncate` inclui `white-space: nowrap` e a contribuicao min-content de
+    um texto que nao quebra e a linha inteira. Resultado: o cartao media
+    255px e o conteudo dentro dele 317px, vazando os valores e as etiquetas
+    pra fora da borda (foi o que apareceu em "Produtos mais vendidos" e
+    "Estoque baixo" no painel).
+
+    `minmax(0, 1fr)` da a mesma largura de sempre no caso normal e, no caso
+    que estourava, deixa a faixa encolher -- que e justamente a condicao
+    pro `truncate` funcionar e cortar com reticencias.
+  */
   .dash-fill {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
 
@@ -680,6 +701,7 @@
 
   .dash-list {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
 
