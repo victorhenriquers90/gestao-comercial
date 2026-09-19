@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { BackupStatusCard } from "@/components/backup-status-card";
 import { IssSettingsPanel } from "@/components/iss-rate";
 import { ImageField } from "@/components/image-editor";
 import { Button } from "@/components/ui/button";
@@ -183,6 +184,9 @@ function ConfigPage() {
   return (
     <div>
       <PageHeader title="Configurações" description="Empresa, lojas, equipe, ISS, impressão e auditoria." />
+      {/* Fora das abas de proposito: quando o backup falha, isso precisa ser
+          visto por quem abriu a tela, sem depender de clicar na aba certa. */}
+      {podeConfigurar ? <BackupStatusCard /> : null}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           {podeConfigurar ? <TabsTrigger value="empresa">Empresa</TabsTrigger> : null}

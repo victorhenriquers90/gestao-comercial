@@ -206,7 +206,18 @@ function Save-BackupState {
         file         = Split-Path $ArchivePath -Leaf
         sizeBytes    = (Get-Item $ArchivePath).Length
     }
-    $estado | ConvertTo-Json | Set-Content -Path (Join-Path $BackupDir "last-backup.json") -Encoding UTF8
+    # WriteAllText com UTF8Encoding($false), nao Set-Content -Encoding UTF8:
+    # no Windows PowerShell 5.1 (que e o que a tarefa agendada roda) esse
+    # -Encoding UTF8 grava BOM, e JSON.parse do Node LANCA com BOM no
+    # inicio. O app leria este arquivo, falharia no parse e concluiria "nunca
+    # houve backup" numa loja com backup em dia -- um alarme falso que
+    # ensinaria todo mundo a ignorar o alarme de verdade.
+    $json = $estado | ConvertTo-Json
+    [IO.File]::WriteAllText(
+        (Join-Path $BackupDir "last-backup.json"),
+        $json,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
 }
 
 function Register-AppBackupTask {
