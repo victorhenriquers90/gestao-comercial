@@ -4,6 +4,7 @@ import { useState, type FormEvent, useEffect } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient, authEnabled, ensureCsrfCookie } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME } from "@/lib/constants";
@@ -71,7 +72,10 @@ function LoginPage() {
           />
         </div>
         <div className="relative z-[1] flex flex-col items-center gap-3">
-          <BrandMark className="size-10" tone="inverse" />
+          <div className="relative grid size-16 place-items-center">
+            <Spinner className="absolute inset-0 size-16" tone="inverse" />
+            <BrandMark className="size-8" tone="inverse" />
+          </div>
           <p className="text-sm text-primary-foreground/85">Abrindo a loja…</p>
         </div>
       </main>
