@@ -15,7 +15,11 @@ do contexto de "por que" antes de mudar algo aqui.
 - `Finish-TailscaleSetup.ps1` -- roda uma vez, DEPOIS que o responsavel da
   loja fizer `tailscale login` manualmente.
 - `Uninstall-GestaoComercial.ps1` -- remove o servico/app. Por padrao NUNCA
-  apaga o banco de dados nem os segredos (precisa de `-RemoveData` explicito).
+  apaga o banco de dados nem os segredos (precisa de `-RemoveData` explicito),
+  e nem mesmo `-RemoveData` apaga os backups (precisa de `-RemoveBackups`).
+- `Backup-GestaoComercial.ps1` -- backup do banco. E o que a tarefa agendada
+  diaria chama; tambem roda na mao antes de algo arriscado.
+- `Restore-GestaoComercial.ps1` -- restauracao a partir de um backup.
 - `vendor\` (voce cria, nao versionado) -- instaladores de terceiros
   opcionais, ver abaixo.
 
@@ -77,6 +81,67 @@ PowerShell aqui ja reflete no proximo `dotnet publish`.
    confirmacao antes de continuar -- nao muda a categoria sozinho.
 6. Instala o cliente Tailscale (se fornecido) mas NAO faz login -- isso e
    sempre manual, e por design (ver plano da sessao, secao de riscos).
+7. Agenda o backup diario do banco e ja roda um na hora, pra falha de
+   configuracao aparecer na frente de quem instalou.
+
+## Backup e restauracao
+
+O backup diario roda as 22:30 pela tarefa do Windows `GestaoComercial-Backup`
+(usuario SYSTEM, com `-StartWhenAvailable` -- se a loja estava desligada no
+horario, roda na proxima vez que ligar). Os arquivos ficam em
+`C:\ProgramData\GestaoComercial\backups`, retencao de 30 dias com piso de 7
+copias, e o log em `logs\backup.log`.
+
+Todo backup e **verificado antes de virar backup**: o dump e escrito como
+`.partial` e so ganha o nome definitivo depois que o `pg_restore` consegue
+ler o indice e as tabelas criticas (`sales`, `payments`, `cash_movements`...)
+aparecem nele. Backup corrompido e pior que backup nenhum -- da a sensacao de
+estar protegido ate o dia em que precisa.
+
+Numa **atualizacao**, o instalador tira um backup ANTES de trocar arquivos e
+rodar migrations, e **interrompe a atualizacao** se esse backup falhar. E
+deliberado: uma loja que continua na versao antiga nao perde nada; uma que
+atualiza sem rede de seguranca nao tem pra onde voltar. `-SkipPreUpdateBackup`
+existe como valvula de escape consciente.
+
+### Copia fora da maquina (importante)
+
+Por padrao o backup fica **no mesmo disco do banco**. Isso protege contra
+erro de operacao e migration ruim, mas **nao** contra o disco falhar. Pra ter
+copia externa, instale/atualize passando a pasta de destino:
+
+```powershell
+.\Install-GestaoComercial.ps1 -AppSourceDir <pasta> -BackupSecondaryDir "E:\backups"
+```
+
+Serve pendrive, HD externo ou pasta de rede. Se a copia externa falhar (o
+pendrive foi removido, por exemplo), o backup local ainda e salvo -- um
+pendrive fora do lugar nao pode significar "hoje nao teve backup".
+
+### Restaurar
+
+```powershell
+# Usa o backup mais recente, por cima do banco de producao:
+.\Restore-GestaoComercial.ps1 -Force
+```
+
+Exige `-Force` **e** digitar o nome do banco pra confirmar; para o servico
+antes e sobe depois; e salva um `pre_restauracao_*.dump` do estado atual
+antes de sobrescrever, pra que escolher o arquivo errado nao seja definitivo.
+
+### Ensaio (faca pelo menos uma vez)
+
+Um backup que nunca foi restaurado e so um arquivo grande. Com a loja
+tranquila, crie um banco descartavel (precisa do superusuario do Postgres,
+entao e voce quem roda) e restaure nele:
+
+```powershell
+psql -U postgres -c "CREATE DATABASE ensaio_restauracao OWNER gestao_app"
+.\Restore-GestaoComercial.ps1 -TargetDatabase ensaio_restauracao
+```
+
+Nada do banco de producao e tocado, e voce descobre ANTES da emergencia se o
+backup presta.
 
 ## Depois da instalacao: acesso remoto do responsavel
 

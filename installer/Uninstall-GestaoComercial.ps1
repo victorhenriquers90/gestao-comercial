@@ -8,7 +8,12 @@
 [CmdletBinding()]
 param(
     [string]$InstallDir = "C:\Apps\GestaoComercial",
-    [switch]$RemoveData
+    [switch]$RemoveData,
+    # Os backups sao a ULTIMA copia dos dados da loja. -RemoveData apaga
+    # configuracao, e este script promete nao apagar o banco -- apagar os
+    # backups junto contradiria essa promessa no pior momento possivel.
+    # Entao eles so somem se forem pedidos por nome.
+    [switch]$RemoveBackups
 )
 
 Set-StrictMode -Version Latest
@@ -26,6 +31,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 Write-Host "Parando e removendo o servico..."
 Remove-AppService -NssmPath "C:\ProgramData\GestaoComercial\nssm.exe"
+
+Write-Host "Removendo a tarefa de backup diario..."
+Unregister-ScheduledTask -TaskName "GestaoComercial-Backup" -Confirm:$false -ErrorAction SilentlyContinue
 
 Get-NetFirewallRule -DisplayName "Gestao Comercial - PDV (LAN)" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Get-NetFirewallRule -DisplayName "Gestao Comercial - PDV (Tailscale)" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
@@ -46,7 +54,26 @@ if ($RemoveData) {
         # REMOVER uma variavel de ambiente (nao so deixar vazia).
         [Environment]::SetEnvironmentVariable($name, $null, "Machine")
     }
-    Remove-Item "C:\ProgramData\GestaoComercial" -Recurse -Force -ErrorAction SilentlyContinue
+    $stateDir = "C:\ProgramData\GestaoComercial"
+    $backupDir = Join-Path $stateDir "backups"
+    $backupsPreservados = $null
+    if ((Test-Path $backupDir) -and -not $RemoveBackups) {
+        # Tira os backups da frente ANTES do apagao recursivo e devolve
+        # depois. Sem isto, -RemoveData levaria junto a ultima copia dos
+        # dados da loja -- exatamente o que este script promete nao fazer.
+        $backupsPreservados = Join-Path $env:TEMP ("gc-backups-" + [guid]::NewGuid().ToString("N"))
+        Move-Item -Path $backupDir -Destination $backupsPreservados -Force
+    }
+
+    Remove-Item $stateDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    if ($backupsPreservados) {
+        New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+        Move-Item -Path $backupsPreservados -Destination $backupDir -Force
+        Write-Host ""
+        Write-Host "Os backups do banco foram MANTIDOS em $backupDir." -ForegroundColor Green
+        Write-Host "Rode com -RemoveBackups se quiser apagar tambem a ultima copia dos dados." -ForegroundColor Green
+    }
 } else {
     Write-Host ""
     Write-Host "Banco de dados, segredos e marcador de instalacao foram MANTIDOS (padrao seguro)." -ForegroundColor Green

@@ -31,6 +31,8 @@
     <Content Include="..\..\installer\Install-GestaoComercial.ps1" Link="installer\Install-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\installer\Finish-TailscaleSetup.ps1" Link="installer\Finish-TailscaleSetup.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\installer\Uninstall-GestaoComercial.ps1" Link="installer\Uninstall-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\Backup-GestaoComercial.ps1" Link="installer\Backup-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\Restore-GestaoComercial.ps1" Link="installer\Restore-GestaoComercial.ps1" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\installer\vendor\nssm.exe" Link="installer\vendor\nssm.exe" CopyToOutputDirectory="PreserveNewest" />
     <!-- Link tem que comecar com ".output\" (com o ponto) -e literalmente o
          nome de pasta que Install-GestaoComercial.ps1 procura dentro de

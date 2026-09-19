@@ -66,7 +66,16 @@ param(
     [string]$PostgresInstallerPath,
     [string]$TailscaleMsiPath,
     [int]$MinNodeMajorVersion = 20,
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    # Pasta pra copia do backup FORA desta maquina (pendrive, HD externo,
+    # pasta de rede). Sem isto o backup diario ainda acontece, mas fica no
+    # mesmo disco do banco -- protege contra erro humano e migration ruim,
+    # nao contra o disco morrer.
+    [string]$BackupSecondaryDir,
+    # Valvula de escape: numa atualizacao o backup previo e obrigatorio de
+    # proposito (ver o bloco de atualizacao). So use isto se o backup
+    # estiver falhando por um motivo que voce ja entendeu.
+    [switch]$SkipPreUpdateBackup
 )
 
 Set-StrictMode -Version Latest
@@ -78,6 +87,7 @@ $libDir = Join-Path $PSScriptRoot "lib"
 . (Join-Path $libDir "Network.ps1")
 . (Join-Path $libDir "WindowsService.ps1")
 . (Join-Path $libDir "Prerequisites.ps1")
+. (Join-Path $libDir "Backup.ps1")
 
 $StateDir = "C:\ProgramData\GestaoComercial"
 $StateFile = Join-Path $StateDir "install-state.json"
@@ -273,6 +283,52 @@ function Copy-AppFiles {
     Copy-Item -Path (Join-Path $AppSourceDir ".output") -Destination $InstallDir -Recurse -Force
 }
 
+function Install-BackupTooling {
+    <#
+        Copia os scripts de backup/restauracao pra um caminho ESTAVEL e
+        agenda o backup diario.
+
+        A copia nao e capricho: $PSScriptRoot aqui e a pasta de extracao do
+        instalador (o .exe single-file se descompacta em %TEMP%\.net\...),
+        que o Windows pode limpar a qualquer momento. Uma tarefa agendada
+        apontando pra la funcionaria hoje e sumiria em silencio depois --
+        mesmo motivo pelo qual o nssm.exe ja e copiado pro $StateDir.
+    #>
+    $toolsDir = Join-Path $StateDir "tools"
+    $toolsLibDir = Join-Path $toolsDir "lib"
+    New-Item -ItemType Directory -Path $toolsLibDir -Force | Out-Null
+
+    Copy-Item -Path (Join-Path $PSScriptRoot "Backup-GestaoComercial.ps1") -Destination $toolsDir -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "Restore-GestaoComercial.ps1") -Destination $toolsDir -Force
+    Copy-Item -Path (Join-Path $libDir "Backup.ps1") -Destination $toolsLibDir -Force
+    Copy-Item -Path (Join-Path $libDir "Prerequisites.ps1") -Destination $toolsLibDir -Force
+
+    Register-AppBackupTask -ScriptPath (Join-Path $toolsDir "Backup-GestaoComercial.ps1") `
+        -SecondaryDir $BackupSecondaryDir
+
+    if (-not $BackupSecondaryDir) {
+        Write-Host "  Atencao: o backup fica em $(Join-Path $StateDir 'backups'), no mesmo disco do banco." -ForegroundColor Yellow
+        Write-Host "  Isso protege contra erro de operacao, mas nao contra o disco falhar." -ForegroundColor Yellow
+        Write-Host "  Pra ter copia fora da maquina, reinstale com -BackupSecondaryDir 'E:\backups' (ou pasta de rede)." -ForegroundColor Yellow
+    }
+}
+
+function Invoke-BackupNow {
+    <#
+        Roda um backup usando as funcoes ja carregadas neste processo (nao
+        depende da tarefa agendada nem dos scripts copiados). Devolve o
+        caminho do arquivo, ou lanca.
+    #>
+    $pgDir = Get-PostgresInstallDir
+    if (-not $pgDir) { throw "PostgreSQL nao encontrado para o backup." }
+    return Invoke-AppBackup `
+        -PgDumpPath (Join-Path $pgDir "bin\pg_dump.exe") `
+        -PgRestorePath (Join-Path $pgDir "bin\pg_restore.exe") `
+        -Connection (Get-AppDbConnection) `
+        -BackupDir (Join-Path $StateDir "backups") `
+        -SecondaryDir $BackupSecondaryDir
+}
+
 # ---------------------------------------------------------------------------
 
 Assert-RunningAsAdministrator
@@ -284,6 +340,24 @@ if ($isUpdate) {
     Write-Step "Instalacao existente detectada -- modo atualizacao (arquivos + reinicio do servico apenas)."
 
     Stop-AppService
+
+    # Backup ANTES de trocar arquivo ou rodar migration. Este e o momento
+    # de risco real de uma atualizacao: uma migration ruim pode alterar
+    # dados de forma que nenhum "voltar a versao anterior" desfaz. Falha
+    # aqui INTERROMPE a atualizacao de proposito -- uma loja que continua
+    # na versao antiga nao perde nada; uma que atualiza sem rede nao tem
+    # pra onde voltar. Use -SkipPreUpdateBackup so com motivo conhecido.
+    if ($SkipPreUpdateBackup) {
+        Write-Host "Backup previo PULADO por opcao explicita (-SkipPreUpdateBackup)." -ForegroundColor Yellow
+    } else {
+        Write-Step "Backup do banco antes de atualizar."
+        try {
+            Invoke-BackupNow | Out-Null
+        } catch {
+            throw "Nao consegui fazer o backup previo: $($_.Exception.Message)`nAtualizacao interrompida -- a loja continua na versao atual, intacta. Resolva o backup ou rode de novo com -SkipPreUpdateBackup se souber o que esta fazendo."
+        }
+    }
+
     Copy-AppFiles -IsUpdate
     $nodeExe = Get-NodeExePath
     $entryScript = Join-Path $InstallDir ".output\server\index.mjs"
@@ -307,6 +381,11 @@ if ($isUpdate) {
     if ($browserExe) {
         Add-AppShortcut -BrowserExePath $browserExe -Port $Port
     }
+
+    # Reaplicado a cada atualizacao: o agendamento pode ter sido apagado, e
+    # os scripts copiados precisam acompanhar a versao nova.
+    Write-Step "Conferindo rotina de backup."
+    Install-BackupTooling
 
     Save-InstallState -State @{
         version     = (Get-Date -Format "yyyyMMddHHmmss")
@@ -458,6 +537,19 @@ if ($browserExe) {
     Write-Host "Atalho 'Gestao Comercial' criado -- abre o sistema em janela propria, sem barra de endereco nem abas."
 } else {
     Write-Host "Nenhum Chrome/Edge encontrado -- atalho nao criado. Acesse http://localhost:$Port manualmente." -ForegroundColor Yellow
+}
+
+Write-Step "Configurando backup diario do banco."
+Install-BackupTooling
+# Um backup ja agora, com o instalador ainda rodando: se a rotina estiver
+# quebrada (Postgres em caminho inesperado, permissao, disco cheio), o erro
+# aparece aqui, na frente de quem instalou -- e nao as 22h30 de um dia
+# qualquer, sem ninguem olhando.
+try {
+    Invoke-BackupNow | Out-Null
+} catch {
+    Write-Warning "O primeiro backup falhou: $($_.Exception.Message)"
+    Write-Warning "O sistema esta instalado e funcionando, mas SEM backup -- resolva antes de operar."
 }
 
 Save-InstallState -State @{

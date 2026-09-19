@@ -108,6 +108,16 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 
 ## O que já está feito (não refazer)
 
+Backup do banco (`installer\lib\Backup.ps1`, `Backup-GestaoComercial.ps1`,
+`Restore-GestaoComercial.ps1`): tarefa diária do Windows às 22:30 por SYSTEM,
+dump `-Fc` verificado com `pg_restore --list` **antes** de receber o nome
+definitivo (escrito como `.partial` até passar), retenção 30 dias com piso de
+7 cópias, backup obrigatório antes de migration numa atualização (falhou →
+atualização abortada), e `-BackupSecondaryDir` para cópia fora da máquina.
+Testado na loja piloto: 44 tabelas, contagem de linhas do dump conferida
+contra o banco vivo tabela a tabela, e a verificação rejeitando dump
+truncado e vazio.
+
 Cadastro completo (produto/grade, cliente, fornecedor, compra, estoque,
 financeiro, caixa, CRM, metas, promoções, devoluções, relatórios). Folha de
 comissão com faixas, bônus de meta, retenções. CSRF, sanitização, CPF/CNPJ,
@@ -148,10 +158,19 @@ texto no tema do app.
 
 ## Próximos (se o usuário disser “continuar”)
 
-1. Hospedagem de produção: o projeto já está desenhado pra Vercel + Neon
-   (migrations automáticas no `npm run build`), mas o usuário ainda não
-   confirmou se segue por aí ou quer outra coisa — perguntar antes de mexer
-   em deploy/env vars de produção.
+1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
+   jeito**: o sistema roda **on-premise**, instalado na máquina da loja
+   (Postgres local + serviço do Windows via NSSM + acesso remoto por
+   Tailscale). Ver `installer\README.md`. O caminho Vercel + Neon continua
+   existindo no código (migrations no `npm run build`), mas não é o que está
+   em produção — não mexa nele achando que é o alvo.
+
+2. **Visibilidade do backup no sistema.** A rotina de backup existe e grava
+   `C:\ProgramData\GestaoComercial\backups\last-backup.json`, mas nada no app
+   lê esse arquivo. A falha clássica desse tipo de rotina é parar de rodar
+   sem ninguém perceber — "não dar erro" é exatamente como o silêncio se
+   parece. Falta um aviso em Configurações quando o último backup passar de
+   ~48h.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
