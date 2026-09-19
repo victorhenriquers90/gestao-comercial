@@ -372,19 +372,27 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
     assertCan(tenant.role, "cash.write");
     const current = await loadOpenRegister(sql, tenant.companyId, data.storeId);
     if (!current.register) throw new Error("Nenhum caixa aberto.");
+    // O contado e entrada humana (a contagem da gaveta) e por isso vem do
+    // cliente -- mas precisa ser numero valido: sem isto, um NaN gravaria
+    // diferenca invalida justamente na linha que serve de prova da
+    // conferencia. O esperado continua calculado no servidor.
+    const contado = num(data.amount);
+    if (!Number.isFinite(contado) || contado < 0) {
+      throw new Error("Informe o valor conferido em dinheiro.");
+    }
     const expected = current.summary?.expectedCash ?? 0;
-    const diff = data.amount - expected;
+    const diff = Number((contado - expected).toFixed(2));
     await sql`
-      update cash_registers set status = 'closed', closed_at = now(), closing_amount = ${data.amount},
+      update cash_registers set status = 'closed', closed_at = now(), closing_amount = ${contado},
         expected_amount = ${expected}, difference_amount = ${diff}, notes = ${data.notes ?? current.register.notes}
       where id = ${current.register.id} and company_id = ${tenant.companyId}
     `;
     await audit(sql, tenant, "close", "cash_register", current.register.id, null, {
       expected,
-      counted: data.amount,
+      counted: contado,
       diff,
     });
-    return { expected, counted: data.amount, diff, summary: current.summary };
+    return { expected, counted: contado, diff, summary: current.summary };
   });
 
 export const cashMoveFn = createServerFn({ method: "POST" })
@@ -393,6 +401,20 @@ export const cashMoveFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
+    // Validado AQUI, nao so na tela. A checagem que existia vivia em
+    // caixa.tsx, e validacao de tela nao vale para quem chama o servidor
+    // direto. Importa porque estes valores entram no expectedCash do
+    // fechamento (= abertura + vendas em dinheiro + suprimento - sangria -
+    // devolucoes): um suprimento NEGATIVO derruba o dinheiro esperado, e a
+    // diferenca em especie some da conferencia -- o mesmo desvio que a
+    // validacao de pagamento fechou por outra porta.
+    if (data.type !== "sangria" && data.type !== "suprimento") {
+      throw new Error("Tipo de movimentação inválido.");
+    }
+    const valor = num(data.amount);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      throw new Error("Informe um valor maior que zero.");
+    }
     const [reg] = await sql<{ id: number }>`
       select id from cash_registers
       where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
@@ -401,7 +423,7 @@ export const cashMoveFn = createServerFn({ method: "POST" })
     if (!reg) throw new Error("Abra o caixa antes de lançar sangria ou suprimento.");
     await sql`
       insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
-      values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, ${data.type}, 'dinheiro', ${data.amount}, ${data.description})
+      values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, ${data.type}, 'dinheiro', ${valor}, ${data.description})
     `;
     return { ok: true };
   });
