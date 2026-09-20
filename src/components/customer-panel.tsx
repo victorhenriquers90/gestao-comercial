@@ -179,7 +179,7 @@ export function CustomerPanel({
               </TabsContent>
               <TabsContent value="crm" className="space-y-4">
                 <div>
-                  <p className="mb-2 text-sm font-medium">Tarefas</p>
+                  <p className="mb-2 ed-title">Tarefas</p>
                   <div className="mb-2 flex flex-wrap gap-2">
                     <Input
                       placeholder="Follow-up"
@@ -243,7 +243,7 @@ export function CustomerPanel({
                   </ul>
                 </div>
                 <div>
-                  <p className="mb-2 text-sm font-medium">Anotações</p>
+                  <p className="mb-2 ed-title">Anotações</p>
                   <Textarea
                     placeholder="Registrar conversa, visita ou acordo"
                     value={note}

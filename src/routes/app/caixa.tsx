@@ -111,7 +111,7 @@ function CaixaPage() {
           </div>
           <div className="ops-stage mt-4">
             <Card className="ops-primary p-5">
-              <p className="text-sm font-medium">Sangria / suprimento</p>
+              <p className="ed-title">Sangria / suprimento</p>
               <Field label="Valor" className="mt-block">
                 <Input value={moveAmt} onChange={(e) => setMoveAmt(e.target.value)} />
               </Field>
@@ -136,7 +136,7 @@ function CaixaPage() {
               </div>
             </Card>
             <Card className="ops-secondary p-5">
-              <p className="text-sm font-medium">Fechamento</p>
+              <p className="ed-title">Fechamento</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Aberto em {formatDateTime(String(d.register.opened_at))}
               </p>
@@ -199,7 +199,7 @@ function CaixaPage() {
             </Card>
           </div>
           <Card className="mt-4 p-5">
-            <p className="mb-block text-sm font-medium">Movimentações</p>
+            <p className="mb-block ed-title">Movimentações</p>
             <div className="space-y-2 text-sm">
               {(d.movements as Record<string, unknown>[]).map((m) => (
                 <div key={String(m.id)} className="flex justify-between">

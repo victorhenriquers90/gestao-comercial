@@ -482,6 +482,10 @@
     }
   }
 
+  /*
+    KICKER. Rotulo pequeno e secundario: descricao do PageHeader, cabecalho
+    de tabela, rotulo de campo. NAO e titulo -- ver `.ed-title` abaixo.
+  */
   .ed-label {
     font-family: var(--font-sans);
     font-size: 0.6875rem;
@@ -489,6 +493,30 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--color-muted-foreground);
+  }
+
+  /*
+    TITULO DE SECAO -- o nivel que faltava na escala.
+
+    A escala ia 11, 12, 14, 16 e pulava direto pra 30 (h1). Sem degrau
+    intermediario, todo titulo de cartao e de bloco caia no `ed-label` de
+    11px: um titulo MENOR e MAIS FRACO que o texto de 14px dentro dele. O
+    olho lia o conteudo antes do nome do bloco, e o conjunto parecia
+    inacabado -- era a causa principal da sensacao de "cru".
+
+    18px em Syne (a fonte de titulo do sistema, invariante 9 do HANDOFF) e
+    na cor do texto principal: nomeia o bloco sem competir com o h1 de 30px
+    da pagina. `text-wrap: balance` evita o titulo de duas palavras que
+    quebra deixando uma sozinha na segunda linha.
+  */
+  .ed-title {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    color: var(--color-foreground);
+    text-wrap: balance;
   }
 
   .kpi-value {

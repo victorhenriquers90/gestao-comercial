@@ -57,7 +57,7 @@ function CrmPage() {
 
       {(tasks.data ?? []).length ? (
         <Card className="mb-5 p-4">
-          <p className="mb-3 text-sm font-medium">Agenda de follow-ups</p>
+          <p className="mb-3 ed-title">Agenda de follow-ups</p>
           <ul className="space-y-2">
             {(tasks.data ?? []).slice(0, 8).map((t) => {
               const late = Boolean(t.dueAt && new Date(t.dueAt).getTime() < Date.now());
