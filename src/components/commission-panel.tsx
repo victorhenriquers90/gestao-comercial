@@ -217,7 +217,7 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
 
   return (
     <div>
-      <Card className="mb-4 p-4">
+      <Card className="mb-4 p-5">
         <div className="flex items-start gap-3">
           <Layers className="mt-0.5 size-4 shrink-0 text-primary" />
           <div className="text-sm text-muted-foreground">
@@ -642,7 +642,7 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
 
   return (
     <div>
-      <Card className="mb-4 p-4">
+      <Card className="mb-4 p-5">
         <div className="flex items-start gap-3">
           <FlaskConical className="mt-0.5 size-4 shrink-0 text-primary" />
           <p className="text-sm text-muted-foreground">

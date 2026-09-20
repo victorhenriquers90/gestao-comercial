@@ -82,7 +82,21 @@ export function KpiCard({
       <p className={cn("kpi-value font-display font-semibold tracking-tight tabular", toneClass)}>
         {value}
       </p>
-      <p className="min-h-4 text-xs text-muted-foreground">{hint ?? "\u00a0"}</p>
+      {/*
+        Sem linha reservada quando nao ha `hint` nem `trend`.
+
+        Antes cada KpiCard imprimia dois paragrafos com espaco nao-separavel
+        so para manter os cartoes alinhados -- mas `.kpi-card` ja usa
+        `grid-template-rows: subgrid`, que alinha as linhas ENTRE os cartoes
+        por conta propria. Os espacadores eram redundantes.
+
+        Medido no navegador com o CSS compilado: o cartao cai de 126px para
+        110px e o topo do valor continua identico entre os cartoes da mesma
+        faixa (150/150 e 276/276 antes e depois). Sao 16px por cartao --
+        numa faixa de 8 KPIs, 32px de vazio empurrando o conteudo pra baixo,
+        em toda tela que tem KPI.
+      */}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       {trend ? (
         <p
           className={cn(
@@ -94,9 +108,7 @@ export function KpiCard({
           {up ? "+" : ""}
           {trend.value.toFixed(1)}% {trend.label}
         </p>
-      ) : (
-        <p className="min-h-4 text-xs">{"\u00a0"}</p>
-      )}
+      ) : null}
     </Card>
   );
 }

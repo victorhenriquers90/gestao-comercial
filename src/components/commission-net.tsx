@@ -108,7 +108,7 @@ export function CommissionNetTab({
 
   return (
     <div>
-      <Card className="mb-4 p-4">
+      <Card className="mb-4 p-5">
         <div className="flex items-start gap-3">
           <Calculator className="mt-0.5 size-4 shrink-0 text-primary" />
           <div className="text-sm text-muted-foreground">
