@@ -75,7 +75,7 @@ describe("parseBackupState", () => {
     // e o que a tarefa agendada roda) grava BOM, e JSON.parse lanca com BOM.
     // Sem isto, uma loja com backup em dia era reportada como "nunca houve
     // backup" -- alarme falso, que e como se ensina a ignorar alarme.
-    const r = parseBackupState("﻿" + conteudo);
+    const r = parseBackupState(String.fromCharCode(0xfeff) + conteudo);
     assert.equal(r?.file, "gestao_comercial_20260919_144353.dump");
   });
 

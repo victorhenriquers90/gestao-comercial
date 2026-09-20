@@ -60,7 +60,7 @@ export type BackupStateFile = {
 /**
  * Le o last-backup.json. Devolve null quando nao da pra confiar no conteudo.
  *
- * O replace do ﻿ nao e paranoia: o PowerShell que grava este arquivo ja
+ * Tirar o BOM nao e paranoia: o PowerShell que grava este arquivo ja
  * gravou com BOM (Set-Content -Encoding UTF8 no PS 5.1 poe BOM), e JSON.parse
  * LANCA com BOM no inicio. O lado que grava foi corrigido, mas instalacoes
  * que ja rodaram tem o arquivo com BOM em disco -- e um arquivo ilegivel
@@ -68,7 +68,8 @@ export type BackupStateFile = {
  */
 export function parseBackupState(bruto: string): BackupStateFile | null {
   try {
-    const dados = JSON.parse(bruto.replace(/^﻿/, "")) as Record<string, unknown>;
+    const semBom = bruto.charCodeAt(0) === 0xfeff ? bruto.slice(1) : bruto;
+    const dados = JSON.parse(semBom) as Record<string, unknown>;
     if (!dados || typeof dados !== "object") return null;
     return {
       lastBackupAt: typeof dados.lastBackupAt === "string" ? dados.lastBackupAt : null,
