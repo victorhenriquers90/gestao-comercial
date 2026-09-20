@@ -84,7 +84,19 @@
   --secondary: #e7e1d6;
   --secondary-foreground: #1a1916;
   --muted: #ece7dc;
-  --muted-foreground: #6b675e;
+  /*
+    #5a5650, nao #6b675e: o tema ESCURO ja estava calibrado em ~6,9:1 e o
+    claro tinha ficado para tras, em 5,36:1 no cartao e 4,95:1 na pagina.
+    Isso nao e detalhe de acessibilidade -- este token pinta TODO `ed-label`,
+    e `ed-label` e o cabecalho das tabelas. Medido no laboratorio: a faixa de
+    cabecalho renderiza normalmente (40px de altura, texto presente) e mesmo
+    assim some na tela. A estrutura de leitura principal de um ERP estava
+    invisivel, num PC de loja que raramente tem monitor bom.
+
+    Agora 6,93:1 no cartao e 6,4:1 na pagina -- alinhado com o tema escuro,
+    e ainda claramente "secundario" perto dos 16,7:1 do texto principal.
+  */
+  --muted-foreground: #5a5650;
   --accent: #dce8e3;
   --accent-foreground: #1f5c4d;
   --destructive: #9b3a32;
@@ -390,6 +402,25 @@
 @layer components {
   .data-table tbody tr {
     @apply border-b border-border transition-colors last:border-0 hover:bg-muted/50;
+  }
+
+  /*
+    Numero em tabela nao quebra linha, e alinha a direita.
+
+    "R$ 1.284,90" estava virando "R$" numa linha e "1.284,90" na outra
+    quando a coluna apertava -- que e o normal numa tabela de ERP, cheia de
+    coluna. Alem de feio, inflava a altura da linha e tirava o alinhamento
+    das outras celulas.
+
+    Alinhar essas colunas A DIREITA seria o passo seguinte (deixa a casa
+    decimal na mesma vertical e a ordem de grandeza visivel pelo
+    comprimento), mas exige marcar tambem o `th` de cada coluna numerica em
+    12 telas -- e um `th` esquecido fica pior do que nao alinhar nada.
+    Ficou de fora desta rodada de proposito.
+  */
+  .data-table td.tabular,
+  .data-table th.tabular {
+    @apply whitespace-nowrap;
   }
 
   /* Highlight sweeping over the skeleton's muted base — reads as "loading"

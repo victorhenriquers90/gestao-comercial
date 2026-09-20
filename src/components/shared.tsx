@@ -119,7 +119,24 @@ export function DataTable({
   return (
     <TableWrap>
       <table className="data-table w-full min-w-[640px] text-left text-sm print:min-w-0">
-        <thead className="sticky top-0 z-10 border-b border-border bg-muted/80 backdrop-blur-sm">
+        {/*
+          Sem `backdrop-blur-sm` e com fundo OPACO.
+
+          `backdrop-filter` num `<thead>` fazia o texto do cabecalho sumir --
+          reproduzido e isolado no navegador: removendo so o filtro, com o
+          mesmo fundo translucido, "DESCRIÇÃO FORNECEDOR VENCIMENTO VALOR"
+          volta a aparecer. `backdrop-filter` cria contexto de empilhamento e
+          bloco de contencao, e aplicado em secao de tabela o Chromium perde
+          a pintura do proprio conteudo.
+
+          Isso valia para TODA tabela do sistema: as telas de lista estavam
+          sem cabeçalho de coluna, que e a estrutura de leitura principal de
+          um ERP.
+
+          Opaco tambem e melhor de ler: cabecalho fixo translucido por cima
+          de linhas rolando embaixo embaralha os dois.
+        */}
+        <thead className="sticky top-0 z-10 border-b border-border bg-muted">
           {headers}
         </thead>
         <tbody>{children}</tbody>
