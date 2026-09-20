@@ -251,7 +251,10 @@ export const checkoutFn = createServerFn({ method: "POST" })
     for (const item of data.items) {
       const cat = byVar.get(item.variantId);
       if (!cat) throw new Error("Produto inválido no carrinho.");
-      if (item.quantity <= 0) throw new Error("Quantidade inválida.");
+      // isFinite junto: NaN <= 0 e FALSE, entao NaN passava por esta guarda.
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+        throw new Error("Quantidade inválida.");
+      }
       if (!allowNeg && num(cat.stock) < item.quantity) {
         throw new Error(`Estoque insuficiente: ${cat.name}.`);
       }
@@ -827,7 +830,10 @@ export const createReturnFn = createServerFn({ method: "POST" })
     // ja derivava o unitario da venda original -- aqui passa a fazer igual.
     const valorPorItem = new Map<number, number>();
     for (const item of data.items) {
-      if (item.quantity <= 0) throw new Error("Quantidade inválida.");
+      // isFinite junto: NaN <= 0 e FALSE, entao NaN passava por esta guarda.
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+        throw new Error("Quantidade inválida.");
+      }
       const orig = original.find((o) => o.id === item.saleItemId);
       if (!orig) throw new Error("Item não pertence a esta venda.");
       const qtdOriginal = num(orig.quantity);

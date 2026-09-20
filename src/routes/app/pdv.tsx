@@ -25,6 +25,7 @@ import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/rec
 import { useSelection } from "@/hooks/use-selection";
 import { CARD_BRANDS, PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
 import { MAX_INSTALLMENTS } from "@/lib/card";
+import { parseMoneyInput } from "@/lib/money-input";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { maskBrDoc, parseBrDocument } from "@/lib/document";
 import { bestPromo } from "@/lib/promo";
@@ -34,7 +35,7 @@ import { simulateCommissionFn } from "@/lib/server/commission";
 import { getRegisterFn, openRegisterFn } from "@/lib/server/finance";
 import { listActiveSellerNamesFn, listCustomersFn } from "@/lib/server/party";
 import { getSettingsFn, getTenantFn } from "@/lib/server/session";
-import { cn, num } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/pdv")({ component: PdvPage });
 
@@ -47,6 +48,16 @@ type PayRow = {
   installments: number;
   brand: string;
   nsu: string;
+};
+
+/**
+ * Valor digitado, para os calculos DA TELA (falta, troco, soma).
+ * Ilegivel conta como zero aqui de proposito: e so previa, e o bloqueio de
+ * verdade acontece no finish(), com erro nomeando o campo.
+ */
+const valorDigitado = (texto: string): number => {
+  const n = parseMoneyInput(texto);
+  return Number.isFinite(n) ? n : 0;
 };
 
 /** Mesma altura, mesmo raio e mesmo alinhamento nos seis botoes de acao. */
@@ -182,10 +193,10 @@ function PdvPage() {
   const discount = headerDisc;
   const total = Math.max(0, subtotal - discount);
   const customer = (customers.data ?? []).find((c) => c.id === customerId);
-  const paySum = payments.reduce((a, p) => a + num(p.amount), 0);
+  const paySum = payments.reduce((a, p) => a + valorDigitado(p.amount), 0);
   const remaining = Number((total - paySum).toFixed(2));
   const primaryPay = payments.reduce(
-    (best, p) => (num(p.amount) > num(best.amount) ? p : best),
+    (best, p) => (valorDigitado(p.amount) > valorDigitado(best.amount) ? p : best),
     payments[0] ?? emptyPay(),
   ).method;
   const comm = useQuery({
@@ -228,7 +239,7 @@ function PdvPage() {
 
   function openPay() {
     setPayments((prev) => {
-      if (prev.some((p) => num(p.amount) > 0)) return prev;
+      if (prev.some((p) => valorDigitado(p.amount) > 0)) return prev;
       const first = prev[0] ?? emptyPay();
       const amount = total.toFixed(2);
       return [{ ...first, amount, received: first.method === "dinheiro" ? amount : first.received }];
@@ -374,18 +385,63 @@ function PdvPage() {
       toast.error("Selecione uma loja.");
       return;
     }
-    let pays = payments
-      .map((p) => ({
-        method: p.method,
-        amount: num(p.amount),
-        received: num(p.received || p.amount),
-        installments: p.installments,
-        brand: p.brand,
-        nsu: p.nsu,
-      }))
-      .filter((p) => p.amount > 0);
-    if (!payOpen || pays.length === 0) {
+    /*
+      Se o operador ABRIU o pagamento, o que ele digitou manda -- nada aqui
+      pode "consertar" sozinho o que nao entendeu.
+
+      Antes, o valor passava por num(), que devolve 0 pro que nao consegue
+      ler. Como "50,00" (o jeito que se digita no balcao) vira 0, o pagamento
+      era descartado por ser zero, a lista ficava vazia e o codigo caia no
+      caminho de baixo, que registra a venda inteira em DINHEIRO. O operador
+      escolhia credito e a venda era gravada como especie: o caixa passava a
+      esperar um dinheiro que nunca entrou na gaveta, e a diferenca aparecia
+      no fechamento como se fosse falta dele.
+
+      Agora valor ilegivel e ERRO na cara do operador, e o caminho automatico
+      de dinheiro so vale pra venda rapida, em que ninguem informou nada.
+    */
+    let pays: {
+      method: PaymentMethod;
+      amount: number;
+      received: number;
+      installments: number;
+      brand: string;
+      nsu: string;
+    }[];
+    const vendaRapida = !payOpen || payments.every((p) => !p.amount.trim());
+    if (vendaRapida) {
       pays = [{ method: "dinheiro", amount: total, received: total, installments: 1, brand: "", nsu: "" }];
+    } else {
+      pays = [];
+      for (const p of payments) {
+        if (!p.amount.trim()) continue;
+        const amount = parseMoneyInput(p.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          openPay();
+          toast.error(`Valor inválido em ${PAYMENT_LABELS[p.method]}: "${p.amount}".`);
+          return;
+        }
+        const recebidoTexto = p.received.trim();
+        const received = recebidoTexto ? parseMoneyInput(recebidoTexto) : amount;
+        if (!Number.isFinite(received)) {
+          openPay();
+          toast.error(`Valor recebido inválido: "${p.received}".`);
+          return;
+        }
+        pays.push({
+          method: p.method,
+          amount,
+          received,
+          installments: p.installments,
+          brand: p.brand,
+          nsu: p.nsu,
+        });
+      }
+      if (pays.length === 0) {
+        openPay();
+        toast.error("Informe o valor de pelo menos uma forma de pagamento.");
+        return;
+      }
     }
     if (pays.reduce((a, p) => a + p.amount, 0) + 0.05 < total) {
       openPay();
@@ -435,7 +491,7 @@ function PdvPage() {
   }
 
   const cashPay = payments.find((p) => p.method === "dinheiro");
-  const change = cashPay ? Math.max(0, num(cashPay.received) - num(cashPay.amount)) : 0;
+  const change = cashPay ? Math.max(0, valorDigitado(cashPay.received) - valorDigitado(cashPay.amount)) : 0;
 
   return (
     <div className="pdv-stage">

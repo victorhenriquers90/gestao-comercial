@@ -91,20 +91,31 @@ export const settlePayableFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    const [row] = await sql<{ amount: string | number; paid_amount: string | number }>`
-      select amount, paid_amount from accounts_payable where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (!row) throw new Error("Título não encontrado.");
-    const paid = num(row.paid_amount) + data.amount;
-    const target = num(row.amount) + num(data.interest) - num(data.discount);
-    const status = paid + 0.05 >= target ? "pago" : "parcial";
-    await sql`
-      update accounts_payable set paid_amount = ${paid}, interest = ${data.interest ?? 0},
-        discount = ${data.discount ?? 0}, status = ${status},
-        paid_at = ${status === "pago" ? new Date().toISOString() : null}
-      where id = ${data.id}
-    `;
-    await audit(sql, tenant, "pay", "accounts_payable", data.id, null, { amount: data.amount, status });
+    const baixa = parseSettlement(data);
+    const status = await sql.transaction(async (sql) => {
+      // `for update` trava a linha ate o commit: sem isso, duas baixas
+      // simultaneas leem o mesmo paid_amount e a segunda sobrescreve a
+      // primeira -- some um pagamento sem deixar rastro.
+      const [row] = await sql<{ amount: string | number; paid_amount: string | number }>`
+        select amount, paid_amount from accounts_payable
+         where id = ${data.id} and company_id = ${tenant.companyId} for update
+      `;
+      if (!row) throw new Error("Título não encontrado.");
+      const paid = Number((num(row.paid_amount) + baixa.amount).toFixed(2));
+      const target = num(row.amount) + baixa.interest - baixa.discount;
+      const status = paid + 0.05 >= target ? "pago" : "parcial";
+      await sql`
+        update accounts_payable set paid_amount = ${paid}, interest = ${baixa.interest},
+          discount = ${baixa.discount}, status = ${status},
+          paid_at = ${status === "pago" ? new Date().toISOString() : null}
+        where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "pay", "accounts_payable", data.id, null, {
+        amount: baixa.amount,
+        status,
+      });
+      return status;
+    });
     return { status };
   });
 
@@ -178,19 +189,31 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    const [row] = await sql<{ amount: string | number; received_amount: string | number }>`
-      select amount, received_amount from accounts_receivable where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (!row) throw new Error("Título não encontrado.");
-    const rec = num(row.received_amount) + data.amount;
-    const target = num(row.amount) + num(data.interest) - num(data.discount);
-    const status = rec + 0.05 >= target ? "pago" : "parcial";
-    await sql`
-      update accounts_receivable set received_amount = ${rec}, interest = ${data.interest ?? 0},
-        discount = ${data.discount ?? 0}, status = ${status},
-        received_at = ${status === "pago" ? new Date().toISOString() : null}
-      where id = ${data.id}
-    `;
+    const baixa = parseSettlement(data);
+    const status = await sql.transaction(async (sql) => {
+      const [row] = await sql<{ amount: string | number; received_amount: string | number }>`
+        select amount, received_amount from accounts_receivable
+         where id = ${data.id} and company_id = ${tenant.companyId} for update
+      `;
+      if (!row) throw new Error("Título não encontrado.");
+      const rec = Number((num(row.received_amount) + baixa.amount).toFixed(2));
+      const target = num(row.amount) + baixa.interest - baixa.discount;
+      const status = rec + 0.05 >= target ? "pago" : "parcial";
+      await sql`
+        update accounts_receivable set received_amount = ${rec}, interest = ${baixa.interest},
+          discount = ${baixa.discount}, status = ${status},
+          received_at = ${status === "pago" ? new Date().toISOString() : null}
+        where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      // Auditoria que faltava: dar baixa em recebimento nao deixava rastro
+      // nenhum, enquanto o pagamento deixava. Era justamente o lado que some
+      // dinheiro de dentro pra fora.
+      await audit(sql, tenant, "receive", "accounts_receivable", data.id, null, {
+        amount: baixa.amount,
+        status,
+      });
+      return status;
+    });
     return { status };
   });
 
@@ -332,6 +355,40 @@ export const getRegisterFn = createServerFn({ method: "POST" })
     return dump(await loadOpenRegister(sql, tenant.companyId, data.storeId));
   });
 
+/**
+ * Valores de uma baixa de titulo.
+ *
+ * Entravam crus, e nao e so a questao do NaN: `Infinity` e alcancavel por
+ * JSON comum -- `{"amount": 1e999}` vira Infinity no JSON.parse, e o
+ * Postgres aceita Infinity em coluna numeric. Tres buracos no mesmo lugar:
+ *
+ * 1. Valor NEGATIVO "desrecebia" um titulo ja quitado.
+ * 2. Valor Infinity marcava como pago e gravava Infinity no ledger.
+ * 3. DESCONTO ilimitado fazia o alvo virar negativo, entao qualquer centavo
+ *    (ou zero) ja fechava como "pago" -- um titulo sumindo sem dinheiro.
+ */
+function parseSettlement(data: { amount: number; interest?: number; discount?: number }): {
+  amount: number;
+  interest: number;
+  discount: number;
+} {
+  const amount = Number(data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Informe um valor maior que zero.");
+  }
+  const naoNegativo = (v: unknown, rotulo: string) => {
+    if (v == null || v === "") return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`Valor de ${rotulo} inválido.`);
+    return n;
+  };
+  return {
+    amount: Number(amount.toFixed(2)),
+    interest: naoNegativo(data.interest, "juros"),
+    discount: naoNegativo(data.discount, "desconto"),
+  };
+}
+
 export const openRegisterFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { storeId: number; amount: number; notes?: string }) => d)
@@ -342,7 +399,14 @@ export const openRegisterFn = createServerFn({ method: "POST" })
       select id from cash_registers where store_id = ${data.storeId} and company_id = ${tenant.companyId} and status = 'open'
     `;
     if (existing.length) throw new Error("Já existe um caixa aberto nesta loja.");
-    if (data.amount < 0) throw new Error("Fundo inicial não pode ser negativo.");
+    // Number.isFinite junto, e nao so `< 0`: NaN < 0 e FALSE, entao um fundo
+    // NaN passava direto e virava opening_amount = NaN. Dali em diante o
+    // esperado do fechamento (abertura + vendas + suprimento - sangria -
+    // devolucoes) e NaN pra sempre, e o caixa desta loja nunca mais fecha.
+    // Chegar em NaN e facil: "350,00" digitado no campo vira NaN no Number().
+    if (!Number.isFinite(data.amount) || data.amount < 0) {
+      throw new Error("Fundo inicial inválido.");
+    }
     let row: { id: number } | undefined;
     try {
       [row] = await sql<{ id: number }>`
