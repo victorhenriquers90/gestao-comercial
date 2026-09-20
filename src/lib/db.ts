@@ -35,6 +35,22 @@ export interface Sql {
     text: string,
     params?: unknown[],
   ): Promise<T[]>;
+  /**
+   * Roda tudo em UMA transacao: ou grava inteiro, ou nao grava nada.
+   *
+   * Existe porque sem isto cada `sql\`...\`` pega uma conexao propria do pool
+   * e comita sozinha. Uma venda e ~10 escritas em sequencia (venda, itens,
+   * baixa de estoque, pagamentos, recebiveis, movimento de caixa, comissao):
+   * qualquer erro no meio -- e "Estoque insuficiente" e um erro PREVISTO,
+   * disparado quando outro caixa vende a ultima peca entre a conferencia e a
+   * baixa -- deixava no banco uma venda finalizada com itens, sem pagamento e
+   * sem movimento de caixa. O cliente pagou, o operador viu erro, e os livros
+   * ficaram com uma venda fantasma que ninguem consegue explicar depois.
+   *
+   * Chamar dentro de outra transacao JUNTA na mesma (nao abre aninhada): o
+   * bloco de fora continua sendo a unidade que comita ou desfaz.
+   */
+  transaction<T>(fn: (tx: Sql) => Promise<T>): Promise<T>;
 }
 
 /**
@@ -68,9 +84,16 @@ const OID_INTERVAL = 1186;
 const identity = (v: string) => v;
 
 type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
+type RunTransaction = <T>(fn: (tx: Sql) => Promise<T>) => Promise<T>;
 
-/** Wrap a query runner in the tagged-template + `.query()` `Sql` surface. */
-function toSql(run: Run): Sql {
+/**
+ * Wrap a query runner in the tagged-template + `.query()` `Sql` surface.
+ *
+ * `transaction` e obrigatorio: um backend sem transacao teria que degradar em
+ * silencio pra "roda as escritas soltas", que e exatamente o comportamento
+ * que este parametro existe pra eliminar. Melhor nao compilar.
+ */
+function toSql(run: Run, transaction: RunTransaction): Sql {
   const sql = (async <T = Record<string, unknown>>(
     strings: TemplateStringsArray,
     ...values: unknown[]
@@ -82,6 +105,7 @@ function toSql(run: Run): Sql {
   }) as unknown as Sql;
   sql.query = <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
     run<T>(text, params);
+  sql.transaction = transaction;
   return sql;
 }
 
@@ -94,10 +118,40 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
     const pool = new Pool({ connectionString: databaseUrl });
-    return toSql(async <T>(text: string, params: unknown[]) => {
+    const run: Run = async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
-    });
+    };
+    const transaction: RunTransaction = async <T>(fn: (tx: Sql) => Promise<T>): Promise<T> => {
+      // Uma conexao dedicada do pool do begin ao commit: `pool.query` pega uma
+      // conexao qualquer a cada chamada, entao rodar BEGIN por ela abriria a
+      // transacao numa conexao e as escritas sairiam por outras -- comitadas
+      // soltas, que e justamente o problema.
+      const client = await pool.connect();
+      const txRun: Run = async <R>(text: string, params: unknown[]) => {
+        const res = await client.query(text, params);
+        return res.rows as R[];
+      };
+      // Transacao aninhada JUNTA na de fora em vez de abrir outra: Postgres
+      // nao aninha BEGIN, e um COMMIT interno fecharia a transacao externa no
+      // meio -- pior que nao ter transacao, porque pareceria ter. A casca cita
+      // a si mesma no callback, mas o arrow so roda depois da inicializacao.
+      const txSql: Sql = toSql(txRun, (inner) => inner(txSql));
+      try {
+        await client.query("begin");
+        const out = await fn(txSql);
+        await client.query("commit");
+        return out;
+      } catch (err) {
+        // Se o proprio rollback falhar (conexao ja caiu), o erro que importa e
+        // o original -- o rollback acontece sozinho quando a conexao morre.
+        await client.query("rollback").catch(() => undefined);
+        throw err;
+      } finally {
+        client.release();
+      }
+    };
+    return toSql(run, transaction);
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
     throw err;
@@ -161,10 +215,26 @@ async function createPgliteSql(): Promise<Sql> {
   globalRef.__pgliteMigrateChain__ = pass;
   await pass;
 
-  return toSql(async <T>(text: string, params: unknown[]) => {
-    const result = await pg.query<T>(text, params);
-    return result.rows;
-  });
+  return toSql(
+    async <T>(text: string, params: unknown[]) => {
+      const result = await pg.query<T>(text, params);
+      return result.rows;
+    },
+    // PGLite tem transacao propria; o `tx` dela so expoe query/exec, entao
+    // recebe a mesma casca Sql por cima.
+    async <T>(fn: (tx: Sql) => Promise<T>): Promise<T> =>
+      pg.transaction(async (t) => {
+
+        const txSql: Sql = toSql(
+          async <R>(text: string, params: unknown[]) => {
+            const result = await t.query<R>(text, params);
+            return result.rows;
+          },
+          (inner) => inner(txSql),
+        );
+        return fn(txSql);
+      }) as Promise<T>,
+  );
 }
 
 let sqlPromise: Promise<Sql> | null = null;

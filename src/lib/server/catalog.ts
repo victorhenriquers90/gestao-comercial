@@ -492,24 +492,30 @@ export const transferStockFn = createServerFn({ method: "POST" })
     // Aqui nao havia validacao NENHUMA de quantidade -- nem a de "maior que
     // zero" que o ajuste tinha.
     const quantidade = parseStockQuantity(data.quantity, "quantidade a transferir");
-    await applyStockChange(sql, {
-      companyId: tenant.companyId,
-      storeId: data.fromStoreId,
-      variantId: data.variantId,
-      delta: -quantidade,
-      type: "transferencia",
-      userId: tenant.userId,
-      note: data.note ?? "Transferência entre lojas",
-    });
-    await applyStockChange(sql, {
-      companyId: tenant.companyId,
-      storeId: data.toStoreId,
-      variantId: data.variantId,
-      delta: quantidade,
-      type: "transferencia",
-      userId: tenant.userId,
-      note: data.note ?? "Transferência entre lojas",
-      allowNegative: true,
+    // As duas pontas na MESMA transacao: sao duas escritas que so fazem
+    // sentido juntas. Soltas, um erro entre elas (conexao caindo, o servico
+    // sendo reiniciado) tirava a peca da loja de origem sem coloca-la na de
+    // destino -- estoque que some sem deixar rastro de para onde foi.
+    await sql.transaction(async (sql) => {
+      await applyStockChange(sql, {
+        companyId: tenant.companyId,
+        storeId: data.fromStoreId,
+        variantId: data.variantId,
+        delta: -quantidade,
+        type: "transferencia",
+        userId: tenant.userId,
+        note: data.note ?? "Transferência entre lojas",
+      });
+      await applyStockChange(sql, {
+        companyId: tenant.companyId,
+        storeId: data.toStoreId,
+        variantId: data.variantId,
+        delta: quantidade,
+        type: "transferencia",
+        userId: tenant.userId,
+        note: data.note ?? "Transferência entre lojas",
+        allowNegative: true,
+      });
     });
     return { ok: true };
   });
@@ -638,36 +644,45 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     const imposto = parsePurchaseExtra(data.tax, "imposto");
     const subtotal = itens.reduce((a, i) => a + i.quantity * i.unitCost, 0);
     const total = subtotal - desconto + frete + imposto;
-    let id = data.id;
-    if (id) {
-      const cur = await sql<{ status: string }>`select status from purchases where id = ${id} and company_id = ${tenant.companyId}`;
-      if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
-      await sql`
-        update purchases set supplier_id = ${data.supplierId ?? null}, status = ${data.status}, notes = ${data.notes ?? null},
-          subtotal = ${subtotal}, discount = ${desconto}, freight = ${frete}, tax = ${imposto},
-          total = ${total}, expected_at = ${data.expectedAt ?? null}, updated_at = now()
-        where id = ${id} and company_id = ${tenant.companyId}
-      `;
-      await sql`delete from purchase_items where purchase_id = ${id}`;
-    } else {
-      const number = await nextNumber(sql, tenant.companyId, "purchase");
-      const [row] = await sql<{ id: number }>`
-        insert into purchases (
-          company_id, store_id, supplier_id, number, status, notes, subtotal, discount, freight, tax, total, expected_at, user_id
-        ) values (
-          ${tenant.companyId}, ${data.storeId}, ${data.supplierId ?? null}, ${number}, ${data.status}, ${data.notes ?? null},
-          ${subtotal}, ${desconto}, ${frete}, ${imposto}, ${total}, ${data.expectedAt ?? null}, ${tenant.userId}
-        ) returning id
-      `;
-      id = row!.id;
-    }
-    for (const item of itens) {
-      await sql`
-        insert into purchase_items (company_id, purchase_id, variant_id, product_id, description, quantity, unit_cost, total)
-        values (${tenant.companyId}, ${id}, ${item.variantId}, ${item.productId}, ${item.description}, ${item.quantity}, ${item.unitCost}, ${item.quantity * item.unitCost})
-      `;
-    }
-    return { id };
+    /*
+      O pedido e os itens numa transacao: a gravacao APAGA os itens antigos
+      antes de regravar. Um erro entre o delete e os inserts deixava o
+      pedido existindo, com valor total, e sem item nenhum dentro.
+    */
+    const purchaseId = await sql.transaction(async (sql) => {
+      let id = data.id;
+      if (id) {
+        const cur = await sql<{ status: string }>`select status from purchases where id = ${id} and company_id = ${tenant.companyId}`;
+        if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
+        await sql`
+          update purchases set supplier_id = ${data.supplierId ?? null}, status = ${data.status}, notes = ${data.notes ?? null},
+            subtotal = ${subtotal}, discount = ${desconto}, freight = ${frete}, tax = ${imposto},
+            total = ${total}, expected_at = ${data.expectedAt ?? null}, updated_at = now()
+          where id = ${id} and company_id = ${tenant.companyId}
+        `;
+        await sql`delete from purchase_items where purchase_id = ${id}`;
+      } else {
+        const number = await nextNumber(sql, tenant.companyId, "purchase");
+        const [row] = await sql<{ id: number }>`
+          insert into purchases (
+            company_id, store_id, supplier_id, number, status, notes, subtotal, discount, freight, tax, total, expected_at, user_id
+          ) values (
+            ${tenant.companyId}, ${data.storeId}, ${data.supplierId ?? null}, ${number}, ${data.status}, ${data.notes ?? null},
+            ${subtotal}, ${desconto}, ${frete}, ${imposto}, ${total}, ${data.expectedAt ?? null}, ${tenant.userId}
+          ) returning id
+        `;
+        id = row!.id;
+      }
+      for (const item of itens) {
+        await sql`
+          insert into purchase_items (company_id, purchase_id, variant_id, product_id, description, quantity, unit_cost, total)
+          values (${tenant.companyId}, ${id}, ${item.variantId}, ${item.productId}, ${item.description}, ${item.quantity}, ${item.unitCost}, ${item.quantity * item.unitCost})
+        `;
+      }
+
+      return id;
+    });
+    return { id: purchaseId };
   });
 
 export const receivePurchaseFn = createServerFn({ method: "POST" })
@@ -685,39 +700,47 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
     const items = await sql<{ variant_id: number; product_id: number; quantity: string | number; unit_cost: string | number }>`
       select variant_id, product_id, quantity, unit_cost from purchase_items where purchase_id = ${p.id}
     `;
-    for (const item of items) {
-      await applyStockChange(sql, {
-        companyId: tenant.companyId,
-        storeId: p.store_id,
-        variantId: item.variant_id,
-        delta: num(item.quantity),
-        type: "compra",
-        userId: tenant.userId,
-        referenceType: "purchase",
-        referenceId: p.id,
-        allowNegative: true,
-      });
+    /*
+      Recebimento inteiro numa transacao. Solto, um erro no meio deixava
+      estoque de PARTE dos itens ja somado com o pedido ainda 'pendente' --
+      e a guarda de reentrada olha justamente o status, entao receber de
+      novo somaria o estoque desses itens uma segunda vez.
+    */
+    await sql.transaction(async (sql) => {
+      for (const item of items) {
+        await applyStockChange(sql, {
+          companyId: tenant.companyId,
+          storeId: p.store_id,
+          variantId: item.variant_id,
+          delta: num(item.quantity),
+          type: "compra",
+          userId: tenant.userId,
+          referenceType: "purchase",
+          referenceId: p.id,
+          allowNegative: true,
+        });
+        await sql`
+          update products set cost = ${num(item.unit_cost)}, updated_at = now()
+          where id = ${item.product_id} and company_id = ${tenant.companyId}
+        `;
+        await sql`
+          update product_variants set cost = ${num(item.unit_cost)}
+          where id = ${item.variant_id} and company_id = ${tenant.companyId}
+        `;
+      }
       await sql`
-        update products set cost = ${num(item.unit_cost)}, updated_at = now()
-        where id = ${item.product_id} and company_id = ${tenant.companyId}
+        update purchases set status = 'recebido', received_at = now(), updated_at = now()
+        where id = ${p.id}
       `;
       await sql`
-        update product_variants set cost = ${num(item.unit_cost)}
-        where id = ${item.variant_id} and company_id = ${tenant.companyId}
+        insert into accounts_payable (
+          company_id, store_id, supplier_id, purchase_id, description, category, due_date, amount, status, user_id
+        ) values (
+          ${tenant.companyId}, ${p.store_id}, ${p.supplier_id}, ${p.id},
+          ${"Compra nº " + p.number}, 'Compras', current_date + 14, ${num(p.total)}, 'pendente', ${tenant.userId}
+        )
       `;
-    }
-    await sql`
-      update purchases set status = 'recebido', received_at = now(), updated_at = now()
-      where id = ${p.id}
-    `;
-    await sql`
-      insert into accounts_payable (
-        company_id, store_id, supplier_id, purchase_id, description, category, due_date, amount, status, user_id
-      ) values (
-        ${tenant.companyId}, ${p.store_id}, ${p.supplier_id}, ${p.id},
-        ${"Compra nº " + p.number}, 'Compras', current_date + 14, ${num(p.total)}, 'pendente', ${tenant.userId}
-      )
-    `;
-    await audit(sql, tenant, "receive", "purchase", p.id);
+      await audit(sql, tenant, "receive", "purchase", p.id);
+    });
     return { ok: true };
   });

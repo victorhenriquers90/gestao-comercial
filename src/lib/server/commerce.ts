@@ -345,222 +345,243 @@ export const checkoutFn = createServerFn({ method: "POST" })
     const paySum = pagamentos.reduce((a, p) => a + p.amount, 0);
     if (paySum + 0.05 < total) throw new Error("Pagamento insuficiente.");
 
-    const number = await nextNumber(sql, tenant.companyId, "sale");
-    const [sale] = await sql<{ id: number }>`
-      insert into sales (
-        company_id, store_id, number, customer_id, seller_id, user_id, status, notes,
-        subtotal, discount, total, cost_total, document
-      ) values (
-        ${tenant.companyId}, ${data.storeId}, ${number}, ${customerId}, ${data.sellerId ?? null},
-        ${tenant.userId}, 'finalizada', ${data.notes ?? null}, ${subtotal}, ${headerDisc}, ${total}, ${costTotal},
-        ${customerDocument}
-      ) returning id
-    `;
-    const saleId = sale!.id;
+    /*
+      TUDO daqui pra baixo numa transacao so: venda, itens, baixa de estoque,
+      pagamentos, recebiveis, movimento de caixa, comissao e auditoria.
 
-    for (const line of lines) {
-      await sql`
-        insert into sale_items (
-          company_id, sale_id, variant_id, product_id, description, quantity, unit_price, discount, total, cost
+      Sem isto, cada escrita comitava sozinha. O caso que acontece de
+      verdade numa loja com mais de um caixa: a conferencia de estoque la em
+      cima le a quantidade num instante, e entre ela e a baixa o outro caixa
+      vende a ultima peca -- ai applyStockChange lanca "Estoque
+      insuficiente" com a venda e os itens JA gravados. Ficava uma venda
+      finalizada, sem pagamento e sem movimento de caixa: o cliente pagou, o
+      operador viu erro, e os livros ficaram com uma venda fantasma.
+
+      O parametro se chama `sql` de proposito: dentro deste bloco, `sql` E a
+      transacao. Renomear as ~80 referencias abaixo so aumentaria a area de
+      revisao sem mudar o comportamento.
+    */
+    const gravado = await sql.transaction(async (sql) => {
+      const number = await nextNumber(sql, tenant.companyId, "sale");
+      const [sale] = await sql<{ id: number }>`
+        insert into sales (
+          company_id, store_id, number, customer_id, seller_id, user_id, status, notes,
+          subtotal, discount, total, cost_total, document
         ) values (
-          ${tenant.companyId}, ${saleId}, ${line.variantId}, ${line.productId}, ${line.description},
-          ${line.quantity}, ${line.unitPrice}, ${line.discount}, ${line.total}, ${line.cost}
-        )
-      `;
-      await applyStockChange(sql, {
-        companyId: tenant.companyId,
-        storeId: data.storeId,
-        variantId: line.variantId,
-        delta: -line.quantity,
-        type: "venda",
-        userId: tenant.userId,
-        referenceType: "sale",
-        referenceId: saleId,
-        allowNegative: allowNeg,
-      });
-    }
-
-    const reg = regOpen;
-
-    for (const pay of pagamentos) {
-      const received = pay.received;
-      const change = pay.method === "dinheiro" ? Math.max(0, received - pay.amount) : 0;
-
-      // Cartao: a loja nao recebe o bruto, e nao recebe hoje. O liquido e a
-      // data de cada parcela sao calculados AQUI, no servidor, e nao vem do
-      // cliente -- pelo mesmo motivo que o desconto e o esperado do caixa
-      // nao vem: sao numeros que mudam quanto a loja tem a receber.
-      const liquidacao = isCardMethod(pay.method)
-        ? (() => {
-            const taxa = resolveCardRate(taxasCartao, pay.method as CardMethod, pay.brand, pay.installments);
-            return splitCardSettlement({
-              gross: pay.amount,
-              feePct: taxa.feePct,
-              settlementDays: taxa.settlementDays,
-              installments: pay.installments,
-              soldAt: new Date(),
-            });
-          })()
-        : null;
-
-      const [payRow] = await sql<{ id: number }>`
-        insert into payments (
-          company_id, sale_id, method, amount, received, change_amount, installments, brand,
-          fee_amount, net_amount, nsu
-        )
-        values (
-          ${tenant.companyId}, ${saleId}, ${pay.method}, ${pay.amount}, ${received}, ${change},
-          ${pay.installments}, ${pay.brand},
-          ${liquidacao?.fee ?? 0}, ${liquidacao?.net ?? pay.amount}, ${pay.nsu}
+          ${tenant.companyId}, ${data.storeId}, ${number}, ${customerId}, ${data.sellerId ?? null},
+          ${tenant.userId}, 'finalizada', ${data.notes ?? null}, ${subtotal}, ${headerDisc}, ${total}, ${costTotal},
+          ${customerDocument}
         ) returning id
       `;
-      const paymentId = payRow!.id;
+      const saleId = sale!.id;
 
-      if (liquidacao) {
-        for (const parcela of liquidacao.installments) {
-          const descricao =
-            liquidacao.installments.length > 1
-              ? `Cartão ${pay.brand} ${parcela.number}/${liquidacao.installments.length} — venda nº ${number}`
-              : `Cartão ${pay.brand} — venda nº ${number}`;
+      for (const line of lines) {
+        await sql`
+          insert into sale_items (
+            company_id, sale_id, variant_id, product_id, description, quantity, unit_price, discount, total, cost
+          ) values (
+            ${tenant.companyId}, ${saleId}, ${line.variantId}, ${line.productId}, ${line.description},
+            ${line.quantity}, ${line.unitPrice}, ${line.discount}, ${line.total}, ${line.cost}
+          )
+        `;
+        await applyStockChange(sql, {
+          companyId: tenant.companyId,
+          storeId: data.storeId,
+          variantId: line.variantId,
+          delta: -line.quantity,
+          type: "venda",
+          userId: tenant.userId,
+          referenceType: "sale",
+          referenceId: saleId,
+          allowNegative: allowNeg,
+        });
+      }
+
+      const reg = regOpen;
+
+      for (const pay of pagamentos) {
+        const received = pay.received;
+        const change = pay.method === "dinheiro" ? Math.max(0, received - pay.amount) : 0;
+
+        // Cartao: a loja nao recebe o bruto, e nao recebe hoje. O liquido e a
+        // data de cada parcela sao calculados AQUI, no servidor, e nao vem do
+        // cliente -- pelo mesmo motivo que o desconto e o esperado do caixa
+        // nao vem: sao numeros que mudam quanto a loja tem a receber.
+        const liquidacao = isCardMethod(pay.method)
+          ? (() => {
+              const taxa = resolveCardRate(taxasCartao, pay.method as CardMethod, pay.brand, pay.installments);
+              return splitCardSettlement({
+                gross: pay.amount,
+                feePct: taxa.feePct,
+                settlementDays: taxa.settlementDays,
+                installments: pay.installments,
+                soldAt: new Date(),
+              });
+            })()
+          : null;
+
+        const [payRow] = await sql<{ id: number }>`
+          insert into payments (
+            company_id, sale_id, method, amount, received, change_amount, installments, brand,
+            fee_amount, net_amount, nsu
+          )
+          values (
+            ${tenant.companyId}, ${saleId}, ${pay.method}, ${pay.amount}, ${received}, ${change},
+            ${pay.installments}, ${pay.brand},
+            ${liquidacao?.fee ?? 0}, ${liquidacao?.net ?? pay.amount}, ${pay.nsu}
+          ) returning id
+        `;
+        const paymentId = payRow!.id;
+
+        if (liquidacao) {
+          for (const parcela of liquidacao.installments) {
+            const descricao =
+              liquidacao.installments.length > 1
+                ? `Cartão ${pay.brand} ${parcela.number}/${liquidacao.installments.length} — venda nº ${number}`
+                : `Cartão ${pay.brand} — venda nº ${number}`;
+            await sql`
+              insert into accounts_receivable (
+                company_id, store_id, customer_id, sale_id, payment_id, origin,
+                description, due_date, amount, status, user_id
+              ) values (
+                ${tenant.companyId}, ${data.storeId}, null, ${saleId}, ${paymentId}, 'cartao',
+                ${descricao}, ${parcela.dueDate}, ${parcela.amount}, 'pendente', ${tenant.userId}
+              )
+            `;
+          }
+        }
+
+        if (pay.method === "crediario") {
+          if (!customerId) throw new Error("Crediário exige cliente identificado.");
+          const due = new Date();
+          due.setDate(due.getDate() + 30);
           await sql`
             insert into accounts_receivable (
               company_id, store_id, customer_id, sale_id, payment_id, origin,
               description, due_date, amount, status, user_id
             ) values (
-              ${tenant.companyId}, ${data.storeId}, null, ${saleId}, ${paymentId}, 'cartao',
-              ${descricao}, ${parcela.dueDate}, ${parcela.amount}, 'pendente', ${tenant.userId}
+              ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId}, ${paymentId}, 'crediario',
+              ${"Crediário venda nº " + number}, ${due.toISOString().slice(0, 10)}, ${pay.amount}, 'pendente', ${tenant.userId}
+            )
+          `;
+        }
+        if (reg) {
+          await sql`
+            insert into cash_movements (
+              company_id, store_id, register_id, user_id, type, method, amount, description, sale_id
+            ) values (
+              ${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, 'venda', ${pay.method}, ${pay.amount},
+              ${"Venda nº " + number}, ${saleId}
             )
           `;
         }
       }
 
-      if (pay.method === "crediario") {
-        if (!customerId) throw new Error("Crediário exige cliente identificado.");
-        const due = new Date();
-        due.setDate(due.getDate() + 30);
-        await sql`
-          insert into accounts_receivable (
-            company_id, store_id, customer_id, sale_id, payment_id, origin,
-            description, due_date, amount, status, user_id
-          ) values (
-            ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId}, ${paymentId}, 'crediario',
-            ${"Crediário venda nº " + number}, ${due.toISOString().slice(0, 10)}, ${pay.amount}, 'pendente', ${tenant.userId}
-          )
-        `;
-      }
-      if (reg) {
-        await sql`
-          insert into cash_movements (
-            company_id, store_id, register_id, user_id, type, method, amount, description, sale_id
-          ) values (
-            ${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, 'venda', ${pay.method}, ${pay.amount},
-            ${"Venda nº " + number}, ${saleId}
-          )
-        `;
-      }
-    }
-
-    let commission: {
-      amount: number;
-      percent: number;
-      note: string;
-      lines: { productName: string; amount: number; percent: number; ruleName: string }[];
-      volumeNote: string;
-      bonusNote: string;
-      net?: number;
-      tax?: {
-        net: number;
-        totalTax: number;
-        inss: number;
-        irrf: number;
-        iss: number;
-        other: number;
+      let commission: {
+        amount: number;
+        percent: number;
         note: string;
-        regime: string;
-      };
-    } | null = null;
-    if (data.sellerId) {
-      const [seller] = await sql<{ commission_pct: string | number; name: string }>`
-        select commission_pct, name from sellers where id = ${data.sellerId} and company_id = ${tenant.companyId}
-      `;
-      const pct = num(seller?.commission_pct ?? 0);
-      const primaryPay = data.payments.reduce(
-        (best, p) => (num(p.amount) > num(best.amount) ? p : best),
-        data.payments[0] ?? { method: "", amount: 0 },
-      );
-      const rules = await loadCommissionRules(sql, tenant.companyId);
-      const monthRevenue = await sellerMonthRevenue(sql, tenant.companyId, data.sellerId, saleId);
-      const targets = await loadSellerTargetBonuses(sql, tenant.companyId, data.sellerId, {
-        storeId: data.storeId,
-        excludeSaleId: saleId,
-      });
-      const result = computeCommission({
-        sellerId: data.sellerId,
-        sellerPercent: pct,
-        sellerName: seller?.name ?? "vendedor",
-        paymentMethod: primaryPay?.method ?? null,
-        headerDiscount: headerDisc,
-        monthRevenue,
-        rules,
-        items: lines.map((l) => ({
-          productId: l.productId,
-          productName: l.description,
-          categoryId: l.categoryId,
-          parentCategoryId: l.parentCategoryId,
-          quantity: l.quantity,
-          total: l.total,
-          costTotal: Number((l.cost * l.quantity).toFixed(2)),
-          discount: l.discount,
-        })),
-        targets,
-      });
-      if (result.amount > 0.009) {
-        const tax = await taxForSeller(sql, tenant.companyId, data.sellerId, result.amount, {
+        lines: { productName: string; amount: number; percent: number; ruleName: string }[];
+        volumeNote: string;
+        bonusNote: string;
+        net?: number;
+        tax?: {
+          net: number;
+          totalTax: number;
+          inss: number;
+          irrf: number;
+          iss: number;
+          other: number;
+          note: string;
+          regime: string;
+        };
+      } | null = null;
+      if (data.sellerId) {
+        const [seller] = await sql<{ commission_pct: string | number; name: string }>`
+          select commission_pct, name from sellers where id = ${data.sellerId} and company_id = ${tenant.companyId}
+        `;
+        const pct = num(seller?.commission_pct ?? 0);
+        const primaryPay = data.payments.reduce(
+          (best, p) => (num(p.amount) > num(best.amount) ? p : best),
+          data.payments[0] ?? { method: "", amount: 0 },
+        );
+        const rules = await loadCommissionRules(sql, tenant.companyId);
+        const monthRevenue = await sellerMonthRevenue(sql, tenant.companyId, data.sellerId, saleId);
+        const targets = await loadSellerTargetBonuses(sql, tenant.companyId, data.sellerId, {
+          storeId: data.storeId,
           excludeSaleId: saleId,
         });
-        const cols = taxInsert(tax);
-        await sql`
-          insert into commissions (
-            company_id, seller_id, sale_id, amount, percent, status, rule_id, note, breakdown,
-            net_amount, tax_inss, tax_irrf, tax_iss, tax_other, tax_breakdown
-          )
-          values (
-            ${tenant.companyId}, ${data.sellerId}, ${saleId}, ${result.amount}, ${result.percent},
-            'pendente', ${result.ruleId}, ${result.note}, ${JSON.stringify(result.lines)}::jsonb,
-            ${cols.net}, ${cols.inss}, ${cols.irrf}, ${cols.iss}, ${cols.other}, ${cols.json}::jsonb
-          )
-        `;
-        commission = {
-          amount: result.amount,
-          percent: result.percent,
-          note: result.note,
-          lines: result.lines.map((l) => ({
-            productName: l.productName,
-            amount: l.amount,
-            percent: l.percent,
-            ruleName: l.ruleName,
+        const result = computeCommission({
+          sellerId: data.sellerId,
+          sellerPercent: pct,
+          sellerName: seller?.name ?? "vendedor",
+          paymentMethod: primaryPay?.method ?? null,
+          headerDiscount: headerDisc,
+          monthRevenue,
+          rules,
+          items: lines.map((l) => ({
+            productId: l.productId,
+            productName: l.description,
+            categoryId: l.categoryId,
+            parentCategoryId: l.parentCategoryId,
+            quantity: l.quantity,
+            total: l.total,
+            costTotal: Number((l.cost * l.quantity).toFixed(2)),
+            discount: l.discount,
           })),
-          volumeNote: result.volumeNote,
-          bonusNote: result.bonusNote,
-          net: tax.net,
-          tax: {
+          targets,
+        });
+        if (result.amount > 0.009) {
+          const tax = await taxForSeller(sql, tenant.companyId, data.sellerId, result.amount, {
+            excludeSaleId: saleId,
+          });
+          const cols = taxInsert(tax);
+          await sql`
+            insert into commissions (
+              company_id, seller_id, sale_id, amount, percent, status, rule_id, note, breakdown,
+              net_amount, tax_inss, tax_irrf, tax_iss, tax_other, tax_breakdown
+            )
+            values (
+              ${tenant.companyId}, ${data.sellerId}, ${saleId}, ${result.amount}, ${result.percent},
+              'pendente', ${result.ruleId}, ${result.note}, ${JSON.stringify(result.lines)}::jsonb,
+              ${cols.net}, ${cols.inss}, ${cols.irrf}, ${cols.iss}, ${cols.other}, ${cols.json}::jsonb
+            )
+          `;
+          commission = {
+            amount: result.amount,
+            percent: result.percent,
+            note: result.note,
+            lines: result.lines.map((l) => ({
+              productName: l.productName,
+              amount: l.amount,
+              percent: l.percent,
+              ruleName: l.ruleName,
+            })),
+            volumeNote: result.volumeNote,
+            bonusNote: result.bonusNote,
             net: tax.net,
-            totalTax: tax.totalTax,
-            inss: tax.inss,
-            irrf: tax.irrf,
-            iss: tax.iss,
-            other: tax.other,
-            note: tax.note,
-            regime: tax.regime,
-          },
-        };
+            tax: {
+              net: tax.net,
+              totalTax: tax.totalTax,
+              inss: tax.inss,
+              irrf: tax.irrf,
+              iss: tax.iss,
+              other: tax.other,
+              note: tax.note,
+              regime: tax.regime,
+            },
+          };
+        }
       }
-    }
 
-    if (headerDisc > 0) {
-      await audit(sql, tenant, "discount", "sale", saleId, null, { headerDisc, discPct });
-    }
-    await audit(sql, tenant, "create", "sale", saleId, null, { number, total });
+      if (headerDisc > 0) {
+        await audit(sql, tenant, "discount", "sale", saleId, null, { headerDisc, discPct });
+      }
+      await audit(sql, tenant, "create", "sale", saleId, null, { number, total });
+
+      return { number, saleId, commission };
+    });
+    const { number, saleId, commission } = gravado;
 
     let sellerName: string | null = null;
     if (data.sellerId) {
@@ -820,166 +841,180 @@ export const createReturnFn = createServerFn({ method: "POST" })
     const total = Number(
       data.items.reduce((a, i) => a + (valorPorItem.get(i.saleItemId) ?? 0), 0).toFixed(2),
     );
-    const [ret] = await sql<{ id: number }>`
-      insert into returns (company_id, store_id, sale_id, user_id, kind, reason, total)
-      values (${tenant.companyId}, ${sale.store_id}, ${sale.id}, ${tenant.userId}, ${data.kind}, ${data.reason}, ${total})
-      returning id
-    `;
-    for (const item of data.items) {
-      await sql`
-        insert into return_items (company_id, return_id, sale_item_id, variant_id, quantity, amount)
-        values (${tenant.companyId}, ${ret!.id}, ${item.saleItemId}, ${item.variantId}, ${item.quantity}, ${valorPorItem.get(item.saleItemId) ?? 0})
+    /*
+      Devolucao inteira numa transacao: cabecalho, itens, volta do estoque,
+      estorno da comissao, devolucao em dinheiro no caixa e a notificacao.
+
+      Solto, um erro no meio deixava a devolucao registrada com o estoque
+      de parte dos itens de volta e o dinheiro NAO estornado -- ou o
+      contrario. E o tipo de meia-operacao que so aparece na conferencia do
+      fim do dia, quando ninguem mais lembra do que aconteceu no balcao.
+    */
+    const ret = await sql.transaction(async (sql) => {
+      const [retorno] = await sql<{ id: number }>`
+        insert into returns (company_id, store_id, sale_id, user_id, kind, reason, total)
+        values (${tenant.companyId}, ${sale.store_id}, ${sale.id}, ${tenant.userId}, ${data.kind}, ${data.reason}, ${total})
+        returning id
       `;
-      await applyStockChange(sql, {
-        companyId: tenant.companyId,
-        storeId: sale.store_id,
-        variantId: item.variantId,
-        delta: item.quantity,
-        type: "devolucao",
-        userId: tenant.userId,
-        note: data.reason,
-        referenceType: "return",
-        referenceId: ret!.id,
-        allowNegative: true,
-      });
-    }
-    const leftover = original.reduce((a, o) => {
-      const back = data.items
-        .filter((i) => i.saleItemId === o.id)
-        .reduce((s, i) => s + i.quantity, 0);
-      return a + Math.max(0, num(o.quantity) - (used[o.id] ?? 0) - back);
-    }, 0);
-    const kind = leftover <= 0.001 ? "total" : data.kind === "troca" ? "troca" : "parcial";
-    if (kind !== data.kind) {
-      await sql`update returns set kind = ${kind} where id = ${ret!.id}`;
-    }
-    const newStatus = kind === "total" ? "devolvida" : "devolvida_parcial";
-    await sql`update sales set status = ${newStatus} where id = ${sale.id}`;
-    if (kind === "total") {
-      await sql`
-        update commissions set status = 'cancelado'
-         where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
-      `;
-    } else {
-      const origValue = original.reduce((a, o) => a + num(o.total), 0);
-      const remainingValue = original.reduce((a, o) => {
-        const qty = num(o.quantity);
-        if (qty <= 0) return a;
-        const unit = num(o.total) / qty;
-        const back =
-          (used[o.id] ?? 0) +
-          data.items.filter((i) => i.saleItemId === o.id).reduce((s, i) => s + i.quantity, 0);
-        return a + Math.max(0, qty - back) * unit;
+      for (const item of data.items) {
+        await sql`
+          insert into return_items (company_id, return_id, sale_item_id, variant_id, quantity, amount)
+          values (${tenant.companyId}, ${retorno!.id}, ${item.saleItemId}, ${item.variantId}, ${item.quantity}, ${valorPorItem.get(item.saleItemId) ?? 0})
+        `;
+        await applyStockChange(sql, {
+          companyId: tenant.companyId,
+          storeId: sale.store_id,
+          variantId: item.variantId,
+          delta: item.quantity,
+          type: "devolucao",
+          userId: tenant.userId,
+          note: data.reason,
+          referenceType: "return",
+          referenceId: retorno!.id,
+          allowNegative: true,
+        });
+      }
+      const leftover = original.reduce((a, o) => {
+        const back = data.items
+          .filter((i) => i.saleItemId === o.id)
+          .reduce((s, i) => s + i.quantity, 0);
+        return a + Math.max(0, num(o.quantity) - (used[o.id] ?? 0) - back);
       }, 0);
-      const [pending] = await sql<{
+      const kind = leftover <= 0.001 ? "total" : data.kind === "troca" ? "troca" : "parcial";
+      if (kind !== data.kind) {
+        await sql`update returns set kind = ${kind} where id = ${retorno!.id}`;
+      }
+      const newStatus = kind === "total" ? "devolvida" : "devolvida_parcial";
+      await sql`update sales set status = ${newStatus} where id = ${sale.id}`;
+      if (kind === "total") {
+        await sql`
+          update commissions set status = 'cancelado'
+           where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
+        `;
+      } else {
+        const origValue = original.reduce((a, o) => a + num(o.total), 0);
+        const remainingValue = original.reduce((a, o) => {
+          const qty = num(o.quantity);
+          if (qty <= 0) return a;
+          const unit = num(o.total) / qty;
+          const back =
+            (used[o.id] ?? 0) +
+            data.items.filter((i) => i.saleItemId === o.id).reduce((s, i) => s + i.quantity, 0);
+          return a + Math.max(0, qty - back) * unit;
+        }, 0);
+        const [pending] = await sql<{
+          id: number;
+          amount: string | number;
+          breakdown: unknown;
+          seller_id: number;
+        }>`
+          select id, amount, breakdown, seller_id from commissions
+           where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
+           limit 1
+        `;
+        if (pending && origValue > 0) {
+          const ratio = remainingValue / origValue;
+          const next = Number((num(pending.amount) * ratio).toFixed(2));
+          if (next <= 0.009) {
+            await sql`update commissions set status = 'cancelado' where id = ${pending.id}`;
+          } else {
+            const lines = parseBreakdown(pending.breakdown).map((l) => ({
+              ...l,
+              amount: Number((l.amount * ratio).toFixed(2)),
+              base: Number((l.base * ratio).toFixed(2)),
+            }));
+            const tax = await taxForSeller(sql, tenant.companyId, pending.seller_id, next, {
+              excludeSaleId: sale.id,
+            });
+            const cols = taxInsert(tax);
+            await sql`
+              update commissions
+                 set amount = ${next},
+                     breakdown = ${JSON.stringify(lines)}::jsonb,
+                     net_amount = ${cols.net},
+                     tax_inss = ${cols.inss},
+                     tax_irrf = ${cols.irrf},
+                     tax_iss = ${cols.iss},
+                     tax_other = ${cols.other},
+                     tax_breakdown = ${cols.json}::jsonb
+               where id = ${pending.id}
+            `;
+          }
+        }
+      }
+
+      const [ar] = await sql<{
         id: number;
         amount: string | number;
-        breakdown: unknown;
-        seller_id: number;
+        received_amount: string | number;
+        due_date: string;
       }>`
-        select id, amount, breakdown, seller_id from commissions
-         where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
+        select id, amount, received_amount, due_date from accounts_receivable
+         where sale_id = ${sale.id} and company_id = ${tenant.companyId}
+           and status in ('pendente','parcial','vencido')
          limit 1
       `;
-      if (pending && origValue > 0) {
-        const ratio = remainingValue / origValue;
-        const next = Number((num(pending.amount) * ratio).toFixed(2));
-        if (next <= 0.009) {
-          await sql`update commissions set status = 'cancelado' where id = ${pending.id}`;
-        } else {
-          const lines = parseBreakdown(pending.breakdown).map((l) => ({
-            ...l,
-            amount: Number((l.amount * ratio).toFixed(2)),
-            base: Number((l.base * ratio).toFixed(2)),
-          }));
-          const tax = await taxForSeller(sql, tenant.companyId, pending.seller_id, next, {
-            excludeSaleId: sale.id,
-          });
-          const cols = taxInsert(tax);
+      if (ar) {
+        const nextAmt = Math.max(0, Number((num(ar.amount) - total).toFixed(2)));
+        const received = num(ar.received_amount);
+        const today = new Date().toISOString().slice(0, 10);
+        const status =
+          nextAmt <= 0.009
+            ? "cancelado"
+            : received + 0.009 >= nextAmt
+              ? "pago"
+              : String(ar.due_date).slice(0, 10) < today
+                ? "vencido"
+                : "pendente";
+        await sql`
+          update accounts_receivable set amount = ${nextAmt}, status = ${status}
+          where id = ${ar.id}
+        `;
+      }
+
+      const cashPaid = (
+        await sql<{ v: string | number }>`
+          select coalesce(sum(amount),0) as v from payments
+           where sale_id = ${sale.id} and method = 'dinheiro'
+        `
+      )[0];
+      const alreadyCash = (
+        await sql<{ v: string | number }>`
+          select coalesce(sum(amount),0) as v from cash_movements
+           where sale_id = ${sale.id} and type in ('devolucao','cancelamento')
+        `
+      )[0];
+      const cashRefund = Math.min(
+        Math.max(0, num(cashPaid?.v) - num(alreadyCash?.v)),
+        total,
+      );
+      if (cashRefund > 0.009) {
+        const [reg] = await sql<{ id: number }>`
+          select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
+        `;
+        if (reg) {
           await sql`
-            update commissions
-               set amount = ${next},
-                   breakdown = ${JSON.stringify(lines)}::jsonb,
-                   net_amount = ${cols.net},
-                   tax_inss = ${cols.inss},
-                   tax_irrf = ${cols.irrf},
-                   tax_iss = ${cols.iss},
-                   tax_other = ${cols.other},
-                   tax_breakdown = ${cols.json}::jsonb
-             where id = ${pending.id}
+            insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description, sale_id)
+            values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'devolucao', 'dinheiro', ${cashRefund}, ${"Devolução venda nº " + sale.number}, ${sale.id})
           `;
         }
       }
-    }
 
-    const [ar] = await sql<{
-      id: number;
-      amount: string | number;
-      received_amount: string | number;
-      due_date: string;
-    }>`
-      select id, amount, received_amount, due_date from accounts_receivable
-       where sale_id = ${sale.id} and company_id = ${tenant.companyId}
-         and status in ('pendente','parcial','vencido')
-       limit 1
-    `;
-    if (ar) {
-      const nextAmt = Math.max(0, Number((num(ar.amount) - total).toFixed(2)));
-      const received = num(ar.received_amount);
-      const today = new Date().toISOString().slice(0, 10);
-      const status =
-        nextAmt <= 0.009
-          ? "cancelado"
-          : received + 0.009 >= nextAmt
-            ? "pago"
-            : String(ar.due_date).slice(0, 10) < today
-              ? "vencido"
-              : "pendente";
       await sql`
-        update accounts_receivable set amount = ${nextAmt}, status = ${status}
-        where id = ${ar.id}
+        insert into notifications (company_id, kind, title, body, href)
+        values (
+          ${tenant.companyId}, 'venda',
+          ${"Devolução na venda nº " + sale.number},
+          ${data.reason},
+          ${"/app/devolucoes"}
+        )
       `;
-    }
+      await audit(sql, tenant, "create", "return", retorno!.id, null, { saleId: sale.id, total, kind });
 
-    const cashPaid = (
-      await sql<{ v: string | number }>`
-        select coalesce(sum(amount),0) as v from payments
-         where sale_id = ${sale.id} and method = 'dinheiro'
-      `
-    )[0];
-    const alreadyCash = (
-      await sql<{ v: string | number }>`
-        select coalesce(sum(amount),0) as v from cash_movements
-         where sale_id = ${sale.id} and type in ('devolucao','cancelamento')
-      `
-    )[0];
-    const cashRefund = Math.min(
-      Math.max(0, num(cashPaid?.v) - num(alreadyCash?.v)),
-      total,
-    );
-    if (cashRefund > 0.009) {
-      const [reg] = await sql<{ id: number }>`
-        select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
-      `;
-      if (reg) {
-        await sql`
-          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description, sale_id)
-          values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'devolucao', 'dinheiro', ${cashRefund}, ${"Devolução venda nº " + sale.number}, ${sale.id})
-        `;
-      }
-    }
-
-    await sql`
-      insert into notifications (company_id, kind, title, body, href)
-      values (
-        ${tenant.companyId}, 'venda',
-        ${"Devolução na venda nº " + sale.number},
-        ${data.reason},
-        ${"/app/devolucoes"}
-      )
-    `;
-    await audit(sql, tenant, "create", "return", ret!.id, null, { saleId: sale.id, total, kind });
-    return { id: ret!.id, kind, total };
+      // `kind` e decidido dentro da transacao (total / parcial / troca).
+      return { id: retorno!.id, kind };
+    });
+    return { id: ret.id, kind: ret.kind, total };
   });
 
 export const listReturnsFn = createServerFn({ method: "GET" })
