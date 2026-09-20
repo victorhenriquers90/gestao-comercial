@@ -37,6 +37,32 @@ export async function assertStore(
   if (!rows.length) throw new Error("Loja inválida para esta empresa.");
 }
 
+export async function assertVariants(
+  sql: Sql,
+  companyId: number,
+  variantIds: number[],
+): Promise<void> {
+  /*
+    Confere que cada variante citada pertence a esta empresa.
+
+    Sem isto, `applyStockChange` cria a linha de inventario pelo id que
+    chegou, sem perguntar de quem ele e: da pra referenciar a variante de
+    OUTRA empresa e passar a ve-la nos joins de estoque e movimentacao, que
+    trazem nome e detalhe do produto. A loja nao consegue alterar o estoque
+    alheio (a linha nasce com o company_id de quem chamou), mas ve o que nao
+    e dela -- e o mesmo tipo de vazamento que o globalSearch tinha.
+  */
+  const ids = [...new Set(variantIds.filter((id) => Number.isInteger(id)))];
+  if (ids.length === 0) return;
+  const rows = await sql.query<{ id: number }>(
+    `select id from product_variants where company_id = $1 and id = any($2::int[])`,
+    [companyId, ids],
+  );
+  if (rows.length !== ids.length) {
+    throw new Error("Produto inválido para esta empresa.");
+  }
+}
+
 export async function assertFreeDocument(
   sql: Sql,
   table: "customers" | "sellers" | "suppliers",

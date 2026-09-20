@@ -16,6 +16,22 @@ export async function applyStockChange(
     allowNegative?: boolean;
   },
 ): Promise<{ previous: number; next: number }> {
+  // Guarda no funil por onde TODA movimentacao de estoque passa.
+  //
+  // A guarda que existia embaixo -- `quantity + delta >= 0` -- nao segura
+  // um delta NaN: no Postgres `'NaN'::numeric >= 0` e VERDADEIRO (NaN conta
+  // como maior que qualquer numero), entao o update passava e gravava
+  // `quantity = NaN`. Dali em diante o estoque daquele produto fica NaN pra
+  // sempre, junto com todo relatorio e alerta que o soma -- e nao da pra
+  // desfazer pela tela. Verificado contra o Postgres da loja: um NaN do
+  // JavaScript atravessa o driver intacto e passa na comparacao.
+  //
+  // Fica aqui, e nao so em quem chama, porque a proxima funcao que mexer em
+  // estoque vai passar por este ponto sem precisar lembrar disto.
+  if (!Number.isFinite(args.delta)) {
+    throw new Error("Movimentação de estoque com quantidade inválida.");
+  }
+
   await sql.query(
     `insert into inventories (company_id, store_id, variant_id, quantity)
      values ($1, $2, $3, 0)

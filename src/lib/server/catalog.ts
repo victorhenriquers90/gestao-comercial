@@ -2,9 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertStore, audit, nextNumber, requireTenant } from "./context";
+import { assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
+import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
@@ -459,8 +460,11 @@ export const adjustStockFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
     await assertStore(sql, tenant.companyId, data.storeId);
-    if (data.quantity <= 0) throw new Error("Informe uma quantidade maior que zero.");
-    const delta = data.type === "entrada" || data.type === "ajuste" ? data.quantity : -Math.abs(data.quantity);
+    await assertVariants(sql, tenant.companyId, [data.variantId]);
+    // parseStockQuantity no lugar de `<= 0`: NaN <= 0 e false, entao a
+    // checagem anterior deixava passar e o estoque virava NaN.
+    const quantidade = parseStockQuantity(data.quantity);
+    const delta = data.type === "entrada" || data.type === "ajuste" ? quantidade : -quantidade;
     const res = await applyStockChange(sql, {
       companyId: tenant.companyId,
       storeId: data.storeId,
@@ -484,11 +488,15 @@ export const transferStockFn = createServerFn({ method: "POST" })
     if (data.fromStoreId === data.toStoreId) throw new Error("Selecione lojas diferentes.");
     await assertStore(sql, tenant.companyId, data.fromStoreId);
     await assertStore(sql, tenant.companyId, data.toStoreId);
+    await assertVariants(sql, tenant.companyId, [data.variantId]);
+    // Aqui nao havia validacao NENHUMA de quantidade -- nem a de "maior que
+    // zero" que o ajuste tinha.
+    const quantidade = parseStockQuantity(data.quantity, "quantidade a transferir");
     await applyStockChange(sql, {
       companyId: tenant.companyId,
       storeId: data.fromStoreId,
       variantId: data.variantId,
-      delta: -Math.abs(data.quantity),
+      delta: -quantidade,
       type: "transferencia",
       userId: tenant.userId,
       note: data.note ?? "Transferência entre lojas",
@@ -497,7 +505,7 @@ export const transferStockFn = createServerFn({ method: "POST" })
       companyId: tenant.companyId,
       storeId: data.toStoreId,
       variantId: data.variantId,
-      delta: Math.abs(data.quantity),
+      delta: quantidade,
       type: "transferencia",
       userId: tenant.userId,
       note: data.note ?? "Transferência entre lojas",
@@ -608,15 +616,35 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.write");
     await assertStore(sql, tenant.companyId, data.storeId);
-    const subtotal = data.items.reduce((a, i) => a + i.quantity * i.unitCost, 0);
-    const total = subtotal - (data.discount ?? 0) + (data.freight ?? 0) + (data.tax ?? 0);
+    await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
+    /*
+      Quantidade, custo e os extras entravam crus e iam direto pro banco.
+      Dois buracos reais nisso:
+
+      - Quantidade NEGATIVA vira estoque que DIMINUI ao receber o pedido
+        (receivePurchaseFn usa allowNegative: true, porque receber compra
+        normalmente so soma).
+      - Valor nao finito contamina `purchases.total`, que e o numero que o
+        financeiro soma depois -- e `num()` no recebimento salva o estoque,
+        mas nao desfaz o total ja gravado como NaN.
+    */
+    const itens = data.items.map((i) => ({
+      ...i,
+      quantity: parseStockQuantity(i.quantity, `quantidade de "${i.description}"`),
+      unitCost: parseUnitCost(i.unitCost, `custo de "${i.description}"`),
+    }));
+    const desconto = parsePurchaseExtra(data.discount, "desconto");
+    const frete = parsePurchaseExtra(data.freight, "frete");
+    const imposto = parsePurchaseExtra(data.tax, "imposto");
+    const subtotal = itens.reduce((a, i) => a + i.quantity * i.unitCost, 0);
+    const total = subtotal - desconto + frete + imposto;
     let id = data.id;
     if (id) {
       const cur = await sql<{ status: string }>`select status from purchases where id = ${id} and company_id = ${tenant.companyId}`;
       if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
       await sql`
         update purchases set supplier_id = ${data.supplierId ?? null}, status = ${data.status}, notes = ${data.notes ?? null},
-          subtotal = ${subtotal}, discount = ${data.discount ?? 0}, freight = ${data.freight ?? 0}, tax = ${data.tax ?? 0},
+          subtotal = ${subtotal}, discount = ${desconto}, freight = ${frete}, tax = ${imposto},
           total = ${total}, expected_at = ${data.expectedAt ?? null}, updated_at = now()
         where id = ${id} and company_id = ${tenant.companyId}
       `;
@@ -628,12 +656,12 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
           company_id, store_id, supplier_id, number, status, notes, subtotal, discount, freight, tax, total, expected_at, user_id
         ) values (
           ${tenant.companyId}, ${data.storeId}, ${data.supplierId ?? null}, ${number}, ${data.status}, ${data.notes ?? null},
-          ${subtotal}, ${data.discount ?? 0}, ${data.freight ?? 0}, ${data.tax ?? 0}, ${total}, ${data.expectedAt ?? null}, ${tenant.userId}
+          ${subtotal}, ${desconto}, ${frete}, ${imposto}, ${total}, ${data.expectedAt ?? null}, ${tenant.userId}
         ) returning id
       `;
       id = row!.id;
     }
-    for (const item of data.items) {
+    for (const item of itens) {
       await sql`
         insert into purchase_items (company_id, purchase_id, variant_id, product_id, description, quantity, unit_cost, total)
         values (${tenant.companyId}, ${id}, ${item.variantId}, ${item.productId}, ${item.description}, ${item.quantity}, ${item.unitCost}, ${item.quantity * item.unitCost})
