@@ -3,6 +3,7 @@ import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-route
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BackupStatusCard } from "@/components/backup-status-card";
+import { CardRatesPanel } from "@/components/card-rates-panel";
 import { IssSettingsPanel } from "@/components/iss-rate";
 import { ImageField } from "@/components/image-editor";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ import { parseCnpj, maskCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime, TAX_REGIME_LABELS, type TaxRegime } from "@/lib/nfce";
 
-const CONFIG_TABS = ["empresa", "lojas", "equipe", "print", "impostos", "audit"] as const;
+const CONFIG_TABS = ["empresa", "lojas", "equipe", "print", "impostos", "cartoes", "audit"] as const;
 type ConfigTab = (typeof CONFIG_TABS)[number];
 
 function isConfigTab(v: string | null | undefined): v is ConfigTab {
@@ -57,6 +58,7 @@ function ConfigPage() {
     equipe: podeVerEquipe,
     print: podeConfigurar,
     impostos: podeConfigurar,
+    cartoes: podeConfigurar,
     audit: podeVerAuditoria,
   };
   // A inicial e a primeira que a pessoa pode ver -- para o gerente, "empresa"
@@ -194,6 +196,7 @@ function ConfigPage() {
           {podeVerEquipe ? <TabsTrigger value="equipe">Usuários</TabsTrigger> : null}
           {podeConfigurar ? <TabsTrigger value="print">Impressão</TabsTrigger> : null}
           {podeConfigurar ? <TabsTrigger value="impostos">Impostos</TabsTrigger> : null}
+          {podeConfigurar ? <TabsTrigger value="cartoes">Cartões</TabsTrigger> : null}
           {podeVerAuditoria ? <TabsTrigger value="audit">Auditoria</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="empresa">
@@ -441,6 +444,9 @@ function ConfigPage() {
               Salvar
             </Button>
           </Card>
+        </TabsContent>
+        <TabsContent value="cartoes">
+          <CardRatesPanel />
         </TabsContent>
         <TabsContent value="audit">
           <Card className="p-5">

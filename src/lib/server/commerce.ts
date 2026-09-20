@@ -3,7 +3,20 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { computeCommission } from "@/lib/commission";
 import { operatorDiscountPct } from "@/lib/discount";
 import { parsePaymentAmount, parsePaymentMethod, parseReceived } from "@/lib/payment-input";
+import {
+  DEFAULT_CARD_RATES,
+  isCardMethod,
+  parseCardBrand,
+  parseInstallments,
+  parseNsu,
+  parseCardRate,
+  resolveCardRate,
+  splitCardSettlement,
+  type CardMethod,
+  type CardRate,
+} from "@/lib/card";
 import { dump, type Row } from "@/lib/json";
+import type { Sql } from "@/lib/db";
 import { assertCan } from "@/lib/permissions";
 import { bestPromo, type Promo } from "@/lib/promo";
 import { num } from "@/lib/utils";
@@ -27,7 +40,70 @@ export type PayIn = {
   received?: number;
   installments?: number;
   brand?: string;
+  /** Numero impresso no comprovante da maquininha. */
+  nsu?: string;
 };
+
+export async function loadCardRates(sql: Sql, companyId: number): Promise<CardRate[]> {
+  const rows = await sql<Row>`
+    select method, brand, min_installments, max_installments, fee_pct, settlement_days
+      from card_rates where company_id = ${companyId}
+  `;
+  return rows.map((r) => ({
+    method: String(r.method) as CardMethod,
+    brand: r.brand == null || r.brand === "" ? null : String(r.brand),
+    minInstallments: num(r.min_installments),
+    maxInstallments: num(r.max_installments),
+    feePct: num(r.fee_pct),
+    settlementDays: num(r.settlement_days),
+  }));
+}
+
+export const listCardRatesFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "settings.write");
+    const rates = await loadCardRates(sql, tenant.companyId);
+    // O padrao viaja junto pra tela poder dizer o que esta valendo hoje em
+    // vez de so mostrar uma lista vazia sem explicacao.
+    return dump({ rates, defaults: DEFAULT_CARD_RATES });
+  });
+
+export const saveCardRatesFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      rates: {
+        method: string;
+        brand: string;
+        minInstallments: number;
+        maxInstallments: number;
+        feePct: number;
+        settlementDays: number;
+      }[];
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "settings.write");
+    // Valida TUDO antes de apagar qualquer coisa: uma linha ruim no meio nao
+    // pode deixar a loja sem as taxas que ja tinha.
+    const validas = data.rates.map(parseCardRate);
+    await sql`delete from card_rates where company_id = ${tenant.companyId}`;
+    for (const r of validas) {
+      await sql`
+        insert into card_rates (
+          company_id, method, brand, min_installments, max_installments, fee_pct, settlement_days
+        ) values (
+          ${tenant.companyId}, ${r.method}, ${r.brand}, ${r.minInstallments}, ${r.maxInstallments},
+          ${r.feePct}, ${r.settlementDays}
+        )
+      `;
+    }
+    await audit(sql, tenant, "card_rates.save", "settings", null, null, { total: validas.length });
+    return { ok: true, total: validas.length };
+  });
 
 function mapPromo(r: Row): Promo {
   return {
@@ -246,6 +322,11 @@ export const checkoutFn = createServerFn({ method: "POST" })
     // deixava passar um pagamento negativo compensado por outro positivo, e o
     // negativo em dinheiro reduzia o caixa esperado no fechamento. Ver
     // src/lib/payment-input.ts.
+    // Parcelas, bandeira e NSU entravam CRUS -- a correcao anterior tinha
+    // fechado so forma e valor. Dava pra gravar 999 parcelas, parcela
+    // negativa, parcelamento em debito ou uma bandeira inventada, e e
+    // justamente a bandeira que casa a venda com a linha do extrato da
+    // adquirente.
     const pagamentos = data.payments.map((p) => {
       const method = parsePaymentMethod(p.method);
       const amount = parsePaymentAmount(num(p.amount));
@@ -253,10 +334,14 @@ export const checkoutFn = createServerFn({ method: "POST" })
         method,
         amount,
         received: method === "dinheiro" ? parseReceived(amount, p.received) : amount,
-        installments: p.installments ?? 1,
-        brand: p.brand ?? null,
+        installments: parseInstallments(p.installments, method),
+        brand: parseCardBrand(p.brand, method),
+        nsu: parseNsu(p.nsu),
       };
     });
+    const taxasCartao = pagamentos.some((p) => isCardMethod(p.method))
+      ? await loadCardRates(sql, tenant.companyId)
+      : [];
     const paySum = pagamentos.reduce((a, p) => a + p.amount, 0);
     if (paySum + 0.05 < total) throw new Error("Pagamento insuficiente.");
 
@@ -300,22 +385,65 @@ export const checkoutFn = createServerFn({ method: "POST" })
     for (const pay of pagamentos) {
       const received = pay.received;
       const change = pay.method === "dinheiro" ? Math.max(0, received - pay.amount) : 0;
-      await sql`
-        insert into payments (company_id, sale_id, method, amount, received, change_amount, installments, brand)
+
+      // Cartao: a loja nao recebe o bruto, e nao recebe hoje. O liquido e a
+      // data de cada parcela sao calculados AQUI, no servidor, e nao vem do
+      // cliente -- pelo mesmo motivo que o desconto e o esperado do caixa
+      // nao vem: sao numeros que mudam quanto a loja tem a receber.
+      const liquidacao = isCardMethod(pay.method)
+        ? (() => {
+            const taxa = resolveCardRate(taxasCartao, pay.method as CardMethod, pay.brand, pay.installments);
+            return splitCardSettlement({
+              gross: pay.amount,
+              feePct: taxa.feePct,
+              settlementDays: taxa.settlementDays,
+              installments: pay.installments,
+              soldAt: new Date(),
+            });
+          })()
+        : null;
+
+      const [payRow] = await sql<{ id: number }>`
+        insert into payments (
+          company_id, sale_id, method, amount, received, change_amount, installments, brand,
+          fee_amount, net_amount, nsu
+        )
         values (
           ${tenant.companyId}, ${saleId}, ${pay.method}, ${pay.amount}, ${received}, ${change},
-          ${pay.installments}, ${pay.brand}
-        )
+          ${pay.installments}, ${pay.brand},
+          ${liquidacao?.fee ?? 0}, ${liquidacao?.net ?? pay.amount}, ${pay.nsu}
+        ) returning id
       `;
+      const paymentId = payRow!.id;
+
+      if (liquidacao) {
+        for (const parcela of liquidacao.installments) {
+          const descricao =
+            liquidacao.installments.length > 1
+              ? `Cartão ${pay.brand} ${parcela.number}/${liquidacao.installments.length} — venda nº ${number}`
+              : `Cartão ${pay.brand} — venda nº ${number}`;
+          await sql`
+            insert into accounts_receivable (
+              company_id, store_id, customer_id, sale_id, payment_id, origin,
+              description, due_date, amount, status, user_id
+            ) values (
+              ${tenant.companyId}, ${data.storeId}, null, ${saleId}, ${paymentId}, 'cartao',
+              ${descricao}, ${parcela.dueDate}, ${parcela.amount}, 'pendente', ${tenant.userId}
+            )
+          `;
+        }
+      }
+
       if (pay.method === "crediario") {
         if (!customerId) throw new Error("Crediário exige cliente identificado.");
         const due = new Date();
         due.setDate(due.getDate() + 30);
         await sql`
           insert into accounts_receivable (
-            company_id, store_id, customer_id, sale_id, description, due_date, amount, status, user_id
+            company_id, store_id, customer_id, sale_id, payment_id, origin,
+            description, due_date, amount, status, user_id
           ) values (
-            ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId},
+            ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId}, ${paymentId}, 'crediario',
             ${"Crediário venda nº " + number}, ${due.toISOString().slice(0, 10)}, ${pay.amount}, 'pendente', ${tenant.userId}
           )
         `;

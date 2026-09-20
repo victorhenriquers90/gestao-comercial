@@ -24,6 +24,7 @@ import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { useSelection } from "@/hooks/use-selection";
 import { CARD_BRANDS, PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
+import { MAX_INSTALLMENTS } from "@/lib/card";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { maskBrDoc, parseBrDocument } from "@/lib/document";
 import { bestPromo } from "@/lib/promo";
@@ -39,17 +40,29 @@ export const Route = createFileRoute("/app/pdv")({ component: PdvPage });
 
 type Hit = Awaited<ReturnType<typeof searchPosFn>>[number];
 type Line = Hit & { qty: number; lineDiscount: number; override?: number; promoName?: string | null };
-type PayRow = { method: PaymentMethod; amount: string; received: string; installments: number; brand: string };
+type PayRow = {
+  method: PaymentMethod;
+  amount: string;
+  received: string;
+  installments: number;
+  brand: string;
+  nsu: string;
+};
 
 /** Mesma altura, mesmo raio e mesmo alinhamento nos seis botoes de acao. */
 const pdvActionClass = "h-11 justify-between rounded-lg px-3";
 
+// Bandeira comeca VAZIA, nao em "Visa". Ela existe pra casar a venda com a
+// linha do extrato da adquirente; um padrao silencioso gravaria a bandeira
+// errada na maioria das vendas e estragaria justamente a conferencia que ela
+// serve pra permitir. Melhor o operador escolher.
 const emptyPay = (): PayRow => ({
   method: "dinheiro",
   amount: "",
   received: "",
   installments: 1,
-  brand: "Visa",
+  brand: "",
+  nsu: "",
 });
 
 function PdvPage() {
@@ -368,10 +381,11 @@ function PdvPage() {
         received: num(p.received || p.amount),
         installments: p.installments,
         brand: p.brand,
+        nsu: p.nsu,
       }))
       .filter((p) => p.amount > 0);
     if (!payOpen || pays.length === 0) {
-      pays = [{ method: "dinheiro", amount: total, received: total, installments: 1, brand: "" }];
+      pays = [{ method: "dinheiro", amount: total, received: total, installments: 1, brand: "", nsu: "" }];
     }
     if (pays.reduce((a, p) => a + p.amount, 0) + 0.05 < total) {
       openPay();
@@ -1082,7 +1096,11 @@ function PdvPage() {
                     </div>
                   </Field>
                 ) : null}
-                {p.method === "credito" ? (
+                {/* Bandeira vale pros DOIS cartoes: antes so o credito pedia,
+                    entao toda venda no debito ficava sem a informacao que casa
+                    a venda com o extrato da adquirente. Parcelas continuam so
+                    no credito, porque debito nao parcela. */}
+                {p.method === "credito" || p.method === "debito" ? (
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Field label="Bandeira">
                       <Select
@@ -1093,22 +1111,36 @@ function PdvPage() {
                           setPayments(next);
                         }}
                       >
+                        <option value="">Selecione…</option>
                         {CARD_BRANDS.map((b) => (
                           <option key={b}>{b}</option>
                         ))}
                       </Select>
                     </Field>
-                    <Field label="Parcelas">
+                    {p.method === "credito" ? (
+                      <Field label="Parcelas">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={MAX_INSTALLMENTS}
+                          value={p.installments}
+                          onChange={(e) => {
+                            const next = [...payments];
+                            next[idx] = { ...p, installments: Number(e.target.value) };
+                            setPayments(next);
+                          }}
+                        />
+                      </Field>
+                    ) : null}
+                    <Field label="NSU / autorização" className="col-span-2">
                       <Input
-                      type="number"
-                      min={1}
-                      max={18}
-                      value={p.installments}
-                      onChange={(e) => {
-                        const next = [...payments];
-                        next[idx] = { ...p, installments: Number(e.target.value) };
-                        setPayments(next);
-                      }}
+                        value={p.nsu}
+                        placeholder="Opcional — número do comprovante"
+                        onChange={(e) => {
+                          const next = [...payments];
+                          next[idx] = { ...p, nsu: e.target.value };
+                          setPayments(next);
+                        }}
                       />
                     </Field>
                   </div>
@@ -1138,7 +1170,8 @@ function PdvPage() {
                     amount: remaining > 0 ? String(remaining) : "",
                     received: "",
                     installments: 1,
-                    brand: "Visa",
+                    brand: "",
+                    nsu: "",
                   },
                 ])
               }
