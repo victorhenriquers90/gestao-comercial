@@ -25,10 +25,13 @@ export function Spinner({
       aria-hidden
       className={cn(
         "size-8 animate-spin",
-        // Movimento reduzido nao desliga o giro, so desacelera: parado, o
-        // indicador passaria a mensagem errada (travou) justamente para quem
-        // pediu menos animacao.
-        "motion-reduce:[animation-duration:3s]",
+        // `spinner-ring` (styles.css) e o que mantem o giro sob
+        // prefers-reduced-motion, so bem mais lento. Tem que ser CSS com
+        // !important, e nao um `motion-reduce:` aqui: o reset global de
+        // movimento reduzido usa !important e venceria a utilitaria,
+        // congelando o indicador -- que e a mensagem errada ("travou")
+        // justamente pra quem pediu menos animacao.
+        "spinner-ring",
         tone === "inverse" ? "text-primary-foreground" : "text-primary",
         className,
       )}

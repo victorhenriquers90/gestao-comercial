@@ -832,6 +832,23 @@
   }
 }
 
+/* Unica excecao ao reset acima, e deliberada: indicador de progresso.
+
+   O reset usa `!important`, entao um `motion-reduce:` do Tailwind no proprio
+   componente nao vence -- o anel congelaria depois de uma iteracao
+   instantanea. Um indicador de carregamento parado passa a mensagem errada
+   ("travou") justamente pra quem pediu menos animacao, que e o oposto do que
+   a preferencia quer dizer. Continua girando, mas bem devagar.
+
+   Precisa de `!important` para empatar com o reset; a especificidade de
+   classe (0,1,0) contra `*` (0,0,0) e o que desempata a favor daqui. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner-ring {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }
