@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
@@ -299,6 +299,18 @@ export const searchPosFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     await assertStore(sql, tenant.companyId, data.storeId);
+    /*
+      O custo so vai pra quem ja pode ve-lo em outro lugar do sistema (a tela
+      de Produtos mostra custo e margem sob products.read).
+
+      Isto importa pelo papel "Operador de PDV", que NAO tem products.read: e
+      o papel de quem fica no balcao, muitas vezes contratado, e o PDV
+      recebia a margem de cada produto sem usar pra nada -- o checkout calcula
+      o custo da venda no servidor, com consulta propria. A tela de Compras
+      usa este campo pra preencher o custo do pedido, e todo papel que chega
+      la tem products.read, entao continua funcionando.
+    */
+    const podeVerCusto = can(tenant.role, "products.read");
     const q = data.q.trim();
     if (!q) return [];
     const rows = await sql.query<Row>(
@@ -342,7 +354,7 @@ export const searchPosFn = createServerFn({ method: "POST" })
       barcode: strN(r.barcode),
       price: num(r.promo_price) > 0 ? num(r.promo_price) : num(r.price),
       listPrice: num(r.price),
-      cost: num(r.cost),
+      cost: podeVerCusto ? num(r.cost) : 0,
       unit: String(r.unit ?? "UN"),
       stock: num(r.stock),
       categoryId: r.category_id == null ? null : num(r.category_id),

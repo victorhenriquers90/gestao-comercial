@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useSelection } from "@/hooks/use-selection";
 import { useTheme } from "@/hooks/use-theme";
 import { UserButton } from "@/lib/auth/gates";
+import { runAction } from "@/lib/run-action";
 import { ensureCsrfCookie } from "@/lib/auth/client";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
 import { APP_NAME } from "@/lib/constants";
@@ -317,7 +318,9 @@ function NotifBell() {
               type="button"
               className="text-xs font-medium text-primary"
               onClick={async () => {
-                await markNotificationReadFn({ data: {} });
+                await runAction(() => markNotificationReadFn({ data: {} }), {
+                  erro: "Não foi possível limpar as notificações.",
+                });
                 load();
               }}
             >
@@ -336,7 +339,13 @@ function NotifBell() {
                 onClick={() => {
                   const id = Number(n.id);
                   if (Number.isFinite(id) && id > 0) {
-                    void markNotificationReadFn({ data: { id } }).then(load);
+                    // `.then` sem `.catch` era rejeicao nao tratada no
+                    // console; marcar como lida falhando nao deve atrapalhar
+                    // a navegacao, entao aqui o erro so e engolido de
+                    // proposito -- e o unico lugar em que isso e aceitavel.
+                    void markNotificationReadFn({ data: { id } })
+                      .then(load)
+                      .catch(() => undefined);
                   }
                   setOpen(false);
                 }}

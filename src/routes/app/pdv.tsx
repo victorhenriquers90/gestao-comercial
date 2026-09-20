@@ -24,6 +24,7 @@ import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { useSelection } from "@/hooks/use-selection";
 import { CARD_BRANDS, PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
+import { runAction } from "@/lib/run-action";
 import { MAX_INSTALLMENTS } from "@/lib/card";
 import { parseMoneyInput } from "@/lib/money-input";
 import { formatBRL, formatDoc } from "@/lib/format";
@@ -867,7 +868,12 @@ function PdvPage() {
                         variant="destructive"
                         onClick={async () => {
                           setDescartarId(null);
-                          await discardHeldFn({ data: { id: h.id } });
+                          // Sem o runAction, uma recusa do servidor nao dizia
+                          // nada: o "Descartar?" sumia e a venda continuava na
+                          // lista, como se o clique nao tivesse pegado.
+                          await runAction(() => discardHeldFn({ data: { id: h.id } }), {
+                            erro: "Não foi possível descartar a venda em espera.",
+                          });
                           void qc.invalidateQueries({ queryKey: ["held"] });
                         }}
                       >

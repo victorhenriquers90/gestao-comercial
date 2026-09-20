@@ -9,6 +9,7 @@ import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KpiCard } from "@/components/shared";
 import { ACCOUNT_STATUS_LABELS, CRM_STAGE_LABELS, CRM_STAGES, SALE_STATUS_LABELS } from "@/lib/constants";
+import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate, formatDateTime, formatDoc, formatQty } from "@/lib/format";
 import {
   addCustomerNoteFn,
@@ -220,7 +221,11 @@ export function CustomerPanel({
                             className="mt-0.5"
                             checked={Boolean(t.doneAt)}
                             onChange={async (e) => {
-                              await toggleCrmTaskFn({ data: { id: t.id, done: e.target.checked } });
+                              const ok = await runAction(
+                                () => toggleCrmTaskFn({ data: { id: t.id, done: e.target.checked } }),
+                                { erro: "Não foi possível atualizar a tarefa." },
+                              );
+                              if (!ok) return;
                               await refresh();
                             }}
                           />
@@ -250,9 +255,14 @@ export function CustomerPanel({
                     variant="outline"
                     onClick={async () => {
                       if (!note.trim()) return;
-                      await addCustomerNoteFn({ data: { customerId: c.id, body: note.trim() } });
+                      const ok = await runAction(
+                        () => addCustomerNoteFn({ data: { customerId: c.id, body: note.trim() } }),
+                        { sucesso: "Nota salva.", erro: "Não foi possível salvar a nota." },
+                      );
+                      // O campo so e limpo quando a nota REALMENTE foi salva:
+                      // limpar antes perderia o texto que a pessoa escreveu.
+                      if (!ok) return;
                       setNote("");
-                      toast.success("Nota salva.");
                       await refresh();
                     }}
                   >

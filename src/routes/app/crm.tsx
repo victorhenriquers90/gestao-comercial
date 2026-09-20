@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { NativeCheckbox } from "@/components/ui/select";
 import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { CRM_STAGE_LABELS, CRM_STAGES } from "@/lib/constants";
+import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
 import { listCrmTasksFn, listCustomersFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
 
@@ -65,7 +66,14 @@ function CrmPage() {
                   <NativeCheckbox
                     checked={false}
                     onChange={async () => {
-                      await toggleCrmTaskFn({ data: { id: t.id, done: true } });
+                      // toggleCrmTaskFn passou a exigir crm.write: sem o
+                      // runAction, quem nao tem a permissao clicava e nao
+                      // acontecia NADA -- nem a marcacao, nem uma mensagem.
+                      const ok = await runAction(
+                        () => toggleCrmTaskFn({ data: { id: t.id, done: true } }),
+                        { erro: "Não foi possível concluir a tarefa." },
+                      );
+                      if (!ok) return;
                       void qc.invalidateQueries({ queryKey: ["crm-tasks"] });
                       void qc.invalidateQueries({ queryKey: ["customers"] });
                     }}

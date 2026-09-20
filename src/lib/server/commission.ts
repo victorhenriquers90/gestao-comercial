@@ -14,7 +14,7 @@ import {
 import { clampIss, computeNetCommission, ISS_DEFAULT, resolveTaxProfile, taxToJson, type TaxResult } from "@/lib/tax";
 import type { Sql } from "@/lib/db";
 import { type Row } from "@/lib/json";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { requireTenant } from "./context";
 
@@ -438,6 +438,23 @@ export const simulateCommissionFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    /*
+      Esta funcao entrega o percentual de comissao e o faturamento do mes de
+      QUALQUER vendedor que o id apontar -- remuneracao de gente. Nao tinha
+      gate nenhum, enquanto listSellersFn exige sellers.read pra mostrar os
+      mesmos dados na tela: estoque e financeiro podiam enumerar o ganho de
+      todo mundo chamando o servidor direto.
+
+      Nao da pra exigir sellers.read e pronto: o papel "Operador de PDV" nao
+      tem essa permissao (de proposito -- ela abre a pagina Vendedores
+      inteira, com salario e documento), e o PDV precisa disto pra mostrar a
+      comissao da venda que esta sendo feita. Entao vale quem VENDE ou quem
+      ja pode ver a equipe de vendas. Fica de fora exatamente quem nao tem
+      nada a ver com isso: estoque e financeiro.
+    */
+    if (!can(tenant.role, "pdv.sell") && !can(tenant.role, "sellers.read")) {
+      throw new Error("Sem permissão para esta ação.");
+    }
     const [seller] = await sql<{ id: number; name: string; commission_pct: string | number }>`
       select id, name, commission_pct from sellers
        where id = ${data.sellerId} and company_id = ${tenant.companyId} and deleted_at is null

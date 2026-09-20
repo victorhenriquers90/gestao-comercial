@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS, CASH_ACCOUNT_LABELS, EXPENSE_CATEGORIES, PAYMENT_LABELS } from "@/lib/constants";
+import { parseMoneyInput } from "@/lib/money-input";
+import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import {
@@ -366,20 +368,31 @@ function FinanceiroPage() {
           <Button
             className="mt-4"
             onClick={async () => {
-              if (!desc.trim() || !due || !Number(amount)) {
-                return toast.error("Preencha descrição, vencimento e valor.");
+              if (!desc.trim() || !due) {
+                return toast.error("Preencha descrição e vencimento.");
               }
-              await savePayableFn({
-                data: {
-                  description: desc,
-                  dueDate: due,
-                  amount: Number(amount),
-                  storeId,
-                  supplierId: partyId ? Number(partyId) : null,
-                  category,
-                },
-              });
-              toast.success("Conta criada.");
+              // parseMoneyInput, nao Number(): "1.500,00" dava NaN, e a
+              // mensagem antiga ("preencha o valor") acusava a pessoa de nao
+              // ter preenchido o campo que ela tinha acabado de preencher.
+              const valor = parseMoneyInput(amount);
+              if (!Number.isFinite(valor) || valor <= 0) {
+                return toast.error("Informe um valor maior que zero.");
+              }
+              const ok = await runAction(
+                () =>
+                  savePayableFn({
+                    data: {
+                      description: desc,
+                      dueDate: due,
+                      amount: valor,
+                      storeId,
+                      supplierId: partyId ? Number(partyId) : null,
+                      category,
+                    },
+                  }),
+                { sucesso: "Conta criada." },
+              );
+              if (!ok) return;
               setOpenPay(false);
               void qc.invalidateQueries({ queryKey: ["ap"] });
             }}
@@ -415,19 +428,27 @@ function FinanceiroPage() {
           <Button
             className="mt-4"
             onClick={async () => {
-              if (!desc.trim() || !due || !Number(amount)) {
-                return toast.error("Preencha descrição, vencimento e valor.");
+              if (!desc.trim() || !due) {
+                return toast.error("Preencha descrição e vencimento.");
               }
-              await saveReceivableFn({
-                data: {
-                  description: desc,
-                  dueDate: due,
-                  amount: Number(amount),
-                  storeId,
-                  customerId: partyId ? Number(partyId) : null,
-                },
-              });
-              toast.success("Título criado.");
+              const valor = parseMoneyInput(amount);
+              if (!Number.isFinite(valor) || valor <= 0) {
+                return toast.error("Informe um valor maior que zero.");
+              }
+              const ok = await runAction(
+                () =>
+                  saveReceivableFn({
+                    data: {
+                      description: desc,
+                      dueDate: due,
+                      amount: valor,
+                      storeId,
+                      customerId: partyId ? Number(partyId) : null,
+                    },
+                  }),
+                { sucesso: "Título criado." },
+              );
+              if (!ok) return;
               setOpenRec(false);
               void qc.invalidateQueries({ queryKey: ["ar"] });
             }}
