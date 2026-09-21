@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { summarizeBreaks, totalBreaks } from "@/lib/cash-break";
 import { assertCan } from "@/lib/permissions";
 import {
   ACCOUNT_STATUS_LABELS,
@@ -741,6 +742,126 @@ export const reportFn = createServerFn({ method: "POST" })
             { name: "FGTS", value: guide.totals.employerFgts },
           ].filter((d) => d.value > 0.009),
         },
+      });
+    }
+
+    /*
+      Quebra de caixa por operador.
+
+      O periodo filtra pelo FECHAMENTO (closed_at), nao pela abertura: a
+      diferenca nasce quando se conta, e um turno aberto dia 30 e fechado dia
+      1 pertence ao mes em que foi conferido. O filtro converte o parametro
+      (closed_at >= $2::date) em vez da coluna, pra o indice parcial de
+      cash_registers continuar servindo.
+    */
+    if (type === "quebra") {
+      const turnos = await sql.query<Row>(
+        `select coalesce(ua.name, r.user_id) as operador,
+                r.difference_amount, r.expected_amount, r.difference_reason,
+                r.expected_revealed_at, r.user_id, r.closed_by
+           from cash_registers r
+           left join "user" ua on ua.id = r.user_id
+          where r.company_id = $1 and r.status = 'closed'
+            and r.closed_at >= $2::date and r.closed_at < ($3::date + interval '1 day')
+            and ($4::int is null or r.store_id = $4)
+          order by r.closed_at desc`,
+        [cid, data.from, data.to, storeId],
+      );
+
+      const linhas = summarizeBreaks(
+        turnos.map((t) => ({
+          operador: t.operador == null ? "" : String(t.operador),
+          diff: num(t.difference_amount),
+          explicada: t.difference_reason != null,
+          cego: t.expected_revealed_at == null,
+          fechadoPeloDono: t.closed_by == null || String(t.closed_by) === String(t.user_id),
+          movimento: Math.abs(num(t.expected_amount)),
+        })),
+      );
+      const totais = totalBreaks(linhas);
+
+      const rows = linhas.map((o) => [
+        o.operador,
+        o.turnos,
+        o.comDiferenca,
+        o.faltas,
+        o.sobras,
+        o.desvio,
+        o.desvioPorTurno,
+        o.desvioPct,
+        o.maiorFalta,
+        o.liquido,
+        o.semExplicar,
+      ]);
+
+      /*
+        KPIs escritos a mao, nao pelo autoKpis: somar "desvio por turno" e
+        "% do movimento" entre operadores nao significa nada, e um total
+        sem sentido no topo de um relatorio sobre dinheiro e pior que
+        nenhum -- alguem acaba usando.
+      */
+      const kpis: ReportKpi[] = [
+        {
+          label: "Desvio total",
+          value: formatBRL(totais.desvio),
+          hint: "soma dos erros, sem deixar falta cancelar sobra",
+        },
+        { label: "Faltou", value: formatBRL(totais.faltas) },
+        { label: "Sobrou", value: formatBRL(totais.sobras) },
+        {
+          label: "Resultado líquido",
+          value: formatBRL(totais.liquido),
+          hint: "quanto faltou no caixa — não mede acerto",
+        },
+        { label: "Turnos conferidos", value: String(totais.turnos) },
+      ];
+      if (totais.semExplicar > 0) {
+        kpis.push({
+          label: "Sem explicação",
+          value: String(totais.semExplicar),
+          hint: "diferenças acima da tolerância que ninguém justificou",
+        });
+      }
+      if (totais.fechadosPorOutro > 0) {
+        kpis.push({
+          label: "Fechados por outro",
+          value: String(totais.fechadosPorOutro),
+          hint: "quem trabalhou o turno não foi quem contou — atribuição mais fraca",
+        });
+      }
+
+      return pack({
+        title: "Quebra de caixa por operador",
+        columns: [
+          "Operador",
+          "Turnos",
+          "Com diferença",
+          "Faltou",
+          "Sobrou",
+          "Desvio",
+          "Desvio/turno",
+          "% do movimento",
+          "Maior falta",
+          "Líquido",
+          "Sem explicar",
+        ],
+        rows,
+        kinds: [
+          "text",
+          "qty",
+          "qty",
+          "money",
+          "money",
+          "money",
+          "money",
+          "pct",
+          "money",
+          "money",
+          "qty",
+        ],
+        kpis,
+        // Ranking pelo DESVIO, que e o que o relatorio existe pra apontar.
+        chart: { kind: "bar", data: linhas.map((o) => ({ name: o.operador, value: o.desvio })) },
       });
     }
 

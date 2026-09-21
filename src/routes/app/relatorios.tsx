@@ -73,11 +73,37 @@ const GROUPS: { label: string; items: { id: string; label: string }[] }[] = [
       { id: "aging", label: "Aging" },
     ],
   },
+  {
+    label: "Caixa",
+    items: [{ id: "quebra", label: "Quebra por operador" }],
+  },
 ];
 
 const ALL_TYPES = GROUPS.flatMap((g) => g.items);
-const NO_FOOTER = new Set(["dre", "giro"]);
+/*
+  Relatorios em que somar coluna por coluna daria numero errado.
+
+  Em "quebra", o rodape somaria "Desvio/turno" (soma de medias) e "Maior
+  falta" (soma de maximos) -- dois totais que nao querem dizer nada e que
+  alguem acabaria usando, porque aparecem em negrito embaixo de uma coluna
+  de dinheiro. Os totais que fazem sentido ja estao nos KPIs do topo.
+*/
+const NO_FOOTER = new Set(["dre", "giro", "quebra"]);
 const SNAPSHOT = new Set(["estoque", "minimo", "aging"]);
+
+/*
+  Relatorios que NAO olham o vendedor.
+
+  O seletor aparecia em todos, e nestes sete nao filtrava nada: dava pra
+  escolher uma vendedora no Aging, ver os mesmos numeros e ainda ler
+  "Vendedor X" no cabecalho impresso. Filtro que nao filtra e pior que
+  filtro nenhum -- quem le o relatorio acredita nele.
+
+  Estoque, giro e posicao de titulos sao saldos da loja, nao de quem
+  vendeu; a quebra de caixa e do OPERADOR do caixa, que e outro papel e
+  outra tabela.
+*/
+const NO_SELLER = new Set(["estoque", "minimo", "giro", "pagar", "receber", "aging", "quebra"]);
 
 function formatCell(value: string | number, kind: ColKind): string {
   if (kind === "money") return formatBRL(value);
@@ -156,9 +182,13 @@ function RelatoriosPage() {
   const storeName =
     tenant.data?.stores.find((s) => s.id === storeId)?.name ??
     (storeId ? "Loja" : "Todas as lojas");
-  const sellerName =
-    (sellers.data ?? []).find((s) => s.id === sellerId)?.name ??
-    (sellerId ? "Vendedor" : "Todos os vendedores");
+  const usaVendedor = !NO_SELLER.has(type);
+  // A legenda vai pro cabecalho impresso: citar um vendedor num relatorio
+  // que nao filtra por vendedor assinaria um recorte que nunca existiu.
+  const sellerName = !usaVendedor
+    ? null
+    : ((sellers.data ?? []).find((s) => s.id === sellerId)?.name ??
+      (sellerId ? "Vendedor" : "Todos os vendedores"));
 
   return (
     <div className="report-sheet">
@@ -246,18 +276,20 @@ function RelatoriosPage() {
               }}
               className="w-40"
             />
-            <Select
-              value={sellerId ?? ""}
-              onChange={(e) => setSellerId(e.target.value ? Number(e.target.value) : null)}
-              className="w-auto min-w-48"
-            >
-              <option value="">Todos os vendedores</option>
-              {(sellers.data ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
+            {usaVendedor ? (
+              <Select
+                value={sellerId ?? ""}
+                onChange={(e) => setSellerId(e.target.value ? Number(e.target.value) : null)}
+                className="w-auto min-w-48"
+              >
+                <option value="">Todos os vendedores</option>
+                {(sellers.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
           </div>
         </div>
         {SNAPSHOT.has(type) ? (
@@ -271,7 +303,8 @@ function RelatoriosPage() {
         <p className="text-xs tracking-wide text-muted-foreground uppercase">Gestão Comercial</p>
         <h1 className="font-display text-2xl font-medium">{report.data?.title ?? current?.label}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {tenant.data?.companyName} · {storeName} · {sellerName}
+          {tenant.data?.companyName} · {storeName}
+          {sellerName ? ` · ${sellerName}` : ""}
           <br />
           {formatDate(range.from)} a {formatDate(range.to)}
         </p>
