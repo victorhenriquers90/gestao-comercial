@@ -1,4 +1,5 @@
 import { CARD_BRANDS } from "./constants.ts";
+import { splitInstallments } from "./installments.ts";
 
 /**
  * Cartao: taxa da maquininha, prazo de recebimento e validacao dos campos
@@ -124,38 +125,27 @@ export function splitCardSettlement(args: {
   installments: number;
   soldAt: Date;
 }): CardSettlement {
-  const parcelas = Math.max(1, Math.trunc(args.installments));
   const gross = round2(args.gross);
   const fee = round2((gross * args.feePct) / 100);
   const net = round2(gross - fee);
 
-  const base = round2(net / parcelas);
-  const linhas: { number: number; amount: number; dueDate: string }[] = [];
-  let somaDemais = 0;
-  for (let i = parcelas; i >= 2; i--) {
-    somaDemais = round2(somaDemais + base);
-  }
-  for (let i = 1; i <= parcelas; i++) {
-    const amount = i === 1 ? round2(net - somaDemais) : base;
-    linhas.push({
-      number: i,
-      amount,
-      // Primeira parcela em settlementDays; as seguintes de 30 em 30, que e
-      // como a adquirente repassa.
-      dueDate: addDays(args.soldAt, args.settlementDays + 30 * (i - 1)),
-    });
-  }
-  return { gross, fee, net, feePct: args.feePct, installments: linhas };
+  // Mesma regra de arredondamento do crediario (src/lib/installments.ts):
+  // duas implementacoes iam divergir no centavo, e "por que a soma das
+  // parcelas nao bate com a venda" e pergunta que ninguem responde depois.
+  // Primeira parcela em settlementDays; as seguintes de 30 em 30, que e como
+  // a adquirente repassa.
+  const installments = splitInstallments({
+    total: net,
+    count: args.installments,
+    firstDueInDays: args.settlementDays,
+    stepDays: 30,
+    from: args.soldAt,
+  });
+  return { gross, fee, net, feePct: args.feePct, installments };
 }
 
 function round2(v: number): number {
   return Math.round((v + Number.EPSILON) * 100) / 100;
-}
-
-function addDays(from: Date, days: number): string {
-  const d = new Date(from.getTime());
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 /* --------------------------------------------------------------------- */

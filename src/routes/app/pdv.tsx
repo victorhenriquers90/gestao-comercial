@@ -27,6 +27,7 @@ import { CARD_BRANDS, PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod } from
 import { runAction } from "@/lib/run-action";
 import { MAX_INSTALLMENTS } from "@/lib/card";
 import { parseMoneyInput } from "@/lib/money-input";
+import { MAX_CREDIARIO_INSTALLMENTS, splitCrediario } from "@/lib/crediario";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { maskBrDoc, parseBrDocument } from "@/lib/document";
 import { bestPromo } from "@/lib/promo";
@@ -60,6 +61,29 @@ const valorDigitado = (texto: string): number => {
   const n = parseMoneyInput(texto);
   return Number.isFinite(n) ? n : 0;
 };
+
+/**
+ * "3x de R$ 100,00 · 1ª em 21/10/2026" -- o que o operador fala pro cliente.
+ * Usa a MESMA divisao do servidor, entao o que aparece na tela e exatamente
+ * o que vai virar carne: nao ha um calculo pro balcao e outro pro banco.
+ */
+function resumoCrediario(p: PayRow): string | null {
+  const valor = parseMoneyInput(p.amount);
+  if (!Number.isFinite(valor) || valor <= 0) return null;
+  const n = Math.trunc(p.installments);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_CREDIARIO_INSTALLMENTS) return null;
+  const parcelas = splitCrediario(valor, n, new Date());
+  const primeira = parcelas[0]!;
+  const [ano, mes, dia] = primeira.dueDate.split("-");
+  const quando = `${dia}/${mes}/${ano}`;
+  if (parcelas.length === 1) return `Parcela única de ${formatBRL(primeira.amount)} em ${quando}`;
+  const iguais = parcelas.slice(1).every((x) => x.amount === parcelas[1]!.amount);
+  const corpo = iguais
+    ? `${parcelas.length}x de ${formatBRL(parcelas[1]!.amount)}`
+    : `${parcelas.length} parcelas`;
+  const primeiraDiferente = primeira.amount !== parcelas[1]!.amount;
+  return `${corpo}${primeiraDiferente ? ` (a 1ª de ${formatBRL(primeira.amount)})` : ""} · 1ª em ${quando}`;
+}
 
 /** Mesma altura, mesmo raio e mesmo alinhamento nos seis botoes de acao. */
 const pdvActionClass = "h-11 justify-between rounded-lg px-3";
@@ -1205,6 +1229,30 @@ function PdvPage() {
                         }}
                       />
                     </Field>
+                  </div>
+                ) : null}
+                {/* Crediario tambem parcela -- e e onde a loja mais usa. O
+                    resumo abaixo existe pro operador ter o que FALAR pro
+                    cliente ("3x de R$ 100, a primeira dia 21/10") sem ter
+                    que calcular de cabeca no balcao. */}
+                {p.method === "crediario" ? (
+                  <div className="mt-2">
+                    <Field label="Parcelas">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={MAX_CREDIARIO_INSTALLMENTS}
+                        value={p.installments}
+                        onChange={(e) => {
+                          const next = [...payments];
+                          next[idx] = { ...p, installments: Number(e.target.value) };
+                          setPayments(next);
+                        }}
+                      />
+                    </Field>
+                    {resumoCrediario(p) ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{resumoCrediario(p)}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

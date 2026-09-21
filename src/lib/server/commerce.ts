@@ -15,6 +15,7 @@ import {
   type CardMethod,
   type CardRate,
 } from "@/lib/card";
+import { checkCreditLimit, parseCrediarioInstallments, splitCrediario } from "@/lib/crediario";
 import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan } from "@/lib/permissions";
@@ -337,11 +338,55 @@ export const checkoutFn = createServerFn({ method: "POST" })
         method,
         amount,
         received: method === "dinheiro" ? parseReceived(amount, p.received) : amount,
-        installments: parseInstallments(p.installments, method),
+        installments:
+          method === "crediario"
+            ? parseCrediarioInstallments(p.installments)
+            : parseInstallments(p.installments, method),
         brand: parseCardBrand(p.brand, method),
         nsu: parseNsu(p.nsu),
       };
     });
+
+    /*
+      Limite de credito do cliente, conferido ANTES de gravar qualquer coisa.
+
+      `credit_limit` existia no cadastro, aparecia na ficha e nunca era olhado
+      numa venda: dava pra vender 5 mil no crediario pra quem tem limite de
+      500. Controle que existe na tela e nao existe no servidor e pior que
+      nao ter, porque o lojista acredita estar protegido.
+
+      Conta o que o cliente JA deve (titulos pendentes e parciais, de
+      qualquer origem) mais o crediario desta venda. Limite zero significa
+      "nao configurado" -- ver src/lib/crediario.ts.
+    */
+    const totalCrediario = pagamentos
+      .filter((p) => p.method === "crediario")
+      .reduce((a, p) => a + p.amount, 0);
+    if (totalCrediario > 0 && customerId) {
+      const [cli] = await sql<{ credit_limit: string | number }>`
+        select credit_limit from customers
+         where id = ${customerId} and company_id = ${tenant.companyId}
+      `;
+      const [aberto] = await sql<{ v: string | number }>`
+        select coalesce(sum(amount - received_amount), 0) as v
+          from accounts_receivable
+         where company_id = ${tenant.companyId} and customer_id = ${customerId}
+           and deleted_at is null and status in ('pendente', 'parcial', 'vencido')
+      `;
+      /*
+        A lista de status e a MESMA do `open_balance` que a ficha do cliente
+        mostra (party.ts). Se divergisse, o lojista veria um numero na tela e
+        o bloqueio usaria outro -- e a divergencia cairia pro lado errado:
+        'vencido' e derivado na leitura e nunca chega a ser gravado, mas
+        deixa-lo de fora aqui daria MAIS credito a quem esta atrasado.
+      */
+      const check = checkCreditLimit({
+        limite: num(cli?.credit_limit),
+        emAberto: num(aberto?.v),
+        novo: totalCrediario,
+      });
+      if (!check.ok) throw new Error(check.motivo);
+    }
     const taxasCartao = pagamentos.some((p) => isCardMethod(p.method))
       ? await loadCardRates(sql, tenant.companyId)
       : [];
@@ -456,17 +501,30 @@ export const checkoutFn = createServerFn({ method: "POST" })
 
         if (pay.method === "crediario") {
           if (!customerId) throw new Error("Crediário exige cliente identificado.");
-          const due = new Date();
-          due.setDate(due.getDate() + 30);
-          await sql`
-            insert into accounts_receivable (
-              company_id, store_id, customer_id, sale_id, payment_id, origin,
-              description, due_date, amount, status, user_id
-            ) values (
-              ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId}, ${paymentId}, 'crediario',
-              ${"Crediário venda nº " + number}, ${due.toISOString().slice(0, 10)}, ${pay.amount}, 'pendente', ${tenant.userId}
-            )
-          `;
+          /*
+            Uma linha por PARCELA, nao um titulo unico em 30 dias.
+
+            Crediario de loja e "3x", "5x sem juros", e o carne do cliente tem
+            uma linha por mes. Com um titulo so, o financeiro mostrava um
+            valor gordo numa data que nunca foi a combinada, e a cobranca mes
+            a mes voltava pro caderno.
+          */
+          const parcelas = splitCrediario(pay.amount, pay.installments, new Date());
+          for (const parcela of parcelas) {
+            const descricao =
+              parcelas.length > 1
+                ? `Crediário ${parcela.number}/${parcelas.length} — venda nº ${number}`
+                : `Crediário venda nº ${number}`;
+            await sql`
+              insert into accounts_receivable (
+                company_id, store_id, customer_id, sale_id, payment_id, origin,
+                description, due_date, amount, status, user_id
+              ) values (
+                ${tenant.companyId}, ${data.storeId}, ${customerId}, ${saleId}, ${paymentId}, 'crediario',
+                ${descricao}, ${parcela.dueDate}, ${parcela.amount}, 'pendente', ${tenant.userId}
+              )
+            `;
+          }
         }
         if (reg) {
           await sql`
