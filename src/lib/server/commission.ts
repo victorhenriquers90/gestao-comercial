@@ -190,49 +190,53 @@ export async function loadSellerTargetBonuses(
   sellerId: number,
   opts?: { storeId?: number | null; excludeSaleId?: number },
 ): Promise<TargetBonusIn[]> {
+  /*
+    UMA consulta, nao uma por meta.
+
+    Antes isto era N+1: buscava as metas e disparava um `sum(total)` para
+    cada uma. O PDV chama esta funcao a cada mudanca do carrinho, entao eram
+    N idas ao banco por item que o operador adiciona.
+
+    `left join lateral` preserva a semantica exata da versao anterior -- cada
+    meta continua avaliada com o SEU periodo, loja e categoria, porque o
+    bloco lateral enxerga a linha `t`. E `left join`, nao `join`: meta sem
+    venda no periodo tem que aparecer com realizado zero, nao sumir da lista
+    (seria bonus calculado sobre uma meta invisivel).
+  */
   const rows = await sql.query<Row>(
-    `select id, name, amount, bonus_kind, bonus_value, store_id, category_id, period_start, period_end
-       from targets
-      where company_id = $1
-        and seller_id = $2
-        and period_start <= current_date and period_end >= current_date
-        and ($3::int is null or store_id is null or store_id = $3)
-      order by id`,
-    [companyId, sellerId, opts?.storeId ?? null],
+    `select t.id, t.name, t.amount, t.bonus_kind, t.bonus_value,
+            coalesce(r.v, 0) as realized
+       from targets t
+       left join lateral (
+         select coalesce(sum(s.total), 0) as v
+           from sales s
+          where s.company_id = t.company_id
+            and s.status = 'finalizada' and s.deleted_at is null
+            and s.sold_at >= t.period_start
+            and s.sold_at < (t.period_end + interval '1 day')
+            and (t.store_id is null or s.store_id = t.store_id)
+            and s.seller_id = $2
+            and (t.category_id is null or exists (
+              select 1 from sale_items si join products p on p.id = si.product_id
+               where si.sale_id = s.id and p.category_id = t.category_id
+            ))
+            and ($4::int is null or s.id <> $4)
+       ) r on true
+      where t.company_id = $1
+        and t.seller_id = $2
+        and t.period_start <= current_date and t.period_end >= current_date
+        and ($3::int is null or t.store_id is null or t.store_id = $3)
+      order by t.id`,
+    [companyId, sellerId, opts?.storeId ?? null, opts?.excludeSaleId ?? null],
   );
-  const out: TargetBonusIn[] = [];
-  for (const t of rows) {
-    const realized = await sql.query<{ v: string | number }>(
-      `select coalesce(sum(s.total),0) as v from sales s
-        where s.company_id = $1 and s.status = 'finalizada' and s.deleted_at is null
-          and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
-          and ($4::int is null or s.store_id = $4)
-          and s.seller_id = $5
-          and ($6::int is null or exists (
-            select 1 from sale_items si join products p on p.id = si.product_id
-            where si.sale_id = s.id and p.category_id = $6
-          ))
-          and ($7::int is null or s.id <> $7)`,
-      [
-        companyId,
-        t.period_start,
-        t.period_end,
-        t.store_id,
-        sellerId,
-        t.category_id,
-        opts?.excludeSaleId ?? null,
-      ],
-    );
-    out.push({
-      id: num(t.id),
-      name: String(t.name ?? ""),
-      amount: num(t.amount),
-      realized: num(realized[0]?.v),
-      bonusKind: String(t.bonus_kind ?? "none"),
-      bonusValue: num(t.bonus_value),
-    });
-  }
-  return out;
+  return rows.map((t) => ({
+    id: num(t.id),
+    name: String(t.name ?? ""),
+    amount: num(t.amount),
+    realized: num(t.realized),
+    bonusKind: String(t.bonus_kind ?? "none"),
+    bonusValue: num(t.bonus_value),
+  }));
 }
 
 export const listCommissionRulesFn = createServerFn({ method: "GET" })

@@ -525,12 +525,40 @@ export const listTargetsFn = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "targets.read");
+    /*
+      O realizado de cada meta vem junto, por `left join lateral`, em vez de
+      uma consulta por meta.
+
+      Aqui o N+1 era pior que no PDV: esta tela lista TODAS as metas da
+      empresa, sem filtro de periodo, e meta acumula mes a mes -- com cinco
+      vendedores e um ano de loja sao ~60 idas ao banco por abertura de tela,
+      crescendo pra sempre.
+
+      O bloco lateral enxerga a linha `t`, entao cada meta continua sendo
+      avaliada com o SEU periodo, loja, vendedor e categoria. `left join`
+      mantem a meta sem venda no periodo aparecendo com realizado zero.
+    */
     const rows = await sql<Row>`
-      select t.*, sl.name as seller_name, st.name as store_name, c.name as category_name
+      select t.*, sl.name as seller_name, st.name as store_name, c.name as category_name,
+             coalesce(r.v, 0) as realized
       from targets t
       left join sellers sl on sl.id = t.seller_id
       left join stores st on st.id = t.store_id
       left join categories c on c.id = t.category_id
+      left join lateral (
+        select coalesce(sum(s.total), 0) as v
+          from sales s
+         where s.company_id = t.company_id
+           and s.status = 'finalizada' and s.deleted_at is null
+           and s.sold_at >= t.period_start
+           and s.sold_at < (t.period_end + interval '1 day')
+           and (t.store_id is null or s.store_id = t.store_id)
+           and (t.seller_id is null or s.seller_id = t.seller_id)
+           and (t.category_id is null or exists (
+             select 1 from sale_items si join products p on p.id = si.product_id
+              where si.sale_id = s.id and p.category_id = t.category_id
+           ))
+      ) r on true
       where t.company_id = ${tenant.companyId}
       order by t.period_start desc
     `;
@@ -552,20 +580,8 @@ export const listTargetsFn = createServerFn({ method: "GET" })
       bonus_value: number;
     }[] = [];
     for (const t of rows) {
-      const realized = await sql.query<{ v: string | number }>(
-        `select coalesce(sum(s.total),0) as v from sales s
-          where s.company_id = $1 and s.status = 'finalizada' and s.deleted_at is null
-            and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
-            and ($4::int is null or s.store_id = $4)
-            and ($5::int is null or s.seller_id = $5)
-            and ($6::int is null or exists (
-              select 1 from sale_items si join products p on p.id = si.product_id
-              where si.sale_id = s.id and p.category_id = $6
-            ))`,
-        [tenant.companyId, t.period_start, t.period_end, t.store_id, t.seller_id, t.category_id],
-      );
       const amount = num(t.amount);
-      const done = num(realized[0]?.v);
+      const done = num(t.realized);
       const kindRaw = String(t.bonus_kind ?? "none");
       out.push({
         id: num(t.id),
