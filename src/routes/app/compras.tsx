@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
@@ -84,6 +86,12 @@ function ComprasPage() {
         description="Pedidos, recebimento e atualização automática de estoque e custo."
         actions={<Button onClick={() => setOpen(true)}>Novo pedido</Button>}
       />
+      <Tabs defaultValue="pedidos">
+        <TabsList>
+          <TabsTrigger value="pedidos">Pedidos</TabsTrigger>
+          <TabsTrigger value="sugestao">Sugestão de compra</TabsTrigger>
+        </TabsList>
+        <TabsContent value="pedidos">
       {!list.data?.length ? (
         <EmptyState title="Nenhum pedido de compra." description="Crie o primeiro pedido para abastecer o estoque." />
       ) : (
@@ -133,6 +141,11 @@ function ComprasPage() {
           ))}
         </DataTable>
       )}
+        </TabsContent>
+        <TabsContent value="sugestao">
+          <PurchaseSuggestionPanel storeId={storeId ?? null} />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">

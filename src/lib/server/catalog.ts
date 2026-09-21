@@ -388,7 +388,13 @@ export const listStockFn = createServerFn({ method: "POST" })
       )`;
     }
     const rows = await sql.query<Row>(
-      `select v.id as variant_id, p.id as product_id, p.name, v.color, v.size, p.sku, p.min_stock,
+      `select v.id as variant_id, p.id as product_id, p.name, v.color, v.size, p.sku,
+              -- MESMA definicao do painel: o maior entre o minimo daquela
+              -- loja e o do produto. Antes esta tela olhava so p.min_stock,
+              -- entao o filtro "abaixo do minimo" daqui discordava do
+              -- alerta "Estoque baixo" do painel -- duas telas, mesmo
+              -- conceito, respostas diferentes.
+              greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0)) as min_stock,
               p.location, coalesce(i.quantity,0) as quantity, i.store_id, s.name as store_name,
               coalesce(v.cost, p.cost) as cost, coalesce(v.price, p.price) as price,
               lm.last_move
