@@ -286,7 +286,9 @@ function UserMenu({ tenant }: { tenant: Tenant }) {
 
 function NotifBell() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<{ id: string; title: string; body: string; href: string }[]>([]);
+  // O tipo vem da propria funcao de servidor: redeclarar a forma aqui foi o
+  // que deixou `dismissible` de fora quando o servidor passou a mandar.
+  const [items, setItems] = useState<Awaited<ReturnType<typeof listNotificationsFn>>>([]);
 
   function load() {
     listNotificationsFn()
@@ -313,7 +315,16 @@ function NotifBell() {
       <DropdownMenuContent align="end" className="w-80 p-1">
         <div className="flex items-center justify-between px-2 py-1.5">
           <DropdownMenuLabel className="p-0">Notificações</DropdownMenuLabel>
-          {items.length ? (
+          {/*
+            "Limpar" so aparece quando ha aviso DISPENSAVEL.
+
+            Os derivados (estoque baixo, cobranca, tarefas) sao estado, nao
+            evento: somem quando o problema acaba, e nao ha o que marcar
+            como lido. Antes o botao aparecia sempre que houvesse qualquer
+            item -- a pessoa clicava, nada mudava, e a conclusao razoavel
+            era que o sistema estava quebrado.
+          */}
+          {items.some((n) => n.dismissible) ? (
             <button
               type="button"
               className="text-xs font-medium text-primary"

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
@@ -33,6 +33,22 @@ import { cn, num } from "@/lib/utils";
 export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
 
 function FinanceiroPage() {
+  const loc = useLocation();
+  const navigate = useNavigate();
+  /*
+    A aba vem da URL.
+
+    O aviso "Parcelas vencendo hoje" no sino aponta pra
+    /app/financeiro?tab=cobranca. Sem isto, o link levava pra tela certa e
+    abria a aba de contas a pagar -- avisar e largar a pessoa na aba errada
+    e quase pior do que nao avisar.
+  */
+  const abaPedida =
+    typeof (loc.search as { tab?: unknown }).tab === "string"
+      ? (loc.search as { tab?: string }).tab
+      : new URLSearchParams(loc.searchStr.replace(/^\?/, "")).get("tab");
+  const ABAS = ["pagar", "receber", "cobranca", "fluxo", "desp"];
+  const aba = abaPedida && ABAS.includes(abaPedida) ? abaPedida : "pagar";
   const storeId = useSelection((s) => s.storeId);
   const qc = useQueryClient();
   const range = resolvePeriod("month");
@@ -85,7 +101,16 @@ function FinanceiroPage() {
         </div>
       ) : null}
 
-      <Tabs defaultValue="pagar">
+      <Tabs
+        value={aba}
+        onValueChange={(v) =>
+          void navigate({
+            to: "/app/financeiro",
+            search: (v === "pagar" ? {} : { tab: v }) as never,
+            replace: true,
+          })
+        }
+      >
         <TabsList>
           <TabsTrigger value="pagar">Contas a pagar</TabsTrigger>
           <TabsTrigger value="receber">Contas a receber</TabsTrigger>

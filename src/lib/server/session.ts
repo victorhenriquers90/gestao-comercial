@@ -148,10 +148,32 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
       where company_id = ${tenant.companyId} and deleted_at is null
         and status in ('pendente','parcial') and due_date < current_date
     `;
-    const overdueRec = await sql<{ n: number }>`
-      select count(*)::int as n from accounts_receivable
-      where company_id = ${tenant.companyId} and deleted_at is null
-        and status in ('pendente','parcial') and due_date < current_date
+    /*
+      Cobranca do CLIENTE, nao repasse de cartao.
+
+      O aviso anterior contava todo recebivel vencido. Agora que a venda no
+      cartao tambem gera recebivel, isso encheria o sino de 'atraso' da
+      adquirente -- que nao e cobranca, e conciliacao: ninguem liga pra
+      maquininha pedindo o dinheiro. Fica so o que uma PESSOA deve.
+    */
+    const recVencido = await sql<{ n: number; v: string | number }>`
+      select count(*)::int as n, coalesce(sum(amount - received_amount), 0) as v
+        from accounts_receivable
+       where company_id = ${tenant.companyId} and deleted_at is null
+         and status in ('pendente','parcial') and origin <> 'cartao'
+         and customer_id is not null and due_date < current_date
+    `;
+    /*
+      'Vence hoje' tem aviso proprio: e o unico dia em que o telefonema
+      ainda EVITA o atraso, em vez de cobrar um que ja aconteceu. Sem ele o
+      sino so avisa quando ja e tarde.
+    */
+    const recHoje = await sql<{ n: number; v: string | number }>`
+      select count(*)::int as n, coalesce(sum(amount - received_amount), 0) as v
+        from accounts_receivable
+       where company_id = ${tenant.companyId} and deleted_at is null
+         and status in ('pendente','parcial') and origin <> 'cartao'
+         and customer_id is not null and due_date = current_date
     `;
     const dueTasks = await sql<{ n: number }>`
       select count(*)::int as n from crm_tasks
@@ -170,7 +192,23 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
       where company_id = ${tenant.companyId} and read_at is null
       order by created_at desc limit 12
     `;
-    const items: { id: string; title: string; body: string; href: string; kind: string }[] = [];
+    /*
+      `dismissible` separa os dois tipos de aviso que convivem aqui.
+
+      Os derivados (estoque baixo, cobranca, tarefas) sao ESTADO: somem
+      quando o problema acaba, e nao ha o que marcar como lido. Os
+      armazenados sao EVENTO e se dispensam. Sem essa marca, o botao
+      "Limpar" aparecia mesmo quando so havia derivados -- e nao limpava
+      nada, porque nao havia nada pra limpar.
+    */
+    const items: {
+      id: string;
+      title: string;
+      body: string;
+      href: string;
+      kind: string;
+      dismissible: boolean;
+    }[] = [];
     if (num(low[0]?.n) > 0) {
       items.push({
         id: "low",
@@ -178,6 +216,7 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         title: "Estoque baixo",
         body: `${low[0]!.n} produto(s) no ponto de reposição.`,
         href: "/app/estoque",
+        dismissible: false,
       });
     }
     if (num(overduePay[0]?.n) > 0) {
@@ -187,15 +226,27 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         title: "Contas vencidas",
         body: `${overduePay[0]!.n} conta(s) a pagar vencida(s).`,
         href: "/app/financeiro",
+        dismissible: false,
       });
     }
-    if (num(overdueRec[0]?.n) > 0) {
+    if (num(recHoje[0]?.n) > 0) {
       items.push({
-        id: "ar",
+        id: "cob-hoje",
         kind: "financeiro",
-        title: "Recebimentos atrasados",
-        body: `${overdueRec[0]!.n} título(s) a receber vencido(s).`,
-        href: "/app/financeiro",
+        title: "Parcelas vencendo hoje",
+        body: `${recHoje[0]!.n} parcela(s) de cliente, ${formatBRL(num(recHoje[0]?.v))}. Hoje ainda dá pra evitar o atraso.`,
+        href: "/app/financeiro?tab=cobranca",
+        dismissible: false,
+      });
+    }
+    if (num(recVencido[0]?.n) > 0) {
+      items.push({
+        id: "cob-vencido",
+        kind: "financeiro",
+        title: "Cobrança em atraso",
+        body: `${recVencido[0]!.n} parcela(s) de cliente vencida(s), ${formatBRL(num(recVencido[0]?.v))}.`,
+        href: "/app/financeiro?tab=cobranca",
+        dismissible: false,
       });
     }
     if (num(dueTasks[0]?.n) > 0) {
@@ -205,6 +256,7 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         title: "Tarefas do CRM",
         body: `${dueTasks[0]!.n} follow-up(s) vencido(s) ou para hoje.`,
         href: "/app/crm",
+        dismissible: false,
       });
     }
     for (const n of stored) {
@@ -214,6 +266,7 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         title: n.title,
         body: n.body ?? "",
         href: n.href ?? "/app",
+        dismissible: true,
       });
     }
     return items;
