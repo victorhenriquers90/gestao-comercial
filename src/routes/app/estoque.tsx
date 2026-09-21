@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { StockCountPanel } from "@/components/stock-count-panel";
 import { useSelection } from "@/hooks/use-selection";
 import { STOCK_TYPE_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
@@ -51,6 +52,7 @@ function EstoquePage() {
         <TabsList>
           <TabsTrigger value="saldo">Saldos</TabsTrigger>
           <TabsTrigger value="mov">Movimentações</TabsTrigger>
+          <TabsTrigger value="inv">Inventário</TabsTrigger>
         </TabsList>
         <TabsContent value="saldo">
           <div className="mb-4 flex flex-wrap gap-2">
@@ -133,6 +135,9 @@ function EstoquePage() {
               </tr>
             ))}
           </DataTable>
+        </TabsContent>
+        <TabsContent value="inv">
+          <StockCountPanel storeId={storeId ?? tenant.data?.defaultStoreId ?? null} />
         </TabsContent>
       </Tabs>
 

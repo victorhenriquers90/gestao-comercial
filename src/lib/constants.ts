@@ -84,6 +84,10 @@ export const STOCK_TYPE_LABELS: Record<string, string> = {
   perda: "Perda",
   ajuste: "Ajuste",
   transferencia: "Transferência",
+  // Separado de "Ajuste" de proposito: ajuste e alguem corrigindo um item;
+  // inventario e a contagem da prateleira inteira. Na hora de entender por
+  // que o saldo mudou, saber qual dos dois foi e a informacao que importa.
+  inventario: "Inventário",
 };
 
 export const CRM_STAGES = [
