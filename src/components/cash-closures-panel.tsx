@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/shared";
 import { CASH_DENOMINATIONS, DIFFERENCE_LABELS } from "@/lib/cash-count";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { runAction } from "@/lib/run-action";
+import { HANDOVER_LABELS } from "@/lib/shift-handover";
 import { explainCashDifferenceFn, listCashClosuresFn } from "@/lib/server/finance";
 
 /**
@@ -86,6 +87,38 @@ export function CashClosuresPanel({ storeId }: { storeId: number | null }) {
               </p>
             </div>
           </div>
+
+          {/* Os dois lados da virada. `recebido` compara o que o turno
+              ANTERIOR declarou ter deixado com o que este contou ao receber
+              -- uma pessoa contra outra sobre o mesmo dinheiro, que e coisa
+              diferente da diferenca do fechamento e por isso vive separada. */}
+          {f.recebido || f.ficaNaGaveta != null ? (
+            <div className="mt-block flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {f.recebido ? (
+                <span>
+                  Recebeu a gaveta contando {formatBRL(f.recebido.recebido)} contra{" "}
+                  {formatBRL(f.recebido.deixado)} declarados
+                  {f.recebido.kind === "confere" || f.recebido.dentroDaTolerancia ? (
+                    " — confere"
+                  ) : (
+                    <strong className="text-destructive">
+                      {" "}
+                      — {HANDOVER_LABELS[f.recebido.kind].toLowerCase()} de{" "}
+                      {formatBRL(Math.abs(f.recebido.diferenca))}
+                    </strong>
+                  )}
+                </span>
+              ) : f.aberturaConferida ? null : (
+                <span>Abriu sem conferir a gaveta</span>
+              )}
+              {f.ficaNaGaveta != null && f.ficaNaGaveta > 0 ? (
+                <span>
+                  Deixou {formatBRL(f.ficaNaGaveta)} na gaveta · {formatBRL(f.vaiProCofre ?? 0)} pro
+                  cofre
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
           {f.breakdown ? <Breakdown map={f.breakdown} /> : null}
 

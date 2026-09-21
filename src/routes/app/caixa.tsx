@@ -23,6 +23,7 @@ import {
 import { CASH_MOVE_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
+import { HANDOVER_LABELS, safeAmount, type HandoverCheck } from "@/lib/shift-handover";
 import { can, type Role } from "@/lib/permissions";
 import { runAction } from "@/lib/run-action";
 import {
@@ -43,6 +44,8 @@ type CloseResult = {
   diff: number;
   cego: boolean;
   precisaExplicacao: boolean;
+  ficaNaGaveta: number;
+  vaiProCofre: number;
 };
 
 function CaixaPage() {
@@ -63,6 +66,15 @@ function CaixaPage() {
   const [fechando, setFechando] = useState(false);
   const [revelando, setRevelando] = useState(false);
   const [result, setResult] = useState<CloseResult | null>(null);
+  /* Estado proprio pra ficha da ABERTURA, separado do fechamento de
+     proposito: reaproveitar o mesmo qtys deixaria a contagem da gaveta
+     recebida pre-preenchida no fechamento do turno -- ancorando justo a
+     contagem que precisa ser cega. */
+  const [abrirModo, setAbrirModo] = useState<CountMode>("cedula");
+  const [abrirQtys, setAbrirQtys] = useState<Record<string, string>>({});
+  const [abrirTotal, setAbrirTotal] = useState("");
+  const [handoverResult, setHandoverResult] = useState<HandoverCheck | null>(null);
+  const [trocoTurno, setTrocoTurno] = useState("");
 
   /**
    * Sangria e suprimento partilham este caminho. Antes cada botao chamava
@@ -124,10 +136,40 @@ function CaixaPage() {
     valor inteiro do turno, e nao ha como reabrir: sobraria uma diferenca
     falsa, permanente, exigindo explicacao pra um erro que nunca aconteceu.
   */
+  // Contagem da ABERTURA: com troca pendente sai da ficha (cega); sem
+  // troca e o troco que o operador esta colocando na gaveta e ele sabe
+  // quanto e -- nao ha o que conferir contra ninguem.
+  const temTroca = Boolean(d?.handover);
+  const aberturaContado = !temTroca
+    // parseMoneyInput e nao Number(): "350,00" digitado no campo vira NaN no
+    // Number(), e o servidor recusa com "Fundo inicial inválido" sem o
+    // operador entender o que fez de errado.
+    ? parseMoneyInput(openAmt)
+    : abrirModo === "cedula"
+      ? breakdownTotal(abrirQtys)
+      : parseMoneyInput(abrirTotal);
+  const aberturaValida =
+    Number.isFinite(aberturaContado) &&
+    aberturaContado >= 0 &&
+    (!temTroca
+      ? true
+      : abrirModo === "cedula"
+        ? Object.values(abrirQtys).some((v) => parseQty(v) > 0) &&
+          Object.values(abrirQtys).every((v) => Number.isFinite(parseQty(v)))
+        : abrirTotal.trim() !== "");
   const contagemValida =
     Number.isFinite(contado) &&
     contado >= 0 &&
     (modo === "cedula" ? !fichaVazia && !fichaInvalida : totalDireto.trim() !== "");
+
+  // Depois de contagemValida de proposito: so faz sentido comparar o troco
+  // com o contado quando o contado ja e um numero legivel.
+  const trocaValor = trocoTurno.trim() ? parseMoneyInput(trocoTurno) : 0;
+  const trocaInvalida =
+    trocoTurno.trim() !== "" &&
+    (!Number.isFinite(trocaValor) ||
+      trocaValor < 0 ||
+      (contagemValida && trocaValor > contado + 0.005));
 
   async function fechar() {
     if (fechando) return;
@@ -142,6 +184,7 @@ function CaixaPage() {
           storeId: activeStore,
           counted: modo === "cedula" ? undefined : contado,
           breakdown,
+          handover: trocaValor > 0 ? trocaValor : undefined,
         },
       });
       setResult({
@@ -150,10 +193,13 @@ function CaixaPage() {
         diff: r.diff,
         cego: r.cego,
         precisaExplicacao: r.precisaExplicacao,
+        ficaNaGaveta: r.ficaNaGaveta,
+        vaiProCofre: r.vaiProCofre,
       });
       setConfirmandoFechamento(false);
       setQtys({});
       setTotalDireto("");
+      setTrocoTurno("");
       toast.success("Caixa fechado.");
       void qc.invalidateQueries({ queryKey: ["register"] });
       void qc.invalidateQueries({ queryKey: ["cash-closures"] });
@@ -165,37 +211,110 @@ function CaixaPage() {
     }
   }
 
+  /*
+    Abrir o caixa -- e, quando ha troco do turno anterior, RECEBER a gaveta.
+
+    A gaveta recebida se conta antes de ver o que o outro declarou. Sem isso
+    quem entra so transcreve o numero de quem saiu, herda o erro alheio, e a
+    diferenca volta a nao ter dono. E a hora de achar um desencontro e essa,
+    com as duas pessoas na frente da gaveta.
+  */
+  async function abrir() {
+    if (openingCaixa) return;
+    setOpeningCaixa(true);
+    try {
+      const breakdown =
+        temTroca && abrirModo === "cedula" ? normalizeBreakdown(abrirQtys) : null;
+      const r = await openRegisterFn({
+        data: {
+          storeId: activeStore,
+          amount: breakdown ? undefined : aberturaContado,
+          breakdown,
+        },
+      });
+      setHandoverResult(r.handover ?? null);
+      setResult(null);
+      setAbrirQtys({});
+      setAbrirTotal("");
+      toast.success(r.handover ? "Gaveta conferida e caixa aberto." : "Caixa aberto.");
+      void qc.invalidateQueries({ queryKey: ["register"] });
+      void qc.invalidateQueries({ queryKey: ["cash-closures"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao abrir o caixa.");
+    } finally {
+      setOpeningCaixa(false);
+    }
+  }
+
+
   return (
     <div>
       <PageHeader title="Caixa" description="Abertura, sangria, suprimento e conferência de fechamento." />
 
       {result ? <ResultadoFechamento r={result} /> : null}
+      {handoverResult ? <ResultadoTroca h={handoverResult} /> : null}
 
       {!d?.register ? (
-        <Card className="max-w-md p-5">
-          <p className="text-sm text-muted-foreground">Nenhum caixa aberto nesta loja.</p>
-          <Field label="Fundo inicial" className="mt-4">
-            <Input value={openAmt} onChange={(e) => setOpenAmt(e.target.value)} />
-          </Field>
-          <Button
-            className="mt-4"
-            disabled={openingCaixa || !podeFechar}
-            onClick={async () => {
-              if (openingCaixa) return;
-              setOpeningCaixa(true);
-              const ok = await runAction(
-                () => openRegisterFn({ data: { storeId: activeStore, amount: Number(openAmt) } }),
-                { sucesso: "Caixa aberto." },
-              );
-              setOpeningCaixa(false);
-              if (!ok) return;
-              setResult(null);
-              void qc.invalidateQueries({ queryKey: ["register"] });
-            }}
-          >
-            {openingCaixa ? "Abrindo…" : "Abrir caixa"}
-          </Button>
-        </Card>
+        d.handover ? (
+          /* Receber a gaveta e contar a gaveta. O valor que o turno anterior
+             declarou nao vem do servidor ainda: quem entra conta primeiro e
+             so depois ve. Aceitar o numero do outro herdaria o erro alheio, e
+             a diferenca voltaria a nao ter dono.
+
+             max-w-4xl e nao 2xl: medido no laboratorio, a 672px a ficha nao
+             divide em duas colunas e o cartao vai a 903px de altura --
+             rolagem demais pro momento em que duas pessoas estao paradas na
+             frente da gaveta esperando. */
+          <Card className="max-w-4xl p-5">
+            <p className="ed-title">Receber a gaveta do turno anterior</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {d.handover.by ?? "O turno anterior"} deixou troco na gaveta
+              {d.handover.closedAt ? ` em ${formatDateTime(d.handover.closedAt)}` : ""}. Conte o
+              que está na gaveta antes de abrir — o valor declarado aparece depois da contagem.
+            </p>
+
+            <div className="mt-block">
+              <CashCountSheet
+                modo={abrirModo}
+                onModo={setAbrirModo}
+                qtys={abrirQtys}
+                onQtys={setAbrirQtys}
+                totalDireto={abrirTotal}
+                onTotalDireto={setAbrirTotal}
+                disabled={!podeFechar || openingCaixa}
+              />
+            </div>
+
+            <div className="mt-block flex items-baseline justify-between border-t border-border pt-3">
+              <span className="ed-label">Contado na gaveta</span>
+              <span className="tabular font-display text-2xl font-semibold">
+                {aberturaValida ? formatBRL(aberturaContado) : "—"}
+              </span>
+            </div>
+
+            <Button
+              className="mt-block"
+              disabled={openingCaixa || !podeFechar || !aberturaValida}
+              onClick={() => void abrir()}
+            >
+              {openingCaixa ? "Abrindo…" : "Conferir e abrir o caixa"}
+            </Button>
+          </Card>
+        ) : (
+          <Card className="max-w-md p-5">
+            <p className="text-sm text-muted-foreground">Nenhum caixa aberto nesta loja.</p>
+            <Field label="Fundo inicial" className="mt-4">
+              <Input value={openAmt} onChange={(e) => setOpenAmt(e.target.value)} />
+            </Field>
+            <Button
+              className="mt-4"
+              disabled={openingCaixa || !podeFechar}
+              onClick={() => void abrir()}
+            >
+              {openingCaixa ? "Abrindo…" : "Abrir caixa"}
+            </Button>
+          </Card>
+        )
       ) : (
         <>
           {/* Aviso ANTES dos KPIs: enquanto o caixa nao fecha, todo numero
@@ -349,10 +468,41 @@ function CaixaPage() {
               </span>
             </div>
 
+            {/* Quanto fica na gaveta nao e informacao cega: e uma decisao de
+                quem fecha, sobre dinheiro que ele acabou de contar. Vazio =
+                fim do dia, gaveta recolhida. */}
+            <div className="mt-block">
+              <Field label="Fica na gaveta para o próximo turno (vazio = fim do dia)">
+                <Input
+                  className="max-w-48"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  disabled={!podeFechar || fechando}
+                  value={trocoTurno}
+                  onChange={(e) => setTrocoTurno(e.target.value)}
+                />
+              </Field>
+              {trocaValor > 0 && contagemValida ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ficam {formatBRL(trocaValor)} na gaveta e{" "}
+                  {formatBRL(safeAmount(contado, trocaValor))} saem para o cofre. Quem assumir o
+                  próximo turno vai contar a gaveta antes de abrir.
+                </p>
+              ) : null}
+              {trocaInvalida ? (
+                <p className="mt-1 text-sm text-destructive">
+                  Não dá para deixar na gaveta mais do que foi contado.
+                </p>
+              ) : null}
+            </div>
+
             {confirmandoFechamento ? (
               <div className="mt-block rounded-lg border border-warning/40 bg-warning/10 p-3">
                 <p className="text-sm">
                   Fechar o caixa com {formatBRL(contado)} contados?
+                  {trocaValor > 0
+                    ? ` Ficam ${formatBRL(trocaValor)} na gaveta para o próximo turno.`
+                    : " A gaveta é recolhida inteira (fim do dia)."}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Depois de confirmar, o sistema mostra o esperado — e a contagem não pode mais
@@ -370,7 +520,7 @@ function CaixaPage() {
             ) : (
               <Button
                 className="mt-block"
-                disabled={!podeFechar || !contagemValida}
+                disabled={!podeFechar || !contagemValida || trocaInvalida}
                 onClick={() => setConfirmandoFechamento(true)}
               >
                 Fechar caixa e conferir
@@ -447,6 +597,17 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
           </p>
         </div>
       </div>
+      <p className="mt-block text-sm text-muted-foreground">
+        {r.ficaNaGaveta > 0 ? (
+          <>
+            Ficam <strong className="text-foreground">{formatBRL(r.ficaNaGaveta)}</strong> na gaveta
+            para o próximo turno e {formatBRL(r.vaiProCofre)} saem para o cofre. Quem assumir vai
+            contar a gaveta antes de abrir — é nessa segunda contagem que um desencontro aparece.
+          </>
+        ) : (
+          <>Gaveta recolhida inteira: {formatBRL(r.vaiProCofre)} saem para o cofre.</>
+        )}
+      </p>
       {r.precisaExplicacao ? (
         <p className="mt-block text-sm">
           Acima de {formatBRL(CASH_DIFFERENCE_TOLERANCE)} a diferença precisa de explicação
@@ -457,6 +618,60 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
       <Button className="mt-block" variant="outline" size="sm" onClick={() => window.print()}>
         Imprimir fechamento
       </Button>
+    </Card>
+  );
+}
+
+/**
+ * O que as duas contagens da virada disseram.
+ *
+ * Os dois numeros aparecem lado a lado, com nome: esta diferenca nao e "o
+ * sistema contra a gaveta", e uma pessoa contra outra sobre o MESMO
+ * dinheiro. Guardar so o resultado apagaria de quem foi cada numero, que e
+ * justamente o que a troca de turno existe pra registrar.
+ */
+function ResultadoTroca({ h }: { h: HandoverCheck }) {
+  const bateu = h.kind === "confere" || h.dentroDaTolerancia;
+  return (
+    <Card
+      className={`mb-4 p-5 ${
+        bateu ? "border-success/40 bg-success/5" : "border-destructive/40 bg-destructive/5"
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="ed-title">Gaveta recebida</p>
+        <Badge variant={bateu ? "success" : "danger"}>
+          {HANDOVER_LABELS[h.kind]}
+          {h.kind === "confere" ? "" : ` ${formatBRL(Math.abs(h.diferenca))}`}
+        </Badge>
+      </div>
+      <div className="mt-block grid gap-3 sm:grid-cols-3">
+        <div>
+          <p className="ed-label">Você contou</p>
+          <p className="tabular mt-0.5 font-display text-xl font-semibold">
+            {formatBRL(h.recebido)}
+          </p>
+        </div>
+        <div>
+          <p className="ed-label">Turno anterior deixou</p>
+          <p className="tabular mt-0.5 font-display text-xl font-semibold">
+            {formatBRL(h.deixado)}
+          </p>
+        </div>
+        <div>
+          <p className="ed-label">Diferença</p>
+          <p className="tabular mt-0.5 font-display text-xl font-semibold">
+            {formatBRL(h.diferenca)}
+          </p>
+        </div>
+      </div>
+      {bateu ? null : (
+        <p className="mt-block text-sm">
+          Resolva agora, com quem entregou a gaveta ainda por perto. Seu turno começa com{" "}
+          <strong>{formatBRL(h.recebido)}</strong> — o que está realmente na gaveta — e essa
+          diferença fica registrada na troca, sem entrar no fechamento de nenhum dos dois turnos.
+        </p>
+      )}
     </Card>
   );
 }

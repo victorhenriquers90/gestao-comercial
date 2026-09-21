@@ -12,6 +12,7 @@ import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
 import { optionalLine, requireMultiline } from "@/lib/sanitize";
+import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
@@ -332,8 +333,24 @@ type OpenRegister = {
   days_open: number;
 };
 
+/**
+ * Turno anterior que deixou dinheiro na gaveta e ainda nao foi recebido.
+ *
+ * O VALOR NAO VEM AQUI de proposito: quem entra conta a gaveta antes de ver
+ * quanto o outro disse ter deixado. Mandar o numero junto seria o mesmo erro
+ * do "dinheiro esperado" na tela do fechamento -- a segunda contagem viraria
+ * transcricao da primeira, e a troca deixaria de conferir coisa nenhuma.
+ */
+type PendingHandover = {
+  registerId: number;
+  closedAt: string | null;
+  by: string | null;
+};
+
 type RegisterView = {
   register: OpenRegister | null;
+  /** So quando nao ha caixa aberto: ha troco esperando ser conferido. */
+  handover: PendingHandover | null;
   movements: Row[];
   summary: RegisterSummary | null;
 };
@@ -368,7 +385,14 @@ async function loadOpenRegister(
       order by opened_at desc limit 1` + (opts.lock ? " for update" : ""),
     [companyId, storeId],
   );
-  if (!reg) return { register: null, movements: [], summary: null };
+  if (!reg) {
+    return {
+      register: null,
+      handover: await loadPendingHandover(sql, companyId, storeId),
+      movements: [],
+      summary: null,
+    };
+  }
   const revelar = opts.force === true || (opts.canReveal === true && reg.expected_revealed_at != null);
 
   const movements = await sql<Row>`
@@ -410,6 +434,7 @@ async function loadOpenRegister(
         reg.expected_revealed_at == null ? null : String(reg.expected_revealed_at),
       days_open: num(reg.days_open),
     },
+    handover: null,
     movements: revelar ? movements : movements.filter((m) => String(m.type) !== "venda"),
     summary: {
       salesCount: num(vendas?.n),
@@ -420,6 +445,45 @@ async function loadOpenRegister(
       devolucoes: refunds,
       cash: revelar ? { sales, cashSales, expectedCash: money(expectedCash) } : null,
     },
+  };
+}
+
+/**
+ * O ultimo fechamento desta loja deixou troco na gaveta e ninguem abriu
+ * desde entao.
+ *
+ * Sem recorte por dia: troco que dormiu na gaveta e troco que passou pro
+ * turno da tarde tem a mesma mecanica -- alguem deixou, outro alguem vai
+ * contar. Recortar por dia descartaria o caso da virada e o dinheiro sumiria
+ * da cadeia sem nenhum aviso.
+ *
+ * `not exists` garante que um fechamento so alimenta UM turno seguinte; o
+ * indice unico parcial (migration 0026) e o backstop real contra a corrida.
+ */
+async function loadPendingHandover(
+  sql: Sql,
+  companyId: number,
+  storeId: number,
+): Promise<PendingHandover | null> {
+  const [row] = await sql.query<Row>(
+    `select r.id, r.closed_at, coalesce(uf.name, ua.name) as by_name
+       from cash_registers r
+       left join "user" uf on uf.id = r.closed_by
+       left join "user" ua on ua.id = r.user_id
+      where r.company_id = $1 and r.store_id = $2 and r.status = 'closed'
+        and r.handover_amount is not null and r.handover_amount > 0
+        and not exists (
+          select 1 from cash_registers n where n.previous_register_id = r.id
+        )
+      order by r.closed_at desc nulls last
+      limit 1`,
+    [companyId, storeId],
+  );
+  if (!row) return null;
+  return {
+    registerId: num(row.id),
+    closedAt: row.closed_at == null ? null : String(row.closed_at),
+    by: row.by_name == null ? null : String(row.by_name),
   };
 }
 
@@ -514,43 +578,97 @@ function parseSettlement(data: { amount: number; interest?: number; discount?: n
   };
 }
 
+/**
+ * Abrir o caixa -- e, quando o turno anterior deixou troco, RECEBER a gaveta.
+ *
+ * Receber e contar: quem entra lanca o que achou na gaveta e so depois ve
+ * quanto o turno anterior declarou ter deixado. Aceitar o numero do outro
+ * sem conferir herda o erro alheio, e a diferenca volta a nao ter dono --
+ * que e o problema inteiro que a troca de turno existe pra resolver.
+ */
 export const openRegisterFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId: number; amount: number; notes?: string }) => d)
+  .validator(
+    (d: {
+      storeId: number;
+      amount?: number;
+      breakdown?: Record<string, unknown> | null;
+      notes?: string;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
-    const existing = await sql`
-      select id from cash_registers where store_id = ${data.storeId} and company_id = ${tenant.companyId} and status = 'open'
-    `;
-    if (existing.length) throw new Error("Já existe um caixa aberto nesta loja.");
+    await assertStore(sql, tenant.companyId, data.storeId);
+    const breakdown = normalizeBreakdown(data.breakdown ?? null);
+    // Ficha preenchida MANDA, igual no fechamento: o valor sai das cedulas.
+    const contado = breakdown ? breakdownExactTotal(breakdown) : Number(data.amount);
     // Number.isFinite junto, e nao so `< 0`: NaN < 0 e FALSE, entao um fundo
     // NaN passava direto e virava opening_amount = NaN. Dali em diante o
     // esperado do fechamento (abertura + vendas + suprimento - sangria -
     // devolucoes) e NaN pra sempre, e o caixa desta loja nunca mais fecha.
     // Chegar em NaN e facil: "350,00" digitado no campo vira NaN no Number().
-    if (!Number.isFinite(data.amount) || data.amount < 0) {
+    if (!Number.isFinite(contado) || contado < 0) {
       throw new Error("Fundo inicial inválido.");
     }
-    let row: { id: number } | undefined;
-    try {
-      [row] = await sql<{ id: number }>`
-        insert into cash_registers (company_id, store_id, user_id, opening_amount, notes, status)
-        values (${tenant.companyId}, ${data.storeId}, ${tenant.userId}, ${data.amount}, ${data.notes ?? null}, 'open')
-        returning id
+
+    return sql.transaction(async (tx) => {
+      const existing = await tx`
+        select id from cash_registers
+         where store_id = ${data.storeId} and company_id = ${tenant.companyId} and status = 'open'
       `;
-    } catch (err) {
-      // Duas aberturas quase-simultâneas (duplo clique, duas abas) passam pelo
-      // SELECT acima antes de qualquer INSERT confirmar — cash_registers_one_open_idx
-      // (migration 0010) é o backstop real contra a corrida; sem isto o erro cru
-      // do Postgres (23505) vazava pro operador em vez da mensagem de negócio.
-      if ((err as { code?: string }).code === "23505") {
-        throw new Error("Já existe um caixa aberto nesta loja.");
+      if (existing.length) throw new Error("Já existe um caixa aberto nesta loja.");
+
+      const pendente = await loadPendingHandover(tx, tenant.companyId, data.storeId);
+      let anterior: { id: number; handover_amount: string | number } | undefined;
+      if (pendente) {
+        // `for update` na linha do turno anterior: sem a trava, duas
+        // aberturas simultaneas leriam o mesmo troco como disponivel. O
+        // indice unico parcial ainda barra a segunda, mas aqui a recusa sai
+        // como mensagem de negocio em vez de erro cru do Postgres.
+        [anterior] = await tx<{ id: number; handover_amount: string | number }>`
+          select id, handover_amount from cash_registers
+           where id = ${pendente.registerId} and company_id = ${tenant.companyId}
+           for update
+        `;
       }
-      throw err;
-    }
-    await audit(sql, tenant, "open", "cash_register", row!.id, null, { amount: data.amount });
-    return { id: row!.id };
+
+      let row: { id: number } | undefined;
+      try {
+        [row] = await tx<{ id: number }>`
+          insert into cash_registers (
+            company_id, store_id, user_id, opening_amount, notes, status,
+            previous_register_id, opening_verified
+          ) values (
+            ${tenant.companyId}, ${data.storeId}, ${tenant.userId}, ${contado},
+            ${optionalLine(data.notes, 400)}, 'open',
+            ${anterior?.id ?? null}, ${breakdown != null}
+          )
+          returning id
+        `;
+      } catch (err) {
+        // Duas aberturas quase-simultâneas (duplo clique, duas abas) passam pelo
+        // SELECT acima antes de qualquer INSERT confirmar — cash_registers_one_open_idx
+        // (migration 0010) é o backstop real contra a corrida; sem isto o erro cru
+        // do Postgres (23505) vazava pro operador em vez da mensagem de negócio.
+        if ((err as { code?: string }).code === "23505") {
+          throw new Error("Já existe um caixa aberto nesta loja.");
+        }
+        throw err;
+      }
+
+      // A revelacao acontece AQUI, depois de a contagem estar gravada: e o
+      // mesmo contrato do fechamento cego, do outro lado da virada.
+      const troca = anterior ? checkHandover(num(anterior.handover_amount), contado) : null;
+      await audit(tx, tenant, "open", "cash_register", row!.id, null, {
+        amount: contado,
+        conferido: breakdown != null,
+        breakdown,
+        trocaDe: anterior?.id ?? null,
+        trocaDiferenca: troca?.diferenca ?? null,
+      });
+      return { id: row!.id, counted: contado, verified: breakdown != null, handover: troca };
+    });
   });
 
 /**
@@ -575,6 +693,8 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
       storeId: number;
       counted?: number;
       breakdown?: Record<string, unknown> | null;
+      /** Quanto fica na gaveta pro proximo turno. Vazio/0 = fim do dia. */
+      handover?: number;
       notes?: string;
     }) => d,
   )
@@ -607,6 +727,9 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
       const expected = money(cash.expectedCash);
       if (!Number.isFinite(expected)) throw new Error("Não foi possível calcular o esperado.");
       const diff = money(contado - expected);
+      // Validado contra o CONTADO, que so existe agora: deixar na gaveta
+      // mais do que se contou inventaria dinheiro na virada.
+      const troco = parseHandoverAmount(data.handover, contado);
 
       // `status = 'open'` no WHERE fecha a corrida do duplo clique: a
       // segunda chamada nao acha mais linha aberta e nao reescreve o
@@ -617,6 +740,7 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
                closing_amount = ${contado}, expected_amount = ${expected},
                difference_amount = ${diff},
                count_breakdown = ${breakdown ? JSON.stringify(breakdown) : null}::jsonb,
+               handover_amount = ${troco},
                notes = ${observacao ?? aberto.notes}
          where id = ${aberto.id} and company_id = ${tenant.companyId} and status = 'open'
         returning id
@@ -630,6 +754,8 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
         diff,
         cego,
         breakdown,
+        ficaNaGaveta: troco,
+        vaiProCofre: safeAmount(contado, troco),
       });
       return {
         registerId: aberto.id,
@@ -638,6 +764,8 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
         diff,
         cego,
         precisaExplicacao: needsExplanation(diff),
+        ficaNaGaveta: troco,
+        vaiProCofre: safeAmount(contado, troco),
         tolerancia: CASH_DIFFERENCE_TOLERANCE,
         summary: view.summary,
       };
@@ -662,12 +790,14 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
               r.expected_amount, r.closing_amount, r.difference_amount,
               r.difference_reason, r.difference_explained_at,
               r.expected_revealed_at, r.count_breakdown,
+              r.handover_amount, r.opening_verified, p.handover_amount as recebido_esperado,
               ua.name as opened_by_name, uf.name as closed_by_name,
               ue.name as explained_by_name
          from cash_registers r
          left join "user" ua on ua.id = r.user_id
          left join "user" uf on uf.id = r.closed_by
          left join "user" ue on ue.id = r.difference_explained_by
+         left join cash_registers p on p.id = r.previous_register_id
         where r.company_id = $1 and r.status = 'closed'
           and ($2::int is null or r.store_id = $2)
         order by r.closed_at desc nulls last
@@ -698,6 +828,18 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
           openedBy: r.opened_by_name == null ? null : String(r.opened_by_name),
           closedBy: r.closed_by_name == null ? null : String(r.closed_by_name),
           breakdown: (r.count_breakdown ?? null) as Record<string, number> | null,
+          // Lado do turno que a lista nao mostrava: quanto ficou na gaveta
+          // pro proximo e se quem abriu CONFERIU o que recebeu. Sem isso,
+          // turno aberto no olho e turno conferido ficam identicos no
+          // relatorio e a diferenca dos dois se le com a mesma confianca.
+          ficaNaGaveta: r.handover_amount == null ? null : num(r.handover_amount),
+          vaiProCofre:
+            r.handover_amount == null ? null : safeAmount(num(r.closing_amount), num(r.handover_amount)),
+          aberturaConferida: r.opening_verified === true,
+          recebido:
+            r.recebido_esperado == null
+              ? null
+              : checkHandover(num(r.recebido_esperado), num(r.opening_amount)),
         };
       }),
     );
