@@ -14,6 +14,7 @@ import { ACCOUNT_STATUS_LABELS, CASH_ACCOUNT_LABELS, EXPENSE_CATEGORIES, PAYMENT
 import { parseMoneyInput } from "@/lib/money-input";
 import { runAction } from "@/lib/run-action";
 import { CrediarioPanel } from "@/components/crediario-panel";
+import { CardSettlementPanel } from "@/components/card-settlement-panel";
 import { formatBRL, formatDate } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import {
@@ -47,7 +48,7 @@ function FinanceiroPage() {
     typeof (loc.search as { tab?: unknown }).tab === "string"
       ? (loc.search as { tab?: string }).tab
       : new URLSearchParams(loc.searchStr.replace(/^\?/, "")).get("tab");
-  const ABAS = ["pagar", "receber", "cobranca", "fluxo", "desp"];
+  const ABAS = ["pagar", "receber", "cobranca", "cartoes", "fluxo", "desp"];
   const aba = abaPedida && ABAS.includes(abaPedida) ? abaPedida : "pagar";
   const storeId = useSelection((s) => s.storeId);
   const qc = useQueryClient();
@@ -116,6 +117,7 @@ function FinanceiroPage() {
           <TabsTrigger value="receber">Contas a receber</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de caixa</TabsTrigger>
           <TabsTrigger value="cobranca">Cobrança</TabsTrigger>
+          <TabsTrigger value="cartoes">Cartões</TabsTrigger>
           <TabsTrigger value="desp">Despesas</TabsTrigger>
         </TabsList>
         <TabsContent value="pagar">
@@ -189,6 +191,9 @@ function FinanceiroPage() {
               );
             })}
           </DataTable>
+        </TabsContent>
+        <TabsContent value="cartoes">
+          <CardSettlementPanel storeId={storeId ?? null} />
         </TabsContent>
         <TabsContent value="cobranca">
           <CrediarioPanel storeId={storeId ?? null} />
