@@ -13,6 +13,7 @@ import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS, CASH_ACCOUNT_LABELS, EXPENSE_CATEGORIES, PAYMENT_LABELS } from "@/lib/constants";
 import { parseMoneyInput } from "@/lib/money-input";
 import { runAction } from "@/lib/run-action";
+import { CrediarioPanel } from "@/components/crediario-panel";
 import { formatBRL, formatDate } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import {
@@ -89,6 +90,7 @@ function FinanceiroPage() {
           <TabsTrigger value="pagar">Contas a pagar</TabsTrigger>
           <TabsTrigger value="receber">Contas a receber</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de caixa</TabsTrigger>
+          <TabsTrigger value="cobranca">Cobrança</TabsTrigger>
           <TabsTrigger value="desp">Despesas</TabsTrigger>
         </TabsList>
         <TabsContent value="pagar">
@@ -162,6 +164,9 @@ function FinanceiroPage() {
               );
             })}
           </DataTable>
+        </TabsContent>
+        <TabsContent value="cobranca">
+          <CrediarioPanel storeId={storeId ?? null} />
         </TabsContent>
         <TabsContent value="receber">
           <Button

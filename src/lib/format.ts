@@ -77,3 +77,20 @@ export function marginPct(price: number, cost: number): number {
   if (!price) return 0;
   return ((price - cost) / price) * 100;
 }
+
+/**
+ * Telefone brasileiro legivel: (11) 98222-3344.
+ *
+ * A tela de cobranca mostra o numero pra alguem LIGAR ou mandar mensagem --
+ * e ninguem le "11982223344" em voz alta sem se perder. Numero fora dos
+ * formatos conhecidos volta como veio, sem inventar separador em cima de
+ * algo que nao se entendeu.
+ */
+export function formatPhone(value: string | null | undefined): string {
+  const d = String(value ?? "").replace(/\D/g, "");
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  if (d.length === 9) return `${d.slice(0, 5)}-${d.slice(5)}`;
+  if (d.length === 8) return `${d.slice(0, 4)}-${d.slice(4)}`;
+  return String(value ?? "");
+}
