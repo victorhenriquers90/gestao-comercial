@@ -555,7 +555,7 @@ export const listTargetsFn = createServerFn({ method: "GET" })
       const realized = await sql.query<{ v: string | number }>(
         `select coalesce(sum(s.total),0) as v from sales s
           where s.company_id = $1 and s.status = 'finalizada' and s.deleted_at is null
-            and s.sold_at::date between $2 and $3
+            and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
             and ($4::int is null or s.store_id = $4)
             and ($5::int is null or s.seller_id = $5)
             and ($6::int is null or exists (
