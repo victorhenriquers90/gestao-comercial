@@ -412,15 +412,41 @@
     coluna. Alem de feio, inflava a altura da linha e tirava o alinhamento
     das outras celulas.
 
-    Alinhar essas colunas A DIREITA seria o passo seguinte (deixa a casa
-    decimal na mesma vertical e a ordem de grandeza visivel pelo
-    comprimento), mas exige marcar tambem o `th` de cada coluna numerica em
-    12 telas -- e um `th` esquecido fica pior do que nao alinhar nada.
-    Ficou de fora desta rodada de proposito.
+    `tabular` e so o recurso da FONTE (digitos de mesma largura). Vale para
+    dinheiro, mas tambem para numero de pedido e CPF, que sao identificadores.
   */
   .data-table td.tabular,
   .data-table th.tabular {
     @apply whitespace-nowrap;
+  }
+
+  /* Alinhamento padrao do cabecalho. Fica aqui, e nao numa utilitaria no
+     componente Th, pra que a regra de coluna numerica abaixo possa ganhar
+     -- utilitaria do Tailwind v4 ganha de qualquer regra em `components`
+     por ordem de camada, entao as duas precisam morar na mesma camada. */
+  .data-table thead th {
+    @apply text-left;
+  }
+
+  /*
+    Coluna de GRANDEZA -- dinheiro, quantidade, percentual. Alinhada a
+    direita, no `th` junto com o `td`.
+
+    E o que deixa a coluna comparavel de relance: a casa decimal fica na
+    mesma vertical em todas as linhas e a ordem de grandeza aparece pelo
+    comprimento do numero. Com `tabular-nums` os digitos tem largura igual,
+    entao as colunas empilham certinho.
+
+    Separado de `.tabular` de proposito. Casei cabecalho com celula por
+    POSICAO em todas as tabelas antes de marcar, e apareceram duas colunas
+    que tem digitos mas NAO sao grandeza: "Nº" (numero do pedido/venda, e
+    ainda por cima a primeira coluna, que encostaria na borda esquerda) e
+    "Documento" (CPF/CNPJ). Uma regra presa ao `.tabular` teria alinhado as
+    duas errado.
+  */
+  .data-table td.col-num,
+  .data-table th.col-num {
+    @apply whitespace-nowrap text-right;
   }
 
   /* Highlight sweeping over the skeleton's muted base — reads as "loading"

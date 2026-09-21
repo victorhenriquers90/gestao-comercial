@@ -157,8 +157,19 @@ export function DataTable({
   );
 }
 
+/**
+ * O alinhamento padrao do cabecalho vive no CSS (`.data-table thead th`), nao
+ * numa utilitaria aqui.
+ *
+ * Com `text-left` fixo neste componente, uma coluna marcada `col-num` ficava
+ * com a celula a direita e o TITULO a esquerda -- pior que nao alinhar nada.
+ * No Tailwind v4 a camada `utilities` vem depois de `components`, entao a
+ * utilitaria vence a regra do `.data-table` por ordem de camada, mesmo tendo
+ * especificidade menor. Tirando a utilitaria daqui, as duas regras passam a
+ * conviver na mesma camada e a mais especifica decide.
+ */
 export function Th({ children, className }: { children?: ReactNode; className?: string }) {
-  return <th className={cn("ed-label px-4 py-3 text-left", className)}>{children}</th>;
+  return <th className={cn("ed-label px-4 py-3", className)}>{children}</th>;
 }
 
 export function Td({ children, className }: { children?: ReactNode; className?: string }) {

@@ -112,7 +112,7 @@ function FinanceiroPage() {
                 <Th>Descrição</Th>
                 <Th>Fornecedor</Th>
                 <Th>Vencimento</Th>
-                <Th>Valor</Th>
+                <Th className="col-num">Valor</Th>
                 <Th>Status</Th>
                 <Th></Th>
               </tr>
@@ -131,7 +131,7 @@ function FinanceiroPage() {
                   <Td>{String(r.description)}</Td>
                   <Td>{String(r.supplier_name ?? "—")}</Td>
                   <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular">{formatBRL(num(r.amount) - num(r.paid_amount))}</Td>
+                  <Td className="tabular col-num">{formatBRL(num(r.amount) - num(r.paid_amount))}</Td>
                   <Td>
                     <Badge variant={statusBadgeVariant(String(r.status))}>
                       {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
@@ -183,7 +183,7 @@ function FinanceiroPage() {
                 <Th>Descrição</Th>
                 <Th>Cliente</Th>
                 <Th>Vencimento</Th>
-                <Th>Valor</Th>
+                <Th className="col-num">Valor</Th>
                 <Th>Status</Th>
                 <Th></Th>
               </tr>
@@ -202,7 +202,7 @@ function FinanceiroPage() {
                   <Td>{String(r.description)}</Td>
                   <Td>{String(r.customer_name ?? "—")}</Td>
                   <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular">{formatBRL(num(r.amount) - num(r.received_amount))}</Td>
+                  <Td className="tabular col-num">{formatBRL(num(r.amount) - num(r.received_amount))}</Td>
                   <Td>
                     <Badge variant={statusBadgeVariant(String(r.status))}>
                       {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
@@ -315,7 +315,7 @@ function FinanceiroPage() {
                 <Th>Data</Th>
                 <Th>Descrição</Th>
                 <Th>Categoria</Th>
-                <Th>Valor</Th>
+                <Th className="col-num">Valor</Th>
               </tr>
             }
           >
@@ -324,7 +324,7 @@ function FinanceiroPage() {
                 <Td>{formatDate(String(e.spent_at))}</Td>
                 <Td>{String(e.description)}</Td>
                 <Td>{String(e.category ?? "—")}</Td>
-                <Td className="tabular">{formatBRL(num(e.amount))}</Td>
+                <Td className="tabular col-num">{formatBRL(num(e.amount))}</Td>
               </tr>
             ))}
           </DataTable>

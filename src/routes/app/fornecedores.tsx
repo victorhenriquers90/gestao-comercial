@@ -54,9 +54,9 @@ function FornecedoresPage() {
               <Th>Fornecedor</Th>
               <Th>CNPJ</Th>
               <Th>Contato</Th>
-              <Th>Comprado</Th>
+              <Th className="col-num">Comprado</Th>
               <Th>Pedidos</Th>
-              <Th>A pagar</Th>
+              <Th className="col-num">A pagar</Th>
             </tr>
           }
         >
@@ -72,9 +72,9 @@ function FornecedoresPage() {
               </Td>
               <Td>{formatDoc(s.document)}</Td>
               <Td>{s.phone ?? s.email ?? "—"}</Td>
-              <Td className="tabular">{formatBRL(s.totalBought)}</Td>
+              <Td className="tabular col-num">{formatBRL(s.totalBought)}</Td>
               <Td>{s.orders}</Td>
-              <Td className="tabular">{formatBRL(s.openBalance)}</Td>
+              <Td className="tabular col-num">{formatBRL(s.openBalance)}</Td>
             </tr>
           ))}
         </DataTable>

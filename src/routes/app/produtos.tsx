@@ -211,10 +211,10 @@ function ProdutosPage() {
               <Th>Produto</Th>
               <Th>SKU</Th>
               <Th>Categoria</Th>
-              <Th>Custo</Th>
-              <Th>Preço</Th>
-              <Th>Margem</Th>
-              <Th>Estoque</Th>
+              <Th className="col-num">Custo</Th>
+              <Th className="col-num">Preço</Th>
+              <Th className="col-num">Margem</Th>
+              <Th className="col-num">Estoque</Th>
               <Th>Status</Th>
               <Th />
             </tr>
@@ -259,10 +259,10 @@ function ProdutosPage() {
               </Td>
               <Td>{p.sku ?? "—"}</Td>
               <Td>{p.category ?? "—"}</Td>
-              <Td className="tabular">{formatBRL(p.cost)}</Td>
-              <Td className="tabular">{formatBRL(p.price)}</Td>
-              <Td className="tabular">{marginPct(p.price, p.cost).toFixed(1)}%</Td>
-              <Td className="tabular">{formatQty(p.stock)}</Td>
+              <Td className="tabular col-num">{formatBRL(p.cost)}</Td>
+              <Td className="tabular col-num">{formatBRL(p.price)}</Td>
+              <Td className="tabular col-num">{marginPct(p.price, p.cost).toFixed(1)}%</Td>
+              <Td className="tabular col-num">{formatQty(p.stock)}</Td>
               <Td>
                 <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativo" : "Inativo"}</Badge>
               </Td>

@@ -109,7 +109,7 @@ function VendasPage() {
               <Th>Documento</Th>
               <Th>Vendedor</Th>
               <Th>Loja</Th>
-              <Th>Total</Th>
+              <Th className="col-num">Total</Th>
               <Th>Status</Th>
             </tr>
           }
@@ -126,7 +126,7 @@ function VendasPage() {
               <Td className="tabular">{s.document ? formatDoc(String(s.document)) : "—"}</Td>
               <Td>{String(s.seller_name ?? "—")}</Td>
               <Td>{String(s.store_name ?? "—")}</Td>
-              <Td className="tabular">{formatBRL(num(s.total))}</Td>
+              <Td className="tabular col-num">{formatBRL(num(s.total))}</Td>
               <Td>
                 <Badge variant={statusBadgeVariant(String(s.status))}>
                   {SALE_STATUS_LABELS[String(s.status)] ?? String(s.status)}

@@ -93,7 +93,7 @@ function ComprasPage() {
               <Th>Nº</Th>
               <Th>Fornecedor</Th>
               <Th>Status</Th>
-              <Th>Total</Th>
+              <Th className="col-num">Total</Th>
               <Th>Previsão</Th>
               <Th></Th>
             </tr>
@@ -112,7 +112,7 @@ function ComprasPage() {
                   {PURCHASE_STATUS_LABELS[row.status] ?? row.status}
                 </Badge>
               </Td>
-              <Td className="tabular">{formatBRL(row.total)}</Td>
+              <Td className="tabular col-num">{formatBRL(row.total)}</Td>
               <Td>{formatDate(row.expectedAt)}</Td>
               <Td>
                 {row.status !== "recebido" && row.status !== "cancelado" ? (

@@ -70,9 +70,9 @@ function EstoquePage() {
                 <tr>
                   <Th>Produto</Th>
                   <Th>Loja</Th>
-                  <Th>Qtd</Th>
-                  <Th>Mínimo</Th>
-                  <Th>Custo</Th>
+                  <Th className="col-num">Qtd</Th>
+                  <Th className="col-num">Mínimo</Th>
+                  <Th className="col-num">Custo</Th>
                   <Th></Th>
                 </tr>
               }
@@ -86,15 +86,15 @@ function EstoquePage() {
                     </p>
                   </Td>
                   <Td>{r.storeName ?? "—"}</Td>
-                  <Td className="tabular">
+                  <Td className="tabular col-num">
                     {r.quantity <= r.minStock && r.minStock > 0 ? (
                       <Badge variant="warning">{formatQty(r.quantity)}</Badge>
                     ) : (
                       formatQty(r.quantity)
                     )}
                   </Td>
-                  <Td className="tabular">{formatQty(r.minStock)}</Td>
-                  <Td className="tabular">{formatBRL(r.cost)}</Td>
+                  <Td className="tabular col-num">{formatQty(r.minStock)}</Td>
+                  <Td className="tabular col-num">{formatBRL(r.cost)}</Td>
                   <Td>
                     <Button size="sm" variant="outline" onClick={() => setAdj({ variantId: r.variantId, name: r.name })}>
                       Ajustar
@@ -112,9 +112,9 @@ function EstoquePage() {
                 <Th>Quando</Th>
                 <Th>Produto</Th>
                 <Th>Tipo</Th>
-                <Th>Qtd</Th>
-                <Th>Antes</Th>
-                <Th>Depois</Th>
+                <Th className="col-num">Qtd</Th>
+                <Th className="col-num">Antes</Th>
+                <Th className="col-num">Depois</Th>
                 <Th>Obs.</Th>
               </tr>
             }
@@ -126,9 +126,9 @@ function EstoquePage() {
                   {String(m.name)} {[m.color, m.size].filter(Boolean).join(" ")}
                 </Td>
                 <Td>{STOCK_TYPE_LABELS[String(m.type)] ?? String(m.type)}</Td>
-                <Td className="tabular">{formatQty(num(m.quantity))}</Td>
-                <Td className="tabular">{formatQty(num(m.previous_qty))}</Td>
-                <Td className="tabular">{formatQty(num(m.new_qty))}</Td>
+                <Td className="tabular col-num">{formatQty(num(m.quantity))}</Td>
+                <Td className="tabular col-num">{formatQty(num(m.previous_qty))}</Td>
+                <Td className="tabular col-num">{formatQty(num(m.new_qty))}</Td>
                 <Td className="text-muted-foreground">{String(m.note ?? "")}</Td>
               </tr>
             ))}

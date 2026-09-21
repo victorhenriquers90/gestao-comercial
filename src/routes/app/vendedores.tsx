@@ -235,10 +235,10 @@ function VendedoresPage() {
                 <Th>Vendedor</Th>
                 <Th>Contato</Th>
                 <Th>Regime</Th>
-                <Th>% padrão</Th>
-                <Th>Faturamento no mês</Th>
-                <Th>Bruto</Th>
-                <Th>Pendente líq.</Th>
+                <Th className="col-num">% padrão</Th>
+                <Th className="col-num">Faturamento no mês</Th>
+                <Th className="col-num">Bruto</Th>
+                <Th className="col-num">Pendente líq.</Th>
                 <Th></Th>
               </tr>
             }
@@ -258,10 +258,10 @@ function VendedoresPage() {
                     {issSellerHint(s.tax_regime, s.iss_rate, companyIss)}
                   </p>
                 </Td>
-                <Td className="tabular">{s.commission_pct}%</Td>
-                <Td className="tabular">{formatBRL(s.month_revenue)}</Td>
-                <Td className="tabular">{formatBRL(s.month_commission)}</Td>
-                <Td className="tabular">{formatBRL(s.pending_net ?? s.pending_commission)}</Td>
+                <Td className="tabular col-num">{s.commission_pct}%</Td>
+                <Td className="tabular col-num">{formatBRL(s.month_revenue)}</Td>
+                <Td className="tabular col-num">{formatBRL(s.month_commission)}</Td>
+                <Td className="tabular col-num">{formatBRL(s.pending_net ?? s.pending_commission)}</Td>
                 <Td>
                   <div className="flex flex-wrap justify-end gap-1">
                     {s.pending_commission > 0.009 ? (
@@ -306,8 +306,8 @@ function VendedoresPage() {
                 <Th>Vendedor</Th>
                 <Th>Venda</Th>
                 <Th>Regra</Th>
-                <Th>Bruto</Th>
-                <Th>Líquido</Th>
+                <Th className="col-num">Bruto</Th>
+                <Th className="col-num">Líquido</Th>
                 <Th>Status</Th>
                 <Th>Data</Th>
                 <Th></Th>
@@ -319,8 +319,8 @@ function VendedoresPage() {
                 <Td>{c.sellerName}</Td>
                 <Td>{c.saleNumber != null ? `nº ${c.saleNumber}` : "—"}</Td>
                 <Td>{c.ruleName ?? c.note ?? "Padrão"}</Td>
-                <Td className="tabular">{formatBRL(c.amount)}</Td>
-                <Td className="tabular">
+                <Td className="tabular col-num">{formatBRL(c.amount)}</Td>
+                <Td className="tabular col-num">
                   <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => setTaxOpen(c.id)}>
                     {formatBRL(c.net)}
                   </button>

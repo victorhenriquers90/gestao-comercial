@@ -59,8 +59,8 @@ function ClientesPage() {
               <Th>Documento</Th>
               <Th>Telefone</Th>
               <Th>CRM</Th>
-              <Th>Total comprado</Th>
-              <Th>Em aberto</Th>
+              <Th className="col-num">Total comprado</Th>
+              <Th className="col-num">Em aberto</Th>
             </tr>
           }
         >
@@ -78,8 +78,8 @@ function ClientesPage() {
                   {CRM_STAGE_LABELS[c.crm_stage as CrmStage] ?? c.crm_stage}
                 </Badge>
               </Td>
-              <Td className="tabular">{formatBRL(c.total_bought)}</Td>
-              <Td className="tabular">{formatBRL(c.open_balance)}</Td>
+              <Td className="tabular col-num">{formatBRL(c.total_bought)}</Td>
+              <Td className="tabular col-num">{formatBRL(c.open_balance)}</Td>
             </tr>
           ))}
         </DataTable>

@@ -104,7 +104,7 @@ function DevolucoesPage() {
               <Th>Data</Th>
               <Th>Venda</Th>
               <Th>Tipo</Th>
-              <Th>Valor</Th>
+              <Th className="col-num">Valor</Th>
               <Th>Motivo</Th>
             </tr>
           }
@@ -116,7 +116,7 @@ function DevolucoesPage() {
               <Td>
                 <Badge>{RETURN_KIND_LABELS[String(r.kind)] ?? String(r.kind)}</Badge>
               </Td>
-              <Td className="tabular">{formatBRL(num(r.total))}</Td>
+              <Td className="tabular col-num">{formatBRL(num(r.total))}</Td>
               <Td>{String(r.reason)}</Td>
             </tr>
           ))}
