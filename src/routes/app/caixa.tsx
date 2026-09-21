@@ -15,8 +15,10 @@ import {
   DIFFERENCE_LABELS,
   breakdownTotal,
   classifyDifference,
+  isRegisterStale,
   normalizeBreakdown,
   parseQty,
+  registerAgeLabel,
 } from "@/lib/cash-count";
 import { CASH_MOVE_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime } from "@/lib/format";
@@ -196,6 +198,27 @@ function CaixaPage() {
         </Card>
       ) : (
         <>
+          {/* Aviso ANTES dos KPIs: enquanto o caixa nao fecha, todo numero
+              desta tela e um acumulado de varios dias, e ler qualquer um
+              deles como "o turno" e ler errado. */}
+          {isRegisterStale(d.register.days_open) ? (
+            <Card className="mb-4 border-destructive/40 bg-destructive/5 p-4">
+              <p className="ed-title">
+                Caixa {registerAgeLabel(d.register.days_open)}, sem fechar
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                O dinheiro esperado soma {d.register.days_open + 1} dias de vendas, mas a gaveta é a
+                de hoje — a conferência do turno deixou de existir. Pior: uma falta de um dia
+                específico some diluída no período, sem hora nem responsável.
+              </p>
+              <p className="mt-block text-sm">
+                Feche este caixa para voltar ao ciclo diário. <strong>A diferença vai ser grande</strong>{" "}
+                nesta primeira vez, porque cobre o período inteiro — escreva isso na explicação, e a
+                partir do próximo fechamento o número passa a significar alguma coisa.
+              </p>
+            </Card>
+          ) : null}
+
           <div className="kpi-grid">
             <KpiCard label="Fundo" value={formatBRL(num(d.register.opening_amount))} />
             <KpiCard label="Vendas no turno" value={String(d.summary?.salesCount ?? 0)} />

@@ -159,6 +159,42 @@ export function needsExplanation(
   return !classifyDifference(diff, tolerance).dentroDaTolerancia;
 }
 
+/**
+ * Caixa que ficou aberto de um dia pro outro.
+ *
+ * Conferencia cega nao conserta caixa que nao fecha. Enquanto o caixa segue
+ * aberto, o esperado vai SOMANDO dias -- e a gaveta, nao: alguem leva o
+ * dinheiro pra casa, repoe o troco, e no dia seguinte continua vendendo. Na
+ * hora em que alguem finalmente fechar, a diferenca vai ser o acumulado de
+ * uma semana, sem nenhuma chance de bater com o que esta na gaveta.
+ *
+ * Pior: cada dia que passa apaga a chance de descobrir QUANDO o dinheiro
+ * sumiu. Falta de R$ 40 num turno tem responsavel e hora; a mesma falta
+ * diluida em dez dias nao tem nada.
+ *
+ * O corte e por DIA DE CALENDARIO, nao por 24 horas: loja fecha a noite, e
+ * caixa aberto ontem que amanheceu aberto ja e o problema -- mesmo que
+ * tenham passado 12 horas.
+ *
+ * A contagem de dias vem pronta do SQL (`current_date - opened_at::date`),
+ * calculada inteira no fuso da sessao do banco. Fazer isso em JS com
+ * `toISOString()` daria o dia em UTC: um caixa aberto as 22h no horario de
+ * Brasilia ja nasceria "de ontem" pro sistema.
+ */
+export function isRegisterStale(daysOpen: number): boolean {
+  const d = Number(daysOpen);
+  return Number.isFinite(d) && d >= 1;
+}
+
+export function registerAgeLabel(daysOpen: number): string {
+  const d = Number(daysOpen);
+  // Negativo so acontece com relogio fora de hora; tratar como hoje evita
+  // "aberto ha -2 dias" na tela de quem nem causou o problema.
+  if (!Number.isFinite(d) || d <= 0) return "aberto hoje";
+  if (d === 1) return "aberto desde ontem";
+  return `aberto há ${Math.floor(d)} dias`;
+}
+
 function round2(v: number): number {
   return Math.round((v + Number.EPSILON) * 100) / 100;
 }

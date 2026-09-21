@@ -6,9 +6,11 @@ import {
   breakdownExactTotal,
   breakdownTotal,
   classifyDifference,
+  isRegisterStale,
   needsExplanation,
   normalizeBreakdown,
   parseQty,
+  registerAgeLabel,
 } from "./cash-count.ts";
 
 describe("parseQty", () => {
@@ -124,5 +126,31 @@ describe("CASH_DENOMINATIONS", () => {
     assert.equal(cents[0], 20000);
     assert.equal(cents.at(-1), 1);
     assert.equal(new Set(cents).size, cents.length);
+  });
+});
+
+describe("caixa aberto de um dia pro outro", () => {
+  it("aberto hoje nao e atraso", () => {
+    assert.equal(isRegisterStale(0), false);
+    assert.equal(registerAgeLabel(0), "aberto hoje");
+  });
+
+  it("amanhecer aberto ja e o problema, mesmo com poucas horas", () => {
+    // Corte por dia de calendario: caixa aberto as 20h de ontem tem 12h de
+    // vida e mesmo assim atravessou o fechamento que deveria ter havido.
+    assert.equal(isRegisterStale(1), true);
+    assert.equal(registerAgeLabel(1), "aberto desde ontem");
+  });
+
+  it("conta os dias quando ja virou habito", () => {
+    assert.equal(isRegisterStale(10), true);
+    assert.equal(registerAgeLabel(10), "aberto há 10 dias");
+  });
+
+  it("relogio fora de hora nao vira 'aberto ha -2 dias' na tela", () => {
+    assert.equal(registerAgeLabel(-2), "aberto hoje");
+    assert.equal(isRegisterStale(-2), false);
+    assert.equal(registerAgeLabel(Number.NaN), "aberto hoje");
+    assert.equal(isRegisterStale(Number.NaN), false);
   });
 });

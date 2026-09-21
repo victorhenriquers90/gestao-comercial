@@ -328,6 +328,8 @@ type OpenRegister = {
   user_id: string | null;
   /** Quando (e se) alguem revelou o esperado antes do fechamento. */
   expected_revealed_at: string | null;
+  /** Dias de calendario desde a abertura. 0 = aberto hoje. */
+  days_open: number;
 };
 
 type RegisterView = {
@@ -356,7 +358,12 @@ async function loadOpenRegister(
   opts: { canReveal?: boolean; force?: boolean; lock?: boolean } = {},
 ): Promise<RegisterView> {
   const [reg] = await sql.query<Row>(
-    `select * from cash_registers
+    // `days_open` sai daqui, e nao do cliente: `current_date` e
+    // `opened_at::date` usam o mesmo fuso da sessao do banco. Calcular o dia
+    // em JS com toISOString() daria UTC, e um caixa aberto as 22h em
+    // Brasilia ja nasceria "de ontem".
+    `select *, (current_date - opened_at::date)::int as days_open
+       from cash_registers
       where company_id = $1 and store_id = $2 and status = 'open'
       order by opened_at desc limit 1` + (opts.lock ? " for update" : ""),
     [companyId, storeId],
@@ -401,6 +408,7 @@ async function loadOpenRegister(
       user_id: reg.user_id == null ? null : String(reg.user_id),
       expected_revealed_at:
         reg.expected_revealed_at == null ? null : String(reg.expected_revealed_at),
+      days_open: num(reg.days_open),
     },
     movements: revelar ? movements : movements.filter((m) => String(m.type) !== "venda"),
     summary: {

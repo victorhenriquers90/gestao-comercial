@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { CASH_DIFFERENCE_TOLERANCE } from "@/lib/cash-count";
+import { CASH_DIFFERENCE_TOLERANCE, registerAgeLabel } from "@/lib/cash-count";
 import { APP_NAME } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { assertCan, can, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
@@ -191,6 +191,26 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
          and difference_reason is null
          and abs(difference_amount) > ${CASH_DIFFERENCE_TOLERANCE}
     `;
+    /*
+      Caixa que atravessou o dia sem fechar.
+
+      Conferencia cega nao conserta caixa que nao fecha: enquanto segue
+      aberto, o esperado vai somando dias e a gaveta nao -- e cada dia a
+      mais apaga a chance de saber QUANDO o dinheiro sumiu.
+
+      Filtro pelo PARAMETRO convertido (opened_at < current_date), nao pela
+      coluna (opened_at::date < current_date): assim o indice de
+      cash_registers ainda serve. Mesmo resultado -- current_date vira meia-
+      noite de hoje no fuso da sessao, e abrir antes disso e ter aberto em
+      outro dia.
+    */
+    const caixaVelho = await sql<{ n: number; dias: number }>`
+      select count(*)::int as n,
+             coalesce(max(current_date - opened_at::date), 0)::int as dias
+        from cash_registers
+       where company_id = ${tenant.companyId} and status = 'open'
+         and opened_at < current_date::timestamptz
+    `;
     const dueTasks = await sql<{ n: number }>`
       select count(*)::int as n from crm_tasks
       where company_id = ${tenant.companyId} and done_at is null
@@ -271,6 +291,19 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         kind: "financeiro",
         title: "Diferença de caixa sem explicação",
         body: `${caixaDivergente[0]!.n} fechamento(s), ${formatBRL(num(caixaDivergente[0]?.v))} no total.`,
+        href: "/app/caixa",
+        dismissible: false,
+      });
+    }
+    if (num(caixaVelho[0]?.n) > 0) {
+      const dias = num(caixaVelho[0]?.dias);
+      items.push({
+        id: "caixa-aberto",
+        kind: "financeiro",
+        title: "Caixa aberto desde outro dia",
+        body:
+          `${caixaVelho[0]!.n} caixa(s) sem fechar, o mais antigo ${registerAgeLabel(dias)}. ` +
+          "Enquanto nao fechar, o esperado soma todos esses dias e a conferência do turno deixa de existir.",
         href: "/app/caixa",
         dismissible: false,
       });
