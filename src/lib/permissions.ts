@@ -54,6 +54,16 @@ export type Perm =
   | "finance.write"
   | "cash.read"
   | "cash.write"
+  /**
+   * Ver o dinheiro esperado de um caixa AINDA ABERTO.
+   *
+   * Separada de cash.read porque ler o caixa e conferir o caixa sao coisas
+   * diferentes: quem opera precisa da tela, mas se enxergar o esperado
+   * antes de contar a gaveta a conferencia cega deixa de existir -- ele
+   * transcreve o numero em vez de contar. Fica so com quem supervisiona, e
+   * cada revelacao carimba o fechamento como NAO cego.
+   */
+  | "cash.reveal"
   | "sellers.read"
   | "sellers.write"
   | "targets.read"
@@ -98,6 +108,7 @@ const ALL: Perm[] = [
   "finance.write",
   "cash.read",
   "cash.write",
+  "cash.reveal",
   "sellers.read",
   "sellers.write",
   "targets.read",

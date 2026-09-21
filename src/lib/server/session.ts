@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { CASH_DIFFERENCE_TOLERANCE } from "@/lib/cash-count";
 import { APP_NAME } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { assertCan, can, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
@@ -175,6 +176,21 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
          and status in ('pendente','parcial') and origin <> 'cartao'
          and customer_id is not null and due_date = current_date
     `;
+    /*
+      Diferenca de caixa sem explicacao.
+
+      O fechamento cego produz um numero que alguem precisa justificar --
+      e justificativa que fica "pra depois" nunca acontece. Aqui e estado,
+      nao evento: some sozinho quando a explicacao entra, e enquanto nao
+      entrar continua aparecendo todo dia pra quem abre o sistema.
+    */
+    const caixaDivergente = await sql<{ n: number; v: string | number }>`
+      select count(*)::int as n, coalesce(sum(abs(difference_amount)), 0) as v
+        from cash_registers
+       where company_id = ${tenant.companyId} and status = 'closed'
+         and difference_reason is null
+         and abs(difference_amount) > ${CASH_DIFFERENCE_TOLERANCE}
+    `;
     const dueTasks = await sql<{ n: number }>`
       select count(*)::int as n from crm_tasks
       where company_id = ${tenant.companyId} and done_at is null
@@ -246,6 +262,16 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
         title: "Cobrança em atraso",
         body: `${recVencido[0]!.n} parcela(s) de cliente vencida(s), ${formatBRL(num(recVencido[0]?.v))}.`,
         href: "/app/financeiro?tab=cobranca",
+        dismissible: false,
+      });
+    }
+    if (num(caixaDivergente[0]?.n) > 0) {
+      items.push({
+        id: "caixa-dif",
+        kind: "financeiro",
+        title: "Diferença de caixa sem explicação",
+        body: `${caixaDivergente[0]!.n} fechamento(s), ${formatBRL(num(caixaDivergente[0]?.v))} no total.`,
+        href: "/app/caixa",
         dismissible: false,
       });
     }

@@ -1,9 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import {
+  CASH_DIFFERENCE_TOLERANCE,
+  breakdownExactTotal,
+  classifyDifference,
+  needsExplanation,
+  normalizeBreakdown,
+} from "@/lib/cash-count";
 import { isTargetBonusKind, type TargetBonusKind } from "@/lib/constants";
 import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
+import { optionalLine, requireMultiline } from "@/lib/sanitize";
 import { num } from "@/lib/utils";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
@@ -281,14 +289,35 @@ export const cashflowFn = createServerFn({ method: "POST" })
     };
   });
 
-type RegisterSummary = {
+type RegisterCash = {
+  /** Total vendido no turno, todos os meios. */
   sales: number;
   cashSales: number;
+  expectedCash: number;
+};
+
+type RegisterSummary = {
+  /** Quantas vendas passaram pelo turno. Quantidade, nao valor. */
+  salesCount: number;
   pix: number;
   cards: number;
   sangria: number;
   suprimento: number;
-  expectedCash: number;
+  devolucoes: number;
+  /**
+   * Os numeros que entregam o dinheiro esperado. `null` enquanto a
+   * conferencia esta cega.
+   *
+   * Ausente, nao zerado: zero passaria por valor conferido, e no dia em que
+   * um bug zerasse isto o fechamento pareceria bater sozinho. Ausente
+   * quebra a tela -- que e o comportamento certo pra um numero que nao pode
+   * ser adivinhado.
+   *
+   * `sales` mora aqui junto com `cashSales` porque total menos PIX menos
+   * cartao E o dinheiro: publicar o total "que nao e sensivel" devolveria a
+   * ancora por subtracao.
+   */
+  cash: RegisterCash | null;
 };
 
 type OpenRegister = {
@@ -297,6 +326,8 @@ type OpenRegister = {
   notes: string | null;
   opened_at: string | null;
   user_id: string | null;
+  /** Quando (e se) alguem revelou o esperado antes do fechamento. */
+  expected_revealed_at: string | null;
 };
 
 type RegisterView = {
@@ -305,13 +336,34 @@ type RegisterView = {
   summary: RegisterSummary | null;
 };
 
-async function loadOpenRegister(sql: Sql, companyId: number, storeId: number): Promise<RegisterView> {
-  const [reg] = await sql<Row>`
-    select * from cash_registers
-    where company_id = ${companyId} and store_id = ${storeId} and status = 'open'
-    order by opened_at desc limit 1
-  `;
+/**
+ * Estado do caixa aberto.
+ *
+ * `canReveal` e a permissao de quem pergunta; `force` e o fechamento, que
+ * calcula o esperado pra comparar. Sem um dos dois, os numeros de dinheiro
+ * nao sao carregados -- e os lancamentos de VENDA tambem nao saem daqui,
+ * porque a lista de movimentacoes fica logo abaixo do campo da contagem e
+ * somar treze linhas na tela e ancora igual.
+ *
+ * Sangria, suprimento e devolucao continuam visiveis de proposito: foi o
+ * proprio operador que lancou, ele precisa conferir se lancou certo, e
+ * nenhum deles revela quanto se vendeu em dinheiro.
+ */
+async function loadOpenRegister(
+  sql: Sql,
+  companyId: number,
+  storeId: number,
+  opts: { canReveal?: boolean; force?: boolean; lock?: boolean } = {},
+): Promise<RegisterView> {
+  const [reg] = await sql.query<Row>(
+    `select * from cash_registers
+      where company_id = $1 and store_id = $2 and status = 'open'
+      order by opened_at desc limit 1` + (opts.lock ? " for update" : ""),
+    [companyId, storeId],
+  );
   if (!reg) return { register: null, movements: [], summary: null };
+  const revelar = opts.force === true || (opts.canReveal === true && reg.expected_revealed_at != null);
+
   const movements = await sql<Row>`
     select * from cash_movements where register_id = ${num(reg.id)} order by created_at desc
   `;
@@ -320,6 +372,13 @@ async function loadOpenRegister(sql: Sql, companyId: number, storeId: number): P
     from cash_movements where register_id = ${num(reg.id)}
     group by method, type
   `;
+  // count(distinct sale_id) e nao count(*): venda paga metade no cartao e
+  // metade em dinheiro gera dois lancamentos e continua sendo uma venda.
+  const [vendas] = await sql<{ n: number }>`
+    select count(distinct sale_id)::int as n from cash_movements
+     where register_id = ${num(reg.id)} and type = 'venda'
+  `;
+
   const sales = byMethod.filter((m) => m.type === "venda").reduce((a, m) => a + num(m.total), 0);
   const cashSales = num(byMethod.find((m) => m.type === "venda" && m.method === "dinheiro")?.total);
   const pix = num(byMethod.find((m) => m.type === "venda" && m.method === "pix")?.total);
@@ -332,6 +391,7 @@ async function loadOpenRegister(sql: Sql, companyId: number, storeId: number): P
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
     .reduce((a, m) => a + num(m.total), 0);
   const expectedCash = num(reg.opening_amount) + cashSales + suprimento - sangria - refunds;
+
   return {
     register: {
       id: num(reg.id),
@@ -339,9 +399,19 @@ async function loadOpenRegister(sql: Sql, companyId: number, storeId: number): P
       notes: reg.notes == null ? null : String(reg.notes),
       opened_at: reg.opened_at == null ? null : String(reg.opened_at),
       user_id: reg.user_id == null ? null : String(reg.user_id),
+      expected_revealed_at:
+        reg.expected_revealed_at == null ? null : String(reg.expected_revealed_at),
     },
-    movements,
-    summary: { sales, cashSales, pix, cards, sangria, suprimento, expectedCash },
+    movements: revelar ? movements : movements.filter((m) => String(m.type) !== "venda"),
+    summary: {
+      salesCount: num(vendas?.n),
+      pix,
+      cards,
+      sangria,
+      suprimento,
+      devolucoes: refunds,
+      cash: revelar ? { sales, cashSales, expectedCash: money(expectedCash) } : null,
+    },
   };
 }
 
@@ -352,7 +422,54 @@ export const getRegisterFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.read");
     await assertStore(sql, tenant.companyId, data.storeId);
-    return dump(await loadOpenRegister(sql, tenant.companyId, data.storeId));
+    return dump(
+      await loadOpenRegister(sql, tenant.companyId, data.storeId, {
+        canReveal: can(tenant.role, "cash.reveal"),
+      }),
+    );
+  });
+
+/**
+ * Revelar o esperado antes do fechamento -- permitido, e registrado.
+ *
+ * Proibir seria fingir que a loja nunca precisa do numero (decidir uma
+ * sangria, conferir um caixa que o operador abandonou no meio do turno).
+ * Quem pode revelar e quem supervisiona, nunca quem opera: se o proprio
+ * caixa pudesse, a conferencia cega viraria um botao de desligar.
+ *
+ * O que torna isto um controle e a marca que fica: o fechamento guarda se o
+ * esperado ja tinha sido revelado. Fechamento que nao foi cego nao pode
+ * PARECER cego na hora de auditar.
+ */
+export const revealExpectedCashFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { storeId: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "cash.reveal");
+    await assertStore(sql, tenant.companyId, data.storeId);
+    const [reg] = await sql<{ id: number }>`
+      select id from cash_registers
+       where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
+       order by opened_at desc limit 1
+    `;
+    if (!reg) throw new Error("Nenhum caixa aberto.");
+    // `is null` no WHERE: a primeira revelacao e a que vale. Um segundo
+    // gerente espiando nao pode empurrar o carimbo pra frente e fazer
+    // parecer que o turno correu cego ate o fim.
+    await sql`
+      update cash_registers
+         set expected_revealed_at = now(), expected_revealed_by = ${tenant.userId}
+       where id = ${reg.id} and company_id = ${tenant.companyId} and expected_revealed_at is null
+    `;
+    // Auditado toda vez, mesmo quando ja estava revelado: o carimbo diz
+    // quando a cegueira caiu, o log diz quem olhou.
+    await audit(sql, tenant, "reveal-expected", "cash_register", reg.id, null, {
+      storeId: data.storeId,
+    });
+    return dump(
+      await loadOpenRegister(sql, tenant.companyId, data.storeId, { force: true }),
+    );
   });
 
 /**
@@ -428,35 +545,194 @@ export const openRegisterFn = createServerFn({ method: "POST" })
     return { id: row!.id };
   });
 
+/**
+ * Fechar o caixa: a contagem entra e o esperado e calculado no MESMO
+ * instante, dentro de uma transacao.
+ *
+ * Um passo so, e nao "registrar contagem" -> "ver resultado" -> "fechar".
+ * Dois passos abririam uma janela entre a contagem e o calculo em que uma
+ * venda ainda entra: o esperado mudaria por baixo de uma contagem ja feita,
+ * e a saida seria recontar -- agora sabendo o numero. A conferencia cega
+ * morre exatamente ai.
+ *
+ * Nao existe reabrir. Contagem errada se conserta pela EXPLICACAO da
+ * diferenca, que fica anexada ao fechamento com autor e hora. Trocar o
+ * numero depois de ver o esperado e o unico movimento que este recurso
+ * existe pra impedir -- oferecer um botao pra isso seria desfazer tudo.
+ */
 export const closeRegisterFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId: number; amount: number; notes?: string }) => d)
+  .validator(
+    (d: {
+      storeId: number;
+      counted?: number;
+      breakdown?: Record<string, unknown> | null;
+      notes?: string;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
-    const current = await loadOpenRegister(sql, tenant.companyId, data.storeId);
-    if (!current.register) throw new Error("Nenhum caixa aberto.");
-    // O contado e entrada humana (a contagem da gaveta) e por isso vem do
-    // cliente -- mas precisa ser numero valido: sem isto, um NaN gravaria
-    // diferenca invalida justamente na linha que serve de prova da
-    // conferencia. O esperado continua calculado no servidor.
-    const contado = num(data.amount);
-    if (!Number.isFinite(contado) || contado < 0) {
-      throw new Error("Informe o valor conferido em dinheiro.");
-    }
-    const expected = current.summary?.expectedCash ?? 0;
-    const diff = Number((contado - expected).toFixed(2));
-    await sql`
-      update cash_registers set status = 'closed', closed_at = now(), closing_amount = ${contado},
-        expected_amount = ${expected}, difference_amount = ${diff}, notes = ${data.notes ?? current.register.notes}
-      where id = ${current.register.id} and company_id = ${tenant.companyId}
-    `;
-    await audit(sql, tenant, "close", "cash_register", current.register.id, null, {
-      expected,
-      counted: contado,
-      diff,
+    await assertStore(sql, tenant.companyId, data.storeId);
+    // Fora da transacao: ficha malformada nao merece abrir transacao nem
+    // travar a linha do caixa.
+    const breakdown = normalizeBreakdown(data.breakdown ?? null);
+    const observacao = optionalLine(data.notes, 400);
+
+    return sql.transaction(async (tx) => {
+      const view = await loadOpenRegister(tx, tenant.companyId, data.storeId, {
+        force: true,
+        lock: true,
+      });
+      const aberto = view.register;
+      const cash = view.summary?.cash;
+      if (!aberto || !cash) throw new Error("Nenhum caixa aberto.");
+
+      // Ficha preenchida MANDA: o total sai das cedulas, nao do campo. Sem
+      // isto a ficha vira decoracao -- o numero que conta continuaria sendo
+      // um valor digitado, e a contagem por cedula so daria aparencia de
+      // rigor a um palpite.
+      const contado = breakdown ? breakdownExactTotal(breakdown) : Number(data.counted);
+      if (!Number.isFinite(contado) || contado < 0) {
+        throw new Error("Informe o valor conferido em dinheiro.");
+      }
+      const expected = money(cash.expectedCash);
+      if (!Number.isFinite(expected)) throw new Error("Não foi possível calcular o esperado.");
+      const diff = money(contado - expected);
+
+      // `status = 'open'` no WHERE fecha a corrida do duplo clique: a
+      // segunda chamada nao acha mais linha aberta e nao reescreve o
+      // fechamento com uma contagem diferente.
+      const [fechado] = await tx<{ id: number }>`
+        update cash_registers
+           set status = 'closed', closed_at = now(), closed_by = ${tenant.userId},
+               closing_amount = ${contado}, expected_amount = ${expected},
+               difference_amount = ${diff},
+               count_breakdown = ${breakdown ? JSON.stringify(breakdown) : null}::jsonb,
+               notes = ${observacao ?? aberto.notes}
+         where id = ${aberto.id} and company_id = ${tenant.companyId} and status = 'open'
+        returning id
+      `;
+      if (!fechado) throw new Error("Este caixa já foi fechado.");
+
+      const cego = aberto.expected_revealed_at == null;
+      await audit(tx, tenant, "close", "cash_register", aberto.id, null, {
+        expected,
+        counted: contado,
+        diff,
+        cego,
+        breakdown,
+      });
+      return {
+        registerId: aberto.id,
+        expected,
+        counted: contado,
+        diff,
+        cego,
+        precisaExplicacao: needsExplanation(diff),
+        tolerancia: CASH_DIFFERENCE_TOLERANCE,
+        summary: view.summary,
+      };
     });
-    return { expected, counted: contado, diff, summary: current.summary };
+  });
+
+/**
+ * Fechamentos recentes.
+ *
+ * Antes o fechamento aparecia uma vez, na tela de quem fechou, e sumia. Uma
+ * conferencia que ninguem revisita nao e controle: o valor esta na SERIE --
+ * tres faltas seguidas de R$ 20 dizem algo que uma falta de R$ 20 nao diz.
+ */
+export const listCashClosuresFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { storeId?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "cash.read");
+    const rows = await sql.query<Row>(
+      `select r.id, r.store_id, r.opened_at, r.closed_at, r.opening_amount,
+              r.expected_amount, r.closing_amount, r.difference_amount,
+              r.difference_reason, r.difference_explained_at,
+              r.expected_revealed_at, r.count_breakdown,
+              ua.name as opened_by_name, uf.name as closed_by_name,
+              ue.name as explained_by_name
+         from cash_registers r
+         left join "user" ua on ua.id = r.user_id
+         left join "user" uf on uf.id = r.closed_by
+         left join "user" ue on ue.id = r.difference_explained_by
+        where r.company_id = $1 and r.status = 'closed'
+          and ($2::int is null or r.store_id = $2)
+        order by r.closed_at desc nulls last
+        limit 15`,
+      [tenant.companyId, data.storeId ?? null],
+    );
+    return dump(
+      rows.map((r) => {
+        const diff = num(r.difference_amount);
+        return {
+          id: num(r.id),
+          openedAt: r.opened_at == null ? null : String(r.opened_at),
+          closedAt: r.closed_at == null ? null : String(r.closed_at),
+          opening: num(r.opening_amount),
+          expected: num(r.expected_amount),
+          counted: num(r.closing_amount),
+          diff,
+          kind: classifyDifference(diff).kind,
+          pendente: needsExplanation(diff) && r.difference_reason == null,
+          reason: r.difference_reason == null ? null : String(r.difference_reason),
+          explainedAt:
+            r.difference_explained_at == null ? null : String(r.difference_explained_at),
+          explainedBy: r.explained_by_name == null ? null : String(r.explained_by_name),
+          // Fechamento em que o esperado ja tinha sido revelado nao e cego,
+          // e quem revisa precisa saber disso pra ler a diferenca (ou a
+          // ausencia dela) pelo que ela vale.
+          cego: r.expected_revealed_at == null,
+          openedBy: r.opened_by_name == null ? null : String(r.opened_by_name),
+          closedBy: r.closed_by_name == null ? null : String(r.closed_by_name),
+          breakdown: (r.count_breakdown ?? null) as Record<string, number> | null,
+        };
+      }),
+    );
+  });
+
+/**
+ * Explicar a diferenca de um fechamento.
+ *
+ * So preenche o que esta vazio (`is null` no WHERE): a primeira explicacao e
+ * a que fica. Permitir reescrever transformaria o campo num rascunho, e um
+ * rascunho nao serve de prova de nada.
+ */
+export const explainCashDifferenceFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { registerId: number; reason: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "cash.write");
+    const motivo = requireMultiline(data.reason, "Explicação", 600);
+    if (motivo.length < 5) {
+      throw new Error("Descreva o que aconteceu — uma palavra não explica uma diferença.");
+    }
+    const [reg] = await sql<Row>`
+      select id, status, difference_amount, difference_reason
+        from cash_registers
+       where id = ${num(data.registerId)} and company_id = ${tenant.companyId}
+    `;
+    if (!reg) throw new Error("Fechamento não encontrado.");
+    if (String(reg.status) !== "closed") throw new Error("Este caixa ainda está aberto.");
+    const [ok] = await sql<{ id: number }>`
+      update cash_registers
+         set difference_reason = ${motivo}, difference_explained_at = now(),
+             difference_explained_by = ${tenant.userId}
+       where id = ${num(reg.id)} and company_id = ${tenant.companyId}
+         and difference_reason is null
+      returning id
+    `;
+    if (!ok) throw new Error("Esta diferença já foi explicada.");
+    await audit(sql, tenant, "explain-difference", "cash_register", num(reg.id), null, {
+      diff: num(reg.difference_amount),
+      reason: motivo,
+    });
+    return { ok: true };
   });
 
 export const cashMoveFn = createServerFn({ method: "POST" })
