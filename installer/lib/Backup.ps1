@@ -75,7 +75,14 @@ function Test-BackupArchive {
         throw "Dump gerado com apenas $tamanho bytes -- arquivo vazio ou truncado."
     }
 
-    $indice = & $PgRestorePath --list $ArchivePath 2>&1
+    # ErrorActionPreference=Continue em volta: no Windows PowerShell 5.1,
+    # stderr de comando nativo com 2>&1 vira erro TERMINANTE sob Stop -- e a
+    # mensagem crua do pg_restore substituia o diagnostico claro abaixo.
+    # Justamente no caso que mais importa: o dump corrompido.
+    $erroAntes = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { $indice = & $PgRestorePath --list $ArchivePath 2>&1 }
+    finally { $ErrorActionPreference = $erroAntes }
     if ($LASTEXITCODE -ne 0) {
         throw "pg_restore nao conseguiu ler o dump (codigo $LASTEXITCODE): $($indice | Select-Object -Last 3)"
     }
@@ -254,4 +261,137 @@ function Register-AppBackupTask {
         -Principal $principal -Settings $config -Force | Out-Null
 
     Write-Host "  Backup diario agendado para as $Horario (tarefa '$TaskName')."
+}
+
+function Invoke-RestoreRehearsal {
+    <#
+        ENSAIO de restauracao -- restaura o dump de verdade, num schema
+        descartavel do proprio banco, dentro de uma transacao que termina em
+        ROLLBACK. Cria tabela, indice, constraint e carrega os dados; nada
+        fica.
+
+        POR QUE ASSIM, E NAO NUM BANCO NOVO
+
+        O ensaio "certo" seria restaurar num banco separado -- e exige
+        CREATE DATABASE, que so superusuario do Postgres faz. A role do app
+        (gestao_app) nao tem CREATEDB. Ou seja: o ensaio documentado era
+        justamente o que a pessoa mais propensa a fazer o ensaio NAO
+        consegue rodar, e por isso ninguem nunca rodou. Este caminho nao
+        precisa de superusuario nenhum.
+
+        O QUE ESTE ENSAIO NAO COBRE, e fica dito em vez de subentendido:
+        CREATE DATABASE, dono e privilegios do banco novo, e a extensao
+        pg_trgm (ja instalada e compartilhada entre schemas).
+
+        Nao retorna valor: a saida do psql (contagens e divergencias) e o
+        resultado, e quem chama nao pode engolir isso. Falha vira erro.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PgRestorePath,
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string]$ArchivePath,
+        [Parameter(Mandatory)][hashtable]$Connection,
+        [string]$Schema = "ensaio_restore"
+    )
+
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ("ensaio_{0}" -f ([guid]::NewGuid().ToString("N")))
+    New-Item -ItemType Directory -Path $temp | Out-Null
+    $sqlBruto = Join-Path $temp "dump.sql"
+    $sqlEnsaio = Join-Path $temp "ensaio.sql"
+
+    try {
+        # 1. dump binario -> SQL legivel. --no-owner/--no-privileges porque o
+        #    ensaio nao recria donos; quem roda e o dono do schema novo.
+        & $PgRestorePath --no-owner --no-privileges -f $sqlBruto $ArchivePath
+        if ($LASTEXITCODE -ne 0) { throw "pg_restore nao converteu o dump (codigo $LASTEXITCODE)." }
+
+        # 2. reescreve `public.` para o schema de ensaio -- FORA dos blocos de
+        #    COPY, senao um dado que contenha "public." seria corrompido.
+        $saida = New-Object System.Collections.Generic.List[string]
+        $saida.Add("\set ON_ERROR_STOP on")
+        $saida.Add("BEGIN;")
+        # Sem isto o DROP SCHEMA IF EXISTS emite um NOTICE em stderr -- e no
+        # Windows PowerShell 5.1 (o que o lojista usa) stderr de comando
+        # nativo vira erro TERMINANTE com ErrorActionPreference=Stop. O
+        # ensaio abortava por causa de um aviso inofensivo.
+        $saida.Add("SET client_min_messages = warning;")
+        $saida.Add("DROP SCHEMA IF EXISTS $Schema CASCADE;")
+        $saida.Add("CREATE SCHEMA $Schema;")
+        # Os 40 setval do dump sao SELECT e devolvem linha: -q nao cala isso.
+        # A saida do CORPO vai pro nulo; erro continua indo pra stderr, e a
+        # conferencia volta pra tela logo abaixo.
+        $saida.Add("\o nul")
+
+        $dentroCopy = $false
+        foreach ($linha in [IO.File]::ReadLines($sqlBruto)) {
+            if ($dentroCopy) {
+                $saida.Add($linha)
+                if ($linha -eq "\.") { $dentroCopy = $false }
+                continue
+            }
+            # Meta-comandos de psql e a extensao (ja existe; recriar pediria
+            # superusuario e nao faz parte do que se quer provar).
+            if ($linha -match '^\\(un)?restrict') { continue }
+            if ($linha -match '^(CREATE EXTENSION|COMMENT ON EXTENSION)') { continue }
+
+            # gin_trgm_ops pertence a EXTENSAO, nao ao schema restaurado:
+            # reescrever faria o CREATE INDEX procurar algo que nao existe.
+            $l = $linha -replace '\bpublic\.(gin_trgm_ops|gist_trgm_ops)\b', '__KEEP__$1'
+            $l = $l -replace '\bpublic\.', "$Schema."
+            $l = $l -replace '__KEEP__', 'public.'
+            $saida.Add($l)
+            if ($l -match '^COPY .* FROM stdin;$') { $dentroCopy = $true }
+        }
+
+        $saida.Add("\o")
+        $saida.Add("\echo '--- conferencia ---'")
+        $saida.Add("\pset pager off")
+        $saida.Add("SELECT (SELECT count(*) FROM pg_tables WHERE schemaname = '$Schema') AS tabelas,")
+        $saida.Add("       (SELECT count(*) FROM pg_indexes WHERE schemaname = '$Schema') AS indices,")
+        $saida.Add("       (SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace")
+        $saida.Add("          WHERE n.nspname = '$Schema') AS constraints;")
+        # Linha a linha, restaurado contra producao: prova que o dado entrou,
+        # nao so que a tabela foi criada.
+        $saida.Add("SELECT c.relname AS tabela,")
+        $saida.Add("       (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from $Schema.%I', c.relname), false, true, '')))[1]::text::bigint AS restaurado,")
+        $saida.Add("       (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', c.relname), false, true, '')))[1]::text::bigint AS producao")
+        $saida.Add("  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace")
+        $saida.Add(" WHERE n.nspname = '$Schema' AND c.relkind = 'r'")
+        $saida.Add("   AND (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from $Schema.%I', c.relname), false, true, '')))[1]::text::bigint")
+        $saida.Add("    <> (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', c.relname), false, true, '')))[1]::text::bigint")
+        $saida.Add(" ORDER BY 1;")
+        $saida.Add("ROLLBACK;")
+
+        # SEM BOM: psql le o arquivo como UTF-8 puro e um BOM viraria lixo na
+        # primeira linha. Mesma armadilha do last-backup.json.
+        [IO.File]::WriteAllLines($sqlEnsaio, $saida, (New-Object System.Text.UTF8Encoding($false)))
+
+        $env:PGPASSWORD = $Connection.Password
+        $erroAntes = $ErrorActionPreference
+        try {
+            # stderr do psql e informacao, nao sentenca: quem decide se o
+            # ensaio passou e o codigo de saida. Sem isto, um aviso qualquer
+            # do Postgres abortaria antes de a conferencia ser impressa.
+            $ErrorActionPreference = "Continue"
+            # -q: sem isto saem 600 linhas de CREATE/ALTER TABLE e a
+            # conferencia -- a unica parte que alguem precisa ler -- fica
+            # enterrada. Erro continua aparecendo.
+            # Capturado e reemitido linha a linha: PowerShell mistura a saida
+            # nativa com Write-Host fora de ordem, e o laudo do ensaio
+            # apareceria DEPOIS do "concluido" -- veredito antes da prova.
+            $saidaPsql = & $PsqlPath -U $Connection.Role -h $Connection.PgHost -p $Connection.Port `
+                -d $Connection.Database -v ON_ERROR_STOP=1 -q --no-password -f $sqlEnsaio 2>&1
+            $codigo = $LASTEXITCODE
+            $saidaPsql | ForEach-Object { Write-Host $_ }
+        } finally {
+            $ErrorActionPreference = $erroAntes
+            Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        }
+
+        if ($codigo -ne 0) {
+            throw "ENSAIO FALHOU (psql codigo $codigo). Este backup nao restaura -- veja as mensagens acima."
+        }
+    } finally {
+        Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
+    }
 }

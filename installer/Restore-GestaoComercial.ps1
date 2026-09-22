@@ -13,15 +13,27 @@
     - Para o servico antes e sobe depois: restaurar com o app conectado
       deixaria o sistema lendo um banco pela metade durante o processo.
 
-    Ensaio (RECOMENDADO fazer pelo menos uma vez, com a loja tranquila):
-    restaurar num banco descartavel em vez do real. Crie o banco vazio
-    primeiro, como superusuario do Postgres:
+    ENSAIO -- faca pelo menos uma vez, e de preferencia todo mes:
+
+        .\Restore-GestaoComercial.ps1 -Ensaio
+
+    Restaura o backup de verdade (tabelas, indices, constraints e dados)
+    num schema descartavel do proprio banco, dentro de uma transacao que
+    termina em ROLLBACK. Nao precisa de superusuario, nao para a loja e
+    nao deixa nada. No fim diz se alguma tabela veio com contagem
+    diferente da producao.
+
+    Antes existia so o ensaio num banco separado, que precisa de
+    CREATE DATABASE -- e a role do app nao tem CREATEDB. Ou seja: o unico
+    ensaio documentado era o que o dono da loja nao conseguia rodar, e por
+    isso nunca foi rodado. Backup que nunca foi restaurado e so um arquivo
+    grande.
+
+    O ensaio em banco separado continua valendo pra quem tem o superusuario
+    (cobre tambem CREATE DATABASE e privilegios):
 
         psql -U postgres -c "CREATE DATABASE ensaio_restauracao OWNER gestao_app"
-
-    e depois rode este script com -TargetDatabase ensaio_restauracao. Nada
-    do banco de producao e tocado, e voce descobre ANTES da emergencia se o
-    backup presta. Backup que nunca foi restaurado e so um arquivo grande.
+        .\Restore-GestaoComercial.ps1 -TargetDatabase ensaio_restauracao
 #>
 [CmdletBinding()]
 param(
@@ -29,11 +41,21 @@ param(
     [string]$BackupFile,
     # Banco de destino. Sem isto, usa o banco real da DATABASE_URL.
     [string]$TargetDatabase,
+    # Ensaio: restaura num schema descartavel e desfaz. Nao toca em nada.
+    [switch]$Ensaio,
     [switch]$Force
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Sem isto o script terminava com codigo 0 mesmo falhando: um ensaio
+# mensal que "passa" com backup corrompido e pior que nenhum ensaio.
+trap {
+    Write-Host ""
+    Write-Host $($_.Exception.Message) -ForegroundColor Red
+    exit 1
+}
 
 $libDir = Join-Path $PSScriptRoot "lib"
 . (Join-Path $libDir "Prerequisites.ps1")
@@ -48,6 +70,7 @@ $pgDir = Get-PostgresInstallDir
 if (-not $pgDir) { throw "PostgreSQL nao encontrado em C:\Program Files\PostgreSQL." }
 $pgDump = Join-Path $pgDir "bin\pg_dump.exe"
 $pgRestore = Join-Path $pgDir "bin\pg_restore.exe"
+$psql = Join-Path $pgDir "bin\psql.exe"
 
 $conexao = Get-AppDbConnection
 $bancoReal = $conexao.Database
@@ -75,6 +98,22 @@ Write-Host ""
 Write-Host "Verificando o arquivo..."
 $tabelas = Test-BackupArchive -PgRestorePath $pgRestore -ArchivePath $BackupFile
 Write-Host "  Arquivo integro ($tabelas tabelas)."
+
+if ($Ensaio) {
+    # Sai antes de qualquer coisa que escreva: o ensaio nunca para o
+    # servico, nunca sobrescreve e nunca pede -Force.
+    Write-Host ""
+    Write-Host "Ensaio: restaurando num schema descartavel (nada e alterado)..."
+    # Sem `$null =`: a saida do psql (contagens e tabelas divergentes) E o
+    # resultado do ensaio -- capturar seria rodar o teste e jogar fora o laudo.
+    Invoke-RestoreRehearsal -PgRestorePath $pgRestore -PsqlPath $psql `
+        -ArchivePath $BackupFile -Connection $conexao
+    Write-Host ""
+    Write-Host "Ensaio concluido: este backup RESTAURA." -ForegroundColor Green
+    Write-Host "Se a lista acima veio vazia, nenhuma tabela divergiu da producao."
+    Write-Host "(Diferenca em _migrations e esperada se houve atualizacao depois do backup.)"
+    return
+}
 
 if ($ehBancoReal) {
     if (-not $Force) {

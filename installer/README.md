@@ -118,6 +118,41 @@ Serve pendrive, HD externo ou pasta de rede. Se a copia externa falhar (o
 pendrive foi removido, por exemplo), o backup local ainda e salvo -- um
 pendrive fora do lugar nao pode significar "hoje nao teve backup".
 
+### Ensaio de restauracao (faca todo mes)
+
+```powershell
+.\Restore-GestaoComercial.ps1 -Ensaio
+```
+
+Restaura o backup mais recente **de verdade** -- tabelas, indices,
+constraints e dados -- num schema descartavel do proprio banco, dentro de
+uma transacao que termina em ROLLBACK. Nao para a loja, nao precisa de
+superusuario e nao deixa nada pra tras. No fim mostra quantas tabelas,
+indices e constraints entraram, e lista **so** as tabelas cuja contagem
+divergiu da producao.
+
+Rodado pela primeira vez em 22/09/2026, contra o backup daquele dia: 47
+tabelas, 143 indices, 183 constraints, e a unica divergencia foi
+`_migrations` (28 no backup contra 29 em producao) -- esperado, porque uma
+migration entrou depois do backup. Testado tambem com um dump truncado de
+proposito: o ensaio recusa, explica por que, e sai com codigo 1.
+
+Ate aqui o unico ensaio documentado era restaurar num banco separado, que
+exige `CREATE DATABASE` -- e a role do app nao tem essa permissao. Ou
+seja: o unico ensaio documentado era o que o dono da loja **nao conseguia
+rodar**, e por isso nunca foi rodado. Backup que nunca foi restaurado e so
+um arquivo grande.
+
+O que o ensaio em schema **nao** cobre, e fica dito em vez de subentendido:
+`CREATE DATABASE`, dono/privilegios do banco novo e a extensao `pg_trgm`
+(ja instalada e compartilhada entre schemas). Pra cobrir isso tambem, com o
+superusuario em maos:
+
+```powershell
+psql -U postgres -c "CREATE DATABASE ensaio_restauracao OWNER gestao_app"
+.\Restore-GestaoComercial.ps1 -TargetDatabase ensaio_restauracao
+```
+
 ### Restaurar
 
 ```powershell
