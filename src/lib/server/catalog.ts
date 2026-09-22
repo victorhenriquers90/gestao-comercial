@@ -214,87 +214,104 @@ export const saveProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.write");
-    if (data.barcode) {
-      const dup = await sql<{ id: number }>`
-        select id from products
-        where company_id = ${tenant.companyId} and barcode = ${data.barcode}
-          and deleted_at is null and id <> ${data.id ?? 0}
-        limit 1
-      `;
-      if (dup.length) throw new Error("Já existe um produto com este código de barras.");
-    }
-    let brandId = data.brandId ? num(data.brandId) : null;
-    if (!brandId && data.brandName?.trim()) {
-      const [b] = await sql<{ id: number }>`
-        insert into brands (company_id, name) values (${tenant.companyId}, ${data.brandName.trim()}) returning id
-      `;
-      brandId = b!.id;
-    }
-    let productId = data.id;
-    const hasVariants = Boolean(data.variants && data.variants.length > 0);
-    if (productId) {
-      await sql`
-        update products set
-          name = ${data.name}, internal_code = ${data.internalCode ?? null}, barcode = ${data.barcode ?? null},
-          sku = ${data.sku ?? null}, description = ${data.description ?? null},
-          category_id = ${data.categoryId ?? null}, brand_id = ${brandId}, supplier_id = ${data.supplierId ?? null},
-          unit = ${data.unit ?? "UN"}, cost = ${data.cost}, price = ${data.price},
-          promo_price = ${data.promoPrice ?? null}, min_stock = ${data.minStock ?? 0},
-          location = ${data.location ?? null}, image_url = ${data.imageUrl ?? null},
-          is_active = ${data.isActive ?? true},
-          ncm = ${data.ncm ?? null}, cfop = ${data.cfop ?? "5102"},
-          has_variants = ${hasVariants}, updated_at = now()
-        where id = ${productId} and company_id = ${tenant.companyId}
-      `;
-    } else {
-      const [row] = await sql<{ id: number }>`
-        insert into products (
-          company_id, internal_code, barcode, sku, name, description, category_id, brand_id, supplier_id,
-          unit, cost, price, promo_price, min_stock, location, image_url, is_active, has_variants, ncm, cfop
-        ) values (
-          ${tenant.companyId}, ${data.internalCode ?? null}, ${data.barcode ?? null}, ${data.sku ?? null},
-          ${data.name}, ${data.description ?? null}, ${data.categoryId ?? null}, ${brandId}, ${data.supplierId ?? null},
-          ${data.unit ?? "UN"}, ${data.cost}, ${data.price}, ${data.promoPrice ?? null}, ${data.minStock ?? 0},
-          ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants},
-          ${data.ncm ?? null}, ${data.cfop ?? "5102"}
-        ) returning id
-      `;
-      productId = row!.id;
-    }
-    if (hasVariants && data.variants) {
-      for (const v of data.variants) {
-        if (v.id) {
+
+    /*
+      Produto, marca, variantes e auditoria numa transacao so.
+
+      Sao ate sete escritas em sequencia. Uma falha no meio deixava um
+      PRODUTO SEM VARIANTE: aparece na lista de produtos, nao aparece na
+      busca do PDV (que procura variante) e nao tem estoque -- um item que
+      existe pra quem cadastra e nao existe pra quem vende. O conserto e
+      abrir e salvar de novo, mas so depois de alguem descobrir, e a
+      descoberta costuma ser um cliente no balcao.
+
+      O parametro se chama `sql` de proposito: sombrear o de fora mantem o
+      corpo inteiro inalterado. Trocar ~40 referencias a mao pra ganhar um
+      nome diferente seria arriscar o que ja funciona por estetica.
+    */
+    return sql.transaction(async (sql) => {
+      if (data.barcode) {
+        const dup = await sql<{ id: number }>`
+          select id from products
+          where company_id = ${tenant.companyId} and barcode = ${data.barcode}
+            and deleted_at is null and id <> ${data.id ?? 0}
+          limit 1
+        `;
+        if (dup.length) throw new Error("Já existe um produto com este código de barras.");
+      }
+      let brandId = data.brandId ? num(data.brandId) : null;
+      if (!brandId && data.brandName?.trim()) {
+        const [b] = await sql<{ id: number }>`
+          insert into brands (company_id, name) values (${tenant.companyId}, ${data.brandName.trim()}) returning id
+        `;
+        brandId = b!.id;
+      }
+      let productId = data.id;
+      const hasVariants = Boolean(data.variants && data.variants.length > 0);
+      if (productId) {
+        await sql`
+          update products set
+            name = ${data.name}, internal_code = ${data.internalCode ?? null}, barcode = ${data.barcode ?? null},
+            sku = ${data.sku ?? null}, description = ${data.description ?? null},
+            category_id = ${data.categoryId ?? null}, brand_id = ${brandId}, supplier_id = ${data.supplierId ?? null},
+            unit = ${data.unit ?? "UN"}, cost = ${data.cost}, price = ${data.price},
+            promo_price = ${data.promoPrice ?? null}, min_stock = ${data.minStock ?? 0},
+            location = ${data.location ?? null}, image_url = ${data.imageUrl ?? null},
+            is_active = ${data.isActive ?? true},
+            ncm = ${data.ncm ?? null}, cfop = ${data.cfop ?? "5102"},
+            has_variants = ${hasVariants}, updated_at = now()
+          where id = ${productId} and company_id = ${tenant.companyId}
+        `;
+      } else {
+        const [row] = await sql<{ id: number }>`
+          insert into products (
+            company_id, internal_code, barcode, sku, name, description, category_id, brand_id, supplier_id,
+            unit, cost, price, promo_price, min_stock, location, image_url, is_active, has_variants, ncm, cfop
+          ) values (
+            ${tenant.companyId}, ${data.internalCode ?? null}, ${data.barcode ?? null}, ${data.sku ?? null},
+            ${data.name}, ${data.description ?? null}, ${data.categoryId ?? null}, ${brandId}, ${data.supplierId ?? null},
+            ${data.unit ?? "UN"}, ${data.cost}, ${data.price}, ${data.promoPrice ?? null}, ${data.minStock ?? 0},
+            ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants},
+            ${data.ncm ?? null}, ${data.cfop ?? "5102"}
+          ) returning id
+        `;
+        productId = row!.id;
+      }
+      if (hasVariants && data.variants) {
+        for (const v of data.variants) {
+          if (v.id) {
+            await sql`
+              update product_variants set sku = ${v.sku ?? null}, barcode = ${v.barcode ?? null},
+                color = ${v.color ?? null}, size = ${v.size ?? null}, model = ${v.model ?? null},
+                cost = ${v.cost ?? data.cost}, price = ${v.price ?? data.price}
+              where id = ${v.id} and company_id = ${tenant.companyId}
+            `;
+          } else {
+            await sql`
+              insert into product_variants (company_id, product_id, sku, barcode, color, size, model, cost, price)
+              values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${v.cost ?? data.cost}, ${v.price ?? data.price})
+            `;
+          }
+        }
+      } else {
+        const existing = await sql<{ id: number }>`
+          select id from product_variants where product_id = ${productId} and company_id = ${tenant.companyId} and deleted_at is null
+        `;
+        if (!existing.length) {
           await sql`
-            update product_variants set sku = ${v.sku ?? null}, barcode = ${v.barcode ?? null},
-              color = ${v.color ?? null}, size = ${v.size ?? null}, model = ${v.model ?? null},
-              cost = ${v.cost ?? data.cost}, price = ${v.price ?? data.price}
-            where id = ${v.id} and company_id = ${tenant.companyId}
+            insert into product_variants (company_id, product_id, sku, barcode, cost, price)
+            values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.cost}, ${data.price})
           `;
         } else {
           await sql`
-            insert into product_variants (company_id, product_id, sku, barcode, color, size, model, cost, price)
-            values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${v.cost ?? data.cost}, ${v.price ?? data.price})
+            update product_variants set sku = ${data.sku ?? null}, barcode = ${data.barcode ?? null}, cost = ${data.cost}, price = ${data.price}
+            where id = ${existing[0]!.id}
           `;
         }
       }
-    } else {
-      const existing = await sql<{ id: number }>`
-        select id from product_variants where product_id = ${productId} and company_id = ${tenant.companyId} and deleted_at is null
-      `;
-      if (!existing.length) {
-        await sql`
-          insert into product_variants (company_id, product_id, sku, barcode, cost, price)
-          values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.cost}, ${data.price})
-        `;
-      } else {
-        await sql`
-          update product_variants set sku = ${data.sku ?? null}, barcode = ${data.barcode ?? null}, cost = ${data.cost}, price = ${data.price}
-          where id = ${existing[0]!.id}
-        `;
-      }
-    }
-    await audit(sql, tenant, data.id ? "update" : "create", "product", productId, null, { name: data.name });
-    return { id: productId };
+      await audit(sql, tenant, data.id ? "update" : "create", "product", productId, null, { name: data.name });
+      return { id: productId };
+    });
   });
 
 export const searchPosFn = createServerFn({ method: "POST" })

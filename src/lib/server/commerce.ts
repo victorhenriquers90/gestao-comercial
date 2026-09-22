@@ -796,94 +796,107 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.cancel");
-    const [sale] = await sql<{ id: number; status: string; store_id: number; number: number }>`
-      select id, status, store_id, number from sales where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (!sale) throw new Error("Venda não encontrada.");
-    if (sale.status === "cancelada") throw new Error("Venda já cancelada.");
-    const items = await sql<{ variant_id: number; quantity: string | number }>`
-      select variant_id, quantity from sale_items where sale_id = ${sale.id}
-    `;
-    for (const item of items) {
-      await applyStockChange(sql, {
-        companyId: tenant.companyId,
-        storeId: sale.store_id,
-        variantId: item.variant_id,
-        delta: num(item.quantity),
-        type: "devolucao",
-        userId: tenant.userId,
-        note: data.reason,
-        referenceType: "sale",
-        referenceId: sale.id,
-        allowNegative: true,
-      });
-    }
-    await sql`
-      update sales set status = 'cancelada', cancelled_at = now(), cancel_reason = ${data.reason}
-      where id = ${sale.id}
-    `;
-    await sql`
-      update accounts_receivable set status = 'cancelado'
-      where sale_id = ${sale.id} and status in ('pendente','parcial')
-    `;
-    await sql`
-      update commissions set status = 'cancelado'
-       where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
-    `;
-    const [reg] = await sql<{ id: number }>`
-      select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
-    `;
-    if (reg) {
-      await sql`
-        insert into cash_movements (company_id, store_id, register_id, user_id, type, amount, description, sale_id)
-        values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento', 0, ${"Cancelamento venda nº " + sale.number}, ${sale.id})
-      `;
-    }
-    await sql`
-      insert into notifications (company_id, kind, title, body, href)
-      values (${tenant.companyId}, 'venda', ${"Venda nº " + sale.number + " cancelada"}, ${data.reason}, ${"/app/vendas?id=" + sale.id})
-    `;
 
     /*
-      O lado fiscal vem DEPOIS do trabalho local, e de propósito.
+      Tudo numa transacao so.
 
-      Cancelar a nota é uma chamada de rede ao SEFAZ, que pode demorar ou
-      falhar; o cancelamento da venda (estoque, comissão, recebível) não
-      pode ficar refém disso. Se o fiscal não sair, a venda continua
-      cancelada e fica uma PENDÊNCIA escrita -- porque a nota segue
-      valendo, e uma nota válida para uma venda que não existe é o tipo de
-      divergência que só aparece na fiscalização.
+      Cancelar uma venda sao SETE escritas: devolve N itens ao estoque,
+      marca a venda, cancela recebivel e comissao, lanca a movimentacao de
+      caixa, notifica e audita. Sem transacao, uma falha no meio deixava o
+      pior estado possivel -- estoque JA devolvido a prateleira com a venda
+      ainda 'finalizada'. A peca volta a ser vendavel e continua contada
+      como vendida: o estoque passa a mentir pros dois lados de uma vez, e
+      ninguem tem como saber que aconteceu.
+
+      `for update` na venda antes de qualquer escrita: dois cancelamentos
+      simultaneos (duplo clique, duas abas) passavam os dois pela checagem
+      de status e devolviam o estoque DUAS vezes, criando peca do nada. O
+      segundo agora espera o primeiro terminar e encontra 'cancelada'.
     */
-    const [nota] = await sql<Row>`
-      select nfce_status, nfce_authorized_at from sales
-       where id = ${sale.id} and company_id = ${tenant.companyId}
-    `;
-    let fiscal: { tentou: boolean; ok: boolean; erro: string | null } | null = null;
-    if (nota != null && String(nota.nfce_status) === "autorizado") {
-      const janela = cancelWindow(
-        nota.nfce_authorized_at == null ? null : String(nota.nfce_authorized_at),
-      );
-      /*
-        Cancelar a nota NÃO acontece junto, de propósito.
+    await sql.transaction(async (tx) => {
+      const [sale] = await tx<{ id: number; status: string; store_id: number; number: number }>`
+        select id, status, store_id, number from sales
+         where id = ${data.id} and company_id = ${tenant.companyId}
+         for update
+      `;
+      if (!sale) throw new Error("Venda não encontrada.");
+      if (sale.status === "cancelada") throw new Error("Venda já cancelada.");
 
-        A justificativa fiscal precisa de 15 caracteres e vai permanente
-        pro SEFAZ; o motivo comercial ("desistiu") não serve, e esticar
-        texto pra alcançar o mínimo produziria justificativa vazia de
-        conteúdo. Pedir os dois no mesmo diálogo destrutivo é mais jeito
-        de errar. Então fica a pendência, e cancelar a nota é um ato
-        próprio, com texto próprio -- que o sino cobra até acontecer.
+      const items = await tx<{ variant_id: number; quantity: string | number }>`
+        select variant_id, quantity from sale_items where sale_id = ${sale.id}
+      `;
+      for (const item of items) {
+        await applyStockChange(tx, {
+          companyId: tenant.companyId,
+          storeId: sale.store_id,
+          variantId: item.variant_id,
+          delta: num(item.quantity),
+          type: "devolucao",
+          userId: tenant.userId,
+          note: data.reason,
+          referenceType: "sale",
+          referenceId: sale.id,
+          allowNegative: true,
+        });
+      }
+      await tx`
+        update sales set status = 'cancelada', cancelled_at = now(), cancel_reason = ${data.reason}
+        where id = ${sale.id}
+      `;
+      await tx`
+        update accounts_receivable set status = 'cancelado'
+        where sale_id = ${sale.id} and status in ('pendente','parcial')
+      `;
+      await tx`
+        update commissions set status = 'cancelado'
+         where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
+      `;
+      const [reg] = await tx<{ id: number }>`
+        select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
+      `;
+      if (reg) {
+        await tx`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, amount, description, sale_id)
+          values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento', 0, ${"Cancelamento venda nº " + sale.number}, ${sale.id})
+        `;
+      }
+      await tx`
+        insert into notifications (company_id, kind, title, body, href)
+        values (${tenant.companyId}, 'venda', ${"Venda nº " + sale.number + " cancelada"}, ${data.reason}, ${"/app/vendas?id=" + sale.id})
+      `;
+
+      /*
+        A nota fiscal fica de fora do cancelamento automatico.
+
+        A justificativa do SEFAZ precisa de 15 caracteres e vai permanente;
+        o motivo comercial ("desistiu") nao serve, e esticar texto pra
+        alcancar o minimo produziria justificativa vazia de conteudo. Pedir
+        os dois no mesmo dialogo destrutivo e mais jeito de errar. Entao
+        fica a PENDENCIA, e cancelar a nota e um ato proprio -- que o sino
+        cobra ate acontecer.
+
+        Nenhuma chamada de rede aqui dentro, de proposito: uma transacao
+        aberta esperando o SEFAZ segura locks da tabela de vendas pelo
+        tempo que a rede quiser.
       */
-      await marcarPendenciaFiscal(
-        sql,
-        tenant.companyId,
-        sale.id,
-        pendenciaText(janela.provavelmenteExpirado ? "fora_do_prazo" : "cancelar_nota"),
-      );
-      fiscal = { tentou: false, ok: false, erro: null };
-    }
-    await audit(sql, tenant, "cancel", "sale", sale.id, { status: sale.status }, {
-      reason: data.reason,
-      fiscal,
+      const [nota] = await tx<Row>`
+        select nfce_status, nfce_authorized_at from sales
+         where id = ${sale.id} and company_id = ${tenant.companyId}
+      `;
+      let pendencia: string | null = null;
+      if (nota != null && String(nota.nfce_status) === "autorizado") {
+        const janela = cancelWindow(
+          nota.nfce_authorized_at == null ? null : String(nota.nfce_authorized_at),
+        );
+        pendencia = pendenciaText(
+          janela.provavelmenteExpirado ? "fora_do_prazo" : "cancelar_nota",
+        );
+        await marcarPendenciaFiscal(tx, tenant.companyId, sale.id, pendencia);
+      }
+      await audit(tx, tenant, "cancel", "sale", sale.id, { status: sale.status }, {
+        reason: data.reason,
+        pendenciaFiscal: pendencia,
+      });
     });
     return { ok: true };
   });
