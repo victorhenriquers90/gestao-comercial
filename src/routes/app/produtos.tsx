@@ -8,6 +8,7 @@ import { PriceTags, type PriceTagItem } from "@/components/price-tag";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
@@ -15,7 +16,13 @@ import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { UNITS } from "@/lib/constants";
 import { formatBRL, formatQty, marginPct } from "@/lib/format";
-import { getProductFn, listCategoriesFn, listProductsFn, saveProductFn } from "@/lib/server/catalog";
+import {
+  getProductFn,
+  listCategoriesFn,
+  listNcmPendingFn,
+  listProductsFn,
+  saveProductFn,
+} from "@/lib/server/catalog";
 import { parseBarcode } from "@/lib/check-digit";
 
 export const Route = createFileRoute("/app/produtos")({ component: ProdutosPage });
@@ -46,11 +53,16 @@ function ProdutosPage() {
   const searchId = useSearchId();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [ncmOpen, setNcmOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<number | undefined>();
   const openedFor = useRef<number | null>(null);
 
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
+  const ncmPend = useQuery({
+    queryKey: ["ncm-pending"],
+    queryFn: () => listNcmPendingFn(),
+  });
   const list = useQuery({
     queryKey: ["products", q, storeId],
     queryFn: () => listProductsFn({ data: { q: q || undefined, storeId: storeId ?? undefined } }),
@@ -190,15 +202,23 @@ function ProdutosPage() {
         title="Produtos"
         description="Cadastro, grades e precificação."
         actions={
-          <Button
-            onClick={() => {
-              setEditId(undefined);
-              setForm(empty);
-              setOpen(true);
-            }}
-          >
-            Novo produto
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/* Sem NCM nenhuma nota sai, e a pendência não aparecia em
+                lugar nenhum de Produtos -- só na recusa da emissão. */}
+            <Button variant="outline" onClick={() => setNcmOpen(true)}>
+              NCM fiscal
+              {ncmPend.data?.pendentes ? ` · ${ncmPend.data.pendentes} pendente(s)` : ""}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditId(undefined);
+                setForm(empty);
+                setOpen(true);
+              }}
+            >
+              Novo produto
+            </Button>
+          </div>
         }
       />
       <Input className="mb-4 max-w-sm" placeholder="Buscar nome, SKU ou código" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -379,6 +399,15 @@ function ProdutosPage() {
           <Button className="mt-4 w-full" onClick={() => void save()}>
             Salvar
           </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={ncmOpen} onOpenChange={setNcmOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Classificação fiscal (NCM)</DialogTitle>
+          </DialogHeader>
+          <NcmBulkPanel />
         </DialogContent>
       </Dialog>
 

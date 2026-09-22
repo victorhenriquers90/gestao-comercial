@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
+import { ncmValidSql, parseNcm } from "@/lib/ncm";
 import { num } from "@/lib/utils";
 import { assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
@@ -195,7 +196,10 @@ export const saveProductFn = createServerFn({ method: "POST" })
       unit: sanitizeLine(d.unit ?? "UN", 8) || "UN",
       location: optionalLine(d.location, 80) ?? undefined,
       imageUrl: sanitizeHttpUrl(d.imageUrl),
-      ncm: sanitizeCode(d.ncm, 8) ?? undefined,
+      // parseNcm e nao sanitizeCode: o sanitize so cortava em 8 caracteres,
+      // entao "abc" virava NCM valido no banco e so explodia na recusa do
+      // SEFAZ, no balcao, com o cliente esperando a nota.
+      ncm: parseNcm(d.ncm) ?? undefined,
       cfop: sanitizeCode(d.cfop, 4) ?? undefined,
       variants: d.variants?.map((v) => ({
         ...v,
@@ -761,4 +765,107 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
       await audit(sql, tenant, "receive", "purchase", p.id);
     });
     return { ok: true };
+  });
+
+/**
+ * Produtos sem classificação fiscal, agrupados por categoria.
+ *
+ * Por CATEGORIA porque é assim que a resposta chega: o contador manda
+ * "camiseta é 6109.10.00", não um código por SKU. Preencher peça a peça é
+ * o caminho mais curto pra ninguém preencher.
+ *
+ * Os produtos de cada categoria vêm junto, e não só a contagem: categoria
+ * não é garantia de mesmo NCM -- em "Acessórios" convivem bolsa (4202) e
+ * cinto (4203). Quem aplica precisa poder ver o que vai mudar.
+ */
+export const listNcmPendingFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "products.read");
+    // `classificado` vem do BANCO, pela mesma expressão que a
+    // pré-checagem fiscal usa. Decidir aqui em JS e lá em SQL foi o que
+    // fez as duas telas discordarem sobre o mesmo produto.
+    const rows = await sql.query<{
+      id: number;
+      name: string;
+      sku: string | null;
+      ncm: string | null;
+      categoria: string | null;
+      classificado: boolean;
+    }>(
+      `select p.id, p.name, p.sku, p.ncm, c.name as categoria,
+              ${ncmValidSql("p.ncm")} as classificado
+         from products p
+         left join categories c on c.id = p.category_id
+        where p.company_id = $1 and p.deleted_at is null
+        order by c.name nulls last, p.name`,
+      [tenant.companyId],
+    );
+
+    const grupos = new Map<
+      string,
+      { categoria: string; total: number; pendentes: { id: number; name: string; sku: string | null; ncm: string | null }[] }
+    >();
+    for (const r of rows) {
+      const cat = r.categoria == null ? "Sem categoria" : String(r.categoria);
+      const g = grupos.get(cat) ?? { categoria: cat, total: 0, pendentes: [] };
+      g.total += 1;
+      if (r.classificado !== true) {
+        g.pendentes.push({
+          id: num(r.id),
+          name: String(r.name),
+          sku: r.sku == null ? null : String(r.sku),
+          ncm: r.ncm == null ? null : String(r.ncm),
+        });
+      }
+      grupos.set(cat, g);
+    }
+
+    const categorias = [...grupos.values()]
+      .filter((g) => g.pendentes.length > 0)
+      // Mais pendências primeiro: é onde uma aplicação em lote rende mais.
+      .sort((a, b) => b.pendentes.length - a.pendentes.length || a.categoria.localeCompare(b.categoria));
+
+    return dump({
+      categorias,
+      pendentes: categorias.reduce((a, g) => a + g.pendentes.length, 0),
+      total: rows.length,
+    });
+  });
+
+/**
+ * Aplica um NCM a uma lista de produtos.
+ *
+ * Recebe IDS, não uma categoria: se chegasse categoria, o servidor
+ * aplicaria a tudo que estivesse nela NAQUELE instante -- inclusive um
+ * produto cadastrado depois que a tela carregou, que ninguém olhou. A
+ * lista de ids é exatamente o que o operador viu.
+ */
+export const applyNcmFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { ncm: string; productIds: number[] }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "products.write");
+    const ncm = parseNcm(data.ncm);
+    if (!ncm) throw new Error("Informe o NCM.");
+    const ids = [...new Set((data.productIds ?? []).map((v) => num(v)).filter((v) => v > 0))];
+    if (!ids.length) throw new Error("Selecione ao menos um produto.");
+
+    const alterados = await sql<{ id: number }>`
+      update products set ncm = ${ncm}, updated_at = now()
+       where company_id = ${tenant.companyId} and deleted_at is null
+         and id = any(${ids}::int[])
+      returning id
+    `;
+    // Dado fiscal em lote: quem mudou, quando, para qual código e em
+    // quantos produtos. Um NCM errado não dá erro -- dá nota autorizada
+    // com imposto errado, e o log é o único caminho de volta.
+    await audit(sql, tenant, "set-ncm", "product", null, null, {
+      ncm,
+      produtos: alterados.length,
+      ids: alterados.map((r) => num(r.id)),
+    });
+    return { ok: true, alterados: alterados.length };
   });

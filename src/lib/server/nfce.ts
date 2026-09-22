@@ -26,6 +26,7 @@ import {
   nfceBlockers,
   type ReadinessInput,
 } from "@/lib/nfce-readiness";
+import { ncmValidSql } from "@/lib/ncm";
 import type { PaymentMethod } from "@/lib/constants";
 import { audit, requireTenant } from "./context";
 import { type Row } from "@/lib/json";
@@ -91,20 +92,24 @@ export const nfceReadinessFn = createServerFn({ method: "GET" })
         left join company_settings s on s.company_id = c.id
        where c.id = ${tenant.companyId}
     `;
-    const [produtos] = await sql<{ total: number; sem_ncm: number }>`
-      select count(*)::int as total,
-             count(*) filter (where ncm is null or btrim(ncm) = '')::int as sem_ncm
-        from products
-       where company_id = ${tenant.companyId} and deleted_at is null
-    `;
+    // Mesma regra do painel de NCM (ncmValidSql, colado em hasNcm):
+    // "btrim(ncm) <> ''" contava "abc" como classificado, e esta tela
+    // dizia "nenhuma pendência" enquanto o painel dizia "1 pendente".
+    const [produtos] = await sql.query<{ total: number; sem_ncm: number }>(
+      `select count(*)::int as total,
+              count(*) filter (where not ${ncmValidSql()})::int as sem_ncm
+         from products
+        where company_id = $1 and deleted_at is null`,
+      [tenant.companyId],
+    );
     // Só os primeiros: a lista existe pra dar o caminho, não pra virar
     // um segundo cadastro de produtos dentro de Configurações.
-    const exemplos = await sql<{ id: number; name: string }>`
-      select id, name from products
-       where company_id = ${tenant.companyId} and deleted_at is null
-         and (ncm is null or btrim(ncm) = '')
-       order by name limit 8
-    `;
+    const exemplos = await sql.query<{ id: number; name: string }>(
+      `select id, name from products
+        where company_id = $1 and deleted_at is null and not ${ncmValidSql()}
+        order by name limit 8`,
+      [tenant.companyId],
+    );
     const [vendas] = await sql<{ finalizadas: number; com_nota: number }>`
       select count(*)::int as finalizadas,
              count(*) filter (where nfce_env = 'producao' and nfce_status = 'autorizado')::int as com_nota
