@@ -20,6 +20,12 @@ import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan } from "@/lib/permissions";
 import { bestPromo, type Promo } from "@/lib/promo";
+import {
+  cancelWindow,
+  pendenciaForReturn,
+  pendenciaText,
+} from "@/lib/nfce-cancel";
+import { marcarPendenciaFiscal } from "./nfce";
 import { num } from "@/lib/utils";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument } from "@/lib/document";
@@ -837,7 +843,48 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
       insert into notifications (company_id, kind, title, body, href)
       values (${tenant.companyId}, 'venda', ${"Venda nº " + sale.number + " cancelada"}, ${data.reason}, ${"/app/vendas?id=" + sale.id})
     `;
-    await audit(sql, tenant, "cancel", "sale", sale.id, { status: sale.status }, { reason: data.reason });
+
+    /*
+      O lado fiscal vem DEPOIS do trabalho local, e de propósito.
+
+      Cancelar a nota é uma chamada de rede ao SEFAZ, que pode demorar ou
+      falhar; o cancelamento da venda (estoque, comissão, recebível) não
+      pode ficar refém disso. Se o fiscal não sair, a venda continua
+      cancelada e fica uma PENDÊNCIA escrita -- porque a nota segue
+      valendo, e uma nota válida para uma venda que não existe é o tipo de
+      divergência que só aparece na fiscalização.
+    */
+    const [nota] = await sql<Row>`
+      select nfce_status, nfce_authorized_at from sales
+       where id = ${sale.id} and company_id = ${tenant.companyId}
+    `;
+    let fiscal: { tentou: boolean; ok: boolean; erro: string | null } | null = null;
+    if (nota != null && String(nota.nfce_status) === "autorizado") {
+      const janela = cancelWindow(
+        nota.nfce_authorized_at == null ? null : String(nota.nfce_authorized_at),
+      );
+      /*
+        Cancelar a nota NÃO acontece junto, de propósito.
+
+        A justificativa fiscal precisa de 15 caracteres e vai permanente
+        pro SEFAZ; o motivo comercial ("desistiu") não serve, e esticar
+        texto pra alcançar o mínimo produziria justificativa vazia de
+        conteúdo. Pedir os dois no mesmo diálogo destrutivo é mais jeito
+        de errar. Então fica a pendência, e cancelar a nota é um ato
+        próprio, com texto próprio -- que o sino cobra até acontecer.
+      */
+      await marcarPendenciaFiscal(
+        sql,
+        tenant.companyId,
+        sale.id,
+        pendenciaText(janela.provavelmenteExpirado ? "fora_do_prazo" : "cancelar_nota"),
+      );
+      fiscal = { tentou: false, ok: false, erro: null };
+    }
+    await audit(sql, tenant, "cancel", "sale", sale.id, { status: sale.status }, {
+      reason: data.reason,
+      fiscal,
+    });
     return { ok: true };
   });
 
@@ -1078,7 +1125,30 @@ export const createReturnFn = createServerFn({ method: "POST" })
       // `kind` e decidido dentro da transacao (total / parcial / troca).
       return { id: retorno!.id, kind };
     });
-    return { id: ret.id, kind: ret.kind, total };
+    /*
+      Devolução com nota autorizada não tem conserto único: total dentro
+      do prazo se resolve cancelando a nota; parcial, não -- a venda
+      aconteceu, só que menor, e cancelar apagaria uma operação que
+      existiu. Fora do prazo, nenhuma das duas: só NF-e de devolução, que
+      este sistema não emite. Em vez de escolher errado, escreve o que é.
+    */
+    const [nota] = await sql<Row>`
+      select nfce_status, nfce_authorized_at from sales
+       where id = ${sale.id} and company_id = ${tenant.companyId}
+    `;
+    let pendencia: string | null = null;
+    if (nota != null && String(nota.nfce_status) === "autorizado") {
+      const janela = cancelWindow(
+        nota.nfce_authorized_at == null ? null : String(nota.nfce_authorized_at),
+      );
+      // ret.kind sai da transacao como string; o dominio so aceita os tres
+      // valores do negocio -- reafirmar aqui evita um "troca" virar parcial
+      // por acidente numa refatoracao futura.
+      const tipo = ret.kind as "total" | "parcial" | "troca";
+      pendencia = pendenciaText(pendenciaForReturn(tipo, janela.provavelmenteExpirado));
+      await marcarPendenciaFiscal(sql, tenant.companyId, sale.id, pendencia);
+    }
+    return { id: ret.id, kind: ret.kind, total, pendenciaFiscal: pendencia };
   });
 
 export const listReturnsFn = createServerFn({ method: "GET" })

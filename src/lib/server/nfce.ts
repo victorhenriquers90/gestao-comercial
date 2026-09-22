@@ -27,6 +27,11 @@ import {
   type ReadinessInput,
 } from "@/lib/nfce-readiness";
 import { ncmValidSql } from "@/lib/ncm";
+import {
+  cancelWindow,
+  parseCancelReason,
+  pendenciaText,
+} from "@/lib/nfce-cancel";
 import type { PaymentMethod } from "@/lib/constants";
 import { audit, requireTenant } from "./context";
 import { type Row } from "@/lib/json";
@@ -46,7 +51,7 @@ function focusToken(): string | undefined {
 
 async function focusRequest(
   path: string,
-  method: "POST" | "GET",
+  method: "POST" | "GET" | "DELETE",
   body?: unknown,
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const token = focusToken();
@@ -253,7 +258,9 @@ export const emitNfceFn = createServerFn({ method: "POST" })
       await sql`
         update sales set nfce_ref = ${input.ref}, nfce_status = ${status}, nfce_env = ${env},
           nfce_error = null, nfce_chave = null, nfce_numero = null, nfce_serie = null,
-          nfce_danfe_url = null, nfce_xml_url = null
+          nfce_danfe_url = null, nfce_xml_url = null,
+          nfce_pendencia = null, nfce_cancel_protocol = null, nfce_cancelled_at = null,
+          nfce_authorized_at = ${status === "autorizado" ? new Date().toISOString() : null}
         where id = ${data.saleId} and company_id = ${tenant.companyId}
       `;
       await audit(sql, tenant, "emit", "nfce", data.saleId, null, {
@@ -303,8 +310,146 @@ export const refreshNfceStatusFn = createServerFn({ method: "POST" })
         nfce_serie = ${serie},
         nfce_danfe_url = ${danfeUrl},
         nfce_xml_url = ${xmlUrl},
-        nfce_error = ${error}
+        nfce_error = ${error},
+        -- Primeira autorizacao manda: se ja ha carimbo, mante-lo preserva
+        -- o inicio real da janela de cancelamento.
+        nfce_authorized_at = case
+          when ${status} = 'autorizado' then coalesce(nfce_authorized_at, now())
+          else nfce_authorized_at
+        end
       where id = ${data.saleId} and company_id = ${tenant.companyId}
     `;
     return { status, chave, numero, serie, danfeUrl, xmlUrl, error };
   });
+
+/**
+ * Cancelar a NFC-e no SEFAZ.
+ *
+ * `DELETE /v2/nfce/{ref}` com `justificativa` de 15 a 255 caracteres, do
+ * jeito que a documentação da Focus NFe define. O prazo que eles declaram
+ * é de 30 minutos, mas a tentativa acontece de qualquer jeito: estados
+ * podem ser mais restritos que o teto, e uma recusa do SEFAZ com motivo
+ * vale mais que uma recusa nossa baseada num prazo que talvez não valha
+ * aqui. Se recusar, vira pendência fiscal em vez de sumir.
+ */
+/**
+ * Núcleo do cancelamento, sem `createServerFn` em volta.
+ *
+ * Existe separado porque o cancelamento de VENDA também precisa dele, e
+ * uma server function chamando outra empacotaria requisição dentro de
+ * requisição -- com dois `requireTenant` e dois pontos de falha pra uma
+ * operação só.
+ */
+export async function cancelarNfce(
+  sql: Awaited<ReturnType<typeof requireTenant>>["sql"],
+  tenant: Awaited<ReturnType<typeof requireTenant>>["tenant"],
+  saleId: number,
+  justificativaBruta: unknown,
+) {
+  {
+    const data = { saleId };
+    const justificativa = parseCancelReason(justificativaBruta);
+    const env = focusEnv();
+
+    const [sale] = await sql<Row>`
+      select id, number, nfce_ref, nfce_status, nfce_env, nfce_chave, nfce_authorized_at
+        from sales where id = ${data.saleId} and company_id = ${tenant.companyId}
+    `;
+    if (!sale) throw new Error("Venda não encontrada.");
+    if (!sale.nfce_ref) throw new Error("Esta venda não tem nota fiscal emitida.");
+    if (String(sale.nfce_status) === "cancelado") throw new Error("Esta nota já está cancelada.");
+    if (String(sale.nfce_status) !== "autorizado") {
+      throw new Error("Só dá pra cancelar uma nota autorizada.");
+    }
+    /*
+      Ambiente tem que bater: o token de homologação não alcança uma nota
+      de produção, e a chamada voltaria com um erro genérico que pareceria
+      problema do SEFAZ em vez de configuração do servidor.
+    */
+    if (sale.nfce_env != null && String(sale.nfce_env) !== env) {
+      throw new Error(
+        `Esta nota foi emitida em ${String(sale.nfce_env)} e o servidor está em ${env}.`,
+      );
+    }
+
+    const res = await focusRequest(
+      `/v2/nfce/${encodeURIComponent(String(sale.nfce_ref))}`,
+      "DELETE",
+      { justificativa },
+    );
+    const status = nullableStr(res.body.status) ?? "";
+
+    if (res.ok && status === "cancelado") {
+      await sql`
+        update sales set nfce_status = 'cancelado', nfce_cancelled_at = now(),
+          nfce_cancel_protocol = ${nullableStr(res.body.numero_protocolo)},
+          nfce_xml_url = ${nullableStr(res.body.caminho_xml_cancelamento) ?? null},
+          nfce_error = null, nfce_pendencia = null
+        where id = ${num(sale.id)} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "cancel", "nfce", num(sale.id), null, {
+        justificativa,
+        protocolo: nullableStr(res.body.numero_protocolo),
+        env,
+      });
+      return { ok: true as const, protocolo: nullableStr(res.body.numero_protocolo) };
+    }
+
+    /*
+      Recusa não é exceção: é o caminho normal depois de 30 minutos. Vira
+      pendência fiscal escrita, porque a nota continua valendo e alguém
+      precisa levar isso ao contador -- some da tela e some do problema.
+    */
+    const motivo =
+      nullableStr(res.body.mensagem_sefaz) ??
+      nullableStr(res.body.mensagem) ??
+      nullableStr(res.body.erro) ??
+      `HTTP ${res.status}`;
+    const janela = cancelWindow(
+      sale.nfce_cancelled_at == null ? null : String(sale.nfce_cancelled_at),
+    );
+    const texto = pendenciaText(
+      janela.provavelmenteExpirado ? "fora_do_prazo" : "cancelamento_falhou",
+      motivo,
+    );
+    await sql`
+      update sales set nfce_pendencia = ${texto}
+      where id = ${num(sale.id)} and company_id = ${tenant.companyId}
+    `;
+    await audit(sql, tenant, "cancel-failed", "nfce", num(sale.id), null, {
+      justificativa,
+      motivo,
+      env,
+    });
+    return { ok: false as const, erro: motivo, pendencia: texto };
+  }
+}
+
+export const cancelNfceFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { saleId: number; justificativa: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "pdv.cancel");
+    return cancelarNfce(sql, tenant, data.saleId, data.justificativa);
+  });
+
+/**
+ * Registra que o lado fiscal ficou divergente do lado comercial.
+ *
+ * Chamada de dentro do cancelamento de venda e da devolução, que já rodam
+ * em transação própria -- por isso recebe `sql` em vez de abrir a sua.
+ */
+export async function marcarPendenciaFiscal(
+  sql: Awaited<ReturnType<typeof requireTenant>>["sql"],
+  companyId: number,
+  saleId: number,
+  texto: string,
+): Promise<void> {
+  // `is null` no WHERE: a primeira pendência é a que descreve o que
+  // aconteceu primeiro. Sobrescrever apagaria a origem da divergência.
+  await sql`
+    update sales set nfce_pendencia = ${texto}
+     where id = ${saleId} and company_id = ${companyId} and nfce_pendencia is null
+  `;
+}

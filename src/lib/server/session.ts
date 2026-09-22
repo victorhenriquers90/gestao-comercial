@@ -211,6 +211,19 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
        where company_id = ${tenant.companyId} and status = 'open'
          and opened_at < current_date::timestamptz
     `;
+    /*
+      Pendencia fiscal: nota valida pra venda que nao existe mais.
+
+      Some sozinha quando o cancelamento sai ou quando alguem resolve pelo
+      contador -- e enquanto nao sai, continua aparecendo. Um documento
+      fiscal torto que ninguem ve e um problema que so aparece na
+      fiscalizacao, quando ja nao da pra consertar barato.
+    */
+    const fiscalPendente = await sql<{ n: number }>`
+      select count(*)::int as n from sales
+       where company_id = ${tenant.companyId} and deleted_at is null
+         and nfce_pendencia is not null
+    `;
     const dueTasks = await sql<{ n: number }>`
       select count(*)::int as n from crm_tasks
       where company_id = ${tenant.companyId} and done_at is null
@@ -305,6 +318,16 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
           `${caixaVelho[0]!.n} caixa(s) sem fechar, o mais antigo ${registerAgeLabel(dias)}. ` +
           "Enquanto nao fechar, o esperado soma todos esses dias e a conferência do turno deixa de existir.",
         href: "/app/caixa",
+        dismissible: false,
+      });
+    }
+    if (num(fiscalPendente[0]?.n) > 0) {
+      items.push({
+        id: "fiscal-pend",
+        kind: "financeiro",
+        title: "Pendência fiscal",
+        body: `${fiscalPendente[0]!.n} venda(s) com nota fiscal divergente do que foi vendido.`,
+        href: "/app/vendas",
         dismissible: false,
       });
     }

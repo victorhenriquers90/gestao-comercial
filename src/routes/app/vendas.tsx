@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
@@ -17,7 +17,12 @@ import { formatBRL, formatDateTime, formatDoc, formatPct } from "@/lib/format";
 import { parseTaxBreakdown } from "@/lib/tax";
 import { cancelSaleFn, getSaleFn, listSalesFn } from "@/lib/server/commerce";
 import { getSettingsFn } from "@/lib/server/session";
-import { emitNfceFn, nfceStatusFn, refreshNfceStatusFn } from "@/lib/server/nfce";
+import { cancelNfceFn, emitNfceFn, nfceStatusFn, refreshNfceStatusFn } from "@/lib/server/nfce";
+import {
+  CANCEL_REASON_MIN,
+  NFCE_CANCEL_WINDOW_MINUTES,
+  cancelWindow,
+} from "@/lib/nfce-cancel";
 import { num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/vendas")({
@@ -49,6 +54,32 @@ function VendasPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
   const [nfceBusy, setNfceBusy] = useState(false);
+  const [justificativa, setJustificativa] = useState("");
+  async function cancelarNota() {
+    if (nfceBusy || !openId) return;
+    setNfceBusy(true);
+    try {
+      const r = await cancelNfceFn({
+        data: { saleId: openId, justificativa },
+      });
+      if (r.ok) {
+        toast.success("Nota cancelada no SEFAZ.");
+        setJustificativa("");
+      } else {
+        // Recusa do SEFAZ não é falha do sistema: o texto dele é a
+        // informação mais útil que existe aqui, e some se virar
+        // "erro ao cancelar".
+        toast.error(r.erro ?? "O SEFAZ recusou o cancelamento.");
+      }
+      void qc.invalidateQueries({ queryKey: ["sale", openId] });
+      void qc.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao cancelar a nota.");
+    } finally {
+      setNfceBusy(false);
+    }
+  }
+
   const nfceEnabled = Boolean((settings.data?.settings as Record<string, unknown> | null)?.nfce_enabled);
 
   useEffect(() => {
@@ -166,6 +197,15 @@ function VendasPage() {
                       env === "homologacao" &&
                       nfceStatus.data?.env === "producao";
                     const podeEmitir = st == null || st === "erro" || substituiTeste;
+                    const autorizada = st === "autorizado";
+                    const janela = cancelWindow(
+                      detail.data.sale.nfce_authorized_at
+                        ? String(detail.data.sale.nfce_authorized_at)
+                        : null,
+                    );
+                    const pendencia = detail.data.sale.nfce_pendencia
+                      ? String(detail.data.sale.nfce_pendencia)
+                      : null;
                     return (
                 <div className="no-print rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between gap-2">
@@ -210,6 +250,50 @@ function VendasPage() {
                       </Button>
                     ) : null}
                   </div>
+                  {/* A divergência fiscal fica escrita na venda, não só no
+                      sino: quem abre esta venda depois precisa ver que a
+                      nota continua valendo pra algo que não existe. */}
+                  {pendencia ? (
+                    <div className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                      <p className="font-medium">Pendência fiscal</p>
+                      <p className="mt-1 text-muted-foreground">{pendencia}</p>
+                    </div>
+                  ) : null}
+
+                  {autorizada ? (
+                    <div className="mt-2 rounded-lg border border-border p-3">
+                      <p className="text-sm font-medium">Cancelar a nota no SEFAZ</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {janela.provavelmenteExpirado
+                          ? `Emitida há ${janela.minutosDecorridos} min — o prazo de ${NFCE_CANCEL_WINDOW_MINUTES} min provavelmente passou, mas dá pra tentar: quem decide é o SEFAZ.`
+                          : `Restam cerca de ${janela.minutosRestantes} min do prazo de cancelamento.`}
+                      </p>
+                      <Textarea
+                        className="mt-2"
+                        placeholder="Justificativa para o SEFAZ (mínimo 15 caracteres)"
+                        value={justificativa}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setJustificativa(e.target.value)}
+                      />
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={
+                            nfceBusy ||
+                            !nfceStatus.data?.available ||
+                            justificativa.trim().length < CANCEL_REASON_MIN
+                          }
+                          onClick={() => void cancelarNota()}
+                        >
+                          {nfceBusy ? "Cancelando…" : "Cancelar nota fiscal"}
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          {justificativa.trim().length}/{CANCEL_REASON_MIN}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {!nfceStatus.data?.available ? (
                     <p className="mt-2 text-xs text-muted-foreground">
                       Emissão não configurada no servidor (FOCUS_NFE_TOKEN).
