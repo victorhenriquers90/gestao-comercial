@@ -107,4 +107,11 @@ Write-Host "Copia externa configurada: $SecondaryDir" -ForegroundColor Green
 Write-Host "Rode um backup agora pra confirmar de ponta a ponta:"
 Write-Host "  powershell -ExecutionPolicy Bypass -File `"$scriptBackup`" -SecondaryDir `"$SecondaryDir`""
 Write-Host ""
-Write-Host "Depois disso, a tela de Configuracoes passa a avisar se a copia parar de sair."
+# Esta frase ja saiu errada uma vez: prometer o aviso na tela como se fosse
+# consequencia AUTOMATICA disto e falso quando o app instalado e mais antigo
+# que o recurso. Quem le uma promessa dessas para de procurar o aviso.
+Write-Host "A copia passa a sair no proximo backup diario (22:30) ou quando voce rodar o comando acima."
+Write-Host ""
+Write-Host "O aviso na tela de Configuracoes (quando a copia parar de sair) depende de o"
+Write-Host "app instalado incluir esse recurso -- se a tela nao mostrar nada sobre a copia,"
+Write-Host "a instalacao esta desatualizada. O backup e a copia funcionam do mesmo jeito."
