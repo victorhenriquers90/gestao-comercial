@@ -141,23 +141,39 @@ function Invoke-AppBackup {
     $tamanhoMb = [math]::Round((Get-Item $destinoFinal).Length / 1MB, 2)
     Write-Host "  Backup verificado: $nomeFinal ($tamanhoMb MB, $tabelas tabelas)."
 
+    $erroSecundario = $null
     if ($SecondaryDir) {
-        # Copia fora da maquina (pendrive, HD externo, pasta de rede). O
+        # Copia fora da maquina (pendrive, HD externo, outro disco). O
         # backup local protege contra erro humano e migration ruim, mas NAO
         # contra o disco morrer -- pra isso a copia precisa sair daqui.
         try {
             New-Item -ItemType Directory -Path $SecondaryDir -Force | Out-Null
-            Copy-Item -Path $destinoFinal -Destination (Join-Path $SecondaryDir $nomeFinal) -Force
+            $alvo = Join-Path $SecondaryDir $nomeFinal
+            Copy-Item -Path $destinoFinal -Destination $alvo -Force
+            # Conferir o TAMANHO depois de copiar: Copy-Item nao reclama de
+            # copia truncada por disco cheio ou pendrive arrancado no meio,
+            # e um arquivo pela metade la fora e pior que arquivo nenhum --
+            # da a sensacao de ter copia.
+            $copiado = (Get-Item $alvo).Length
+            $original = (Get-Item $destinoFinal).Length
+            if ($copiado -ne $original) {
+                throw "copia saiu com $copiado bytes contra $original do original"
+            }
             Write-Host "  Copia secundaria gravada em $SecondaryDir."
         } catch {
             # Nao derruba o backup local por causa da copia: um pendrive
             # desconectado nao pode significar "hoje nao teve backup".
-            Write-Warning "Copia secundaria falhou ($($_.Exception.Message)) -- o backup local esta salvo."
+            # Mas TAMBEM nao pode sumir num Warning que ninguem le: a
+            # tarefa roda por SYSTEM, de madrugada, sem ninguem olhando. O
+            # erro vai pro estado e a loja ve na tela.
+            $erroSecundario = $_.Exception.Message
+            Write-Warning "Copia secundaria falhou ($erroSecundario) -- o backup local esta salvo."
         }
     }
 
     Remove-OldBackups -BackupDir $BackupDir -RetentionDays $RetentionDays -MinimoMantido $MinimoMantido
-    Save-BackupState -BackupDir $BackupDir -ArchivePath $destinoFinal
+    Save-BackupState -BackupDir $BackupDir -ArchivePath $destinoFinal `
+        -SecondaryDir $SecondaryDir -SecondaryError $erroSecundario
 
     return $destinoFinal
 }
@@ -205,13 +221,44 @@ function Save-BackupState {
     #>
     param(
         [Parameter(Mandatory)][string]$BackupDir,
-        [Parameter(Mandatory)][string]$ArchivePath
+        [Parameter(Mandatory)][string]$ArchivePath,
+        [string]$SecondaryDir,
+        [string]$SecondaryError
     )
+
+    $arquivoEstado = Join-Path $BackupDir "last-backup.json"
+
+    # O ultimo SUCESSO da copia externa sobrevive a uma falha de hoje: sem
+    # isso o app nao teria como dizer ha quantos dias a copia nao sai, que
+    # e exatamente a informacao que transforma um aviso em urgencia.
+    $ultimoOkSecundario = $null
+    if (Test-Path $arquivoEstado) {
+        try {
+            $anterior = Get-Content $arquivoEstado -Raw | ConvertFrom-Json
+            if ($anterior.PSObject.Properties.Name -contains "secondary" -and $anterior.secondary) {
+                $ultimoOkSecundario = $anterior.secondary.lastOkAt
+            }
+        } catch {
+            # Estado anterior ilegivel nao pode derrubar o backup de hoje.
+            $ultimoOkSecundario = $null
+        }
+    }
+    if ($SecondaryDir -and -not $SecondaryError) {
+        $ultimoOkSecundario = (Get-Date).ToString("o")
+    }
 
     $estado = [ordered]@{
         lastBackupAt = (Get-Date).ToString("o")
         file         = Split-Path $ArchivePath -Leaf
         sizeBytes    = (Get-Item $ArchivePath).Length
+    }
+    if ($SecondaryDir) {
+        $estado.secondary = [ordered]@{
+            dir      = $SecondaryDir
+            ok       = (-not $SecondaryError)
+            lastOkAt = $ultimoOkSecundario
+            error    = $SecondaryError
+        }
     }
     # WriteAllText com UTF8Encoding($false), nao Set-Content -Encoding UTF8:
     # no Windows PowerShell 5.1 (que e o que a tarefa agendada roda) esse
@@ -219,9 +266,11 @@ function Save-BackupState {
     # inicio. O app leria este arquivo, falharia no parse e concluiria "nunca
     # houve backup" numa loja com backup em dia -- um alarme falso que
     # ensinaria todo mundo a ignorar o alarme de verdade.
-    $json = $estado | ConvertTo-Json
+    # -Depth 3: o padrao do ConvertTo-Json e 2, e o objeto aninhado
+    # "secondary" sairia como a string literal "System.Collections...".
+    $json = $estado | ConvertTo-Json -Depth 3
     [IO.File]::WriteAllText(
-        (Join-Path $BackupDir "last-backup.json"),
+        $arquivoEstado,
         $json,
         (New-Object System.Text.UTF8Encoding($false))
     )

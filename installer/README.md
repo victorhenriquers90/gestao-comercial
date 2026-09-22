@@ -19,6 +19,8 @@ do contexto de "por que" antes de mudar algo aqui.
   e nem mesmo `-RemoveData` apaga os backups (precisa de `-RemoveBackups`).
 - `Backup-GestaoComercial.ps1` -- backup do banco. E o que a tarefa agendada
   diaria chama; tambem roda na mao antes de algo arriscado.
+- `Set-BackupSecondaryDir.ps1` -- muda a pasta da copia de backup fora do
+  disco do banco, sem reinstalar nada.
 - `Restore-GestaoComercial.ps1` -- restauracao a partir de um backup.
 - `vendor\` (voce cria, nao versionado) -- instaladores de terceiros
   opcionais, ver abaixo.
@@ -107,16 +109,47 @@ existe como valvula de escape consciente.
 ### Copia fora da maquina (importante)
 
 Por padrao o backup fica **no mesmo disco do banco**. Isso protege contra
-erro de operacao e migration ruim, mas **nao** contra o disco falhar. Pra ter
-copia externa, instale/atualize passando a pasta de destino:
+erro de operacao e migration ruim, mas **nao** contra o disco falhar.
+
+Pra configurar (ou trocar) o destino, num PowerShell **como
+administrador**:
 
 ```powershell
-.\Install-GestaoComercial.ps1 -AppSourceDir <pasta> -BackupSecondaryDir "E:\backups"
+.\Set-BackupSecondaryDir.ps1 -SecondaryDir "D:\backups-gestao"
 ```
 
-Serve pendrive, HD externo ou pasta de rede. Se a copia externa falhar (o
-pendrive foi removido, por exemplo), o backup local ainda e salvo -- um
-pendrive fora do lugar nao pode significar "hoje nao teve backup".
+Serve outro disco, pendrive, HD externo ou pasta de rede. O script confere
+que da pra escrever la **na hora**, avisa se o destino estiver no mesmo
+disco do banco (o que nao protege contra o disco morrer), e so reescreve a
+tarefa agendada -- nao mexe no app, nao para o servico, nao roda migration.
+Antes disso, trocar de pendrive exigia reinstalar o sistema inteiro: risco
+demais pra mudar um caminho, e risco demais e o que faz a mudanca nunca ser
+feita.
+
+Pra voltar a ter so a copia local: `.\Set-BackupSecondaryDir.ps1 -Remover`.
+
+Na instalacao inicial da pra ja passar o destino:
+
+```powershell
+.\Install-GestaoComercial.ps1 -AppSourceDir <pasta> -BackupSecondaryDir "D:\backups-gestao"
+```
+
+**Se a copia externa falhar, o backup local ainda e salvo** -- um pendrive
+fora do lugar nao pode significar "hoje nao teve backup". Mas a falha
+**nao some**: o resultado da copia vai pro `last-backup.json` e a tela de
+Configuracoes passa a mostrar ha quanto tempo a copia nao sai, com o erro do
+sistema operacional junto.
+
+Isso importa mais do que parece. A tarefa roda por SYSTEM, de madrugada, sem
+ninguem olhando: antes, a falha da copia virava um `Write-Warning` que
+ninguem leria nunca, e o backup diario continuava dizendo OK. A loja passaria
+meses acreditando ter copia fora da maquina sem ter. O backup local em dia e
+exatamente o que faz ninguem reparar que a copia parou.
+
+A copia tambem e **conferida por tamanho** depois de gravada: `Copy-Item`
+nao reclama de copia truncada por disco cheio ou pendrive arrancado no meio,
+e um arquivo pela metade la fora e pior que arquivo nenhum -- da a sensacao
+de ter copia.
 
 ### Ensaio de restauracao (faca todo mes)
 

@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { readFile, stat } from "node:fs/promises";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan } from "@/lib/permissions";
-import { classifyBackupAge, parseBackupState, type BackupSeverity } from "@/lib/backup-status";
+import {
+  classifyBackupAge,
+  classifySecondary,
+  parseBackupState,
+  type BackupSeverity,
+  type SecondaryStatus,
+} from "@/lib/backup-status";
 import { requireTenant } from "./context";
 
 /**
@@ -34,6 +40,13 @@ export type BackupStatusPayload = {
   file: string | null;
   sizeBytes: number | null;
   backupDir: string;
+  /**
+   * Saude da copia fora do disco do banco -- separada da do backup local
+   * de proposito: o backup roda todo dia e diz OK enquanto o destino
+   * externo esta inacessivel ha semanas. Uma severidade so mostraria
+   * verde, e a loja acharia que tem copia fora da maquina.
+   */
+  secondary: SecondaryStatus;
 };
 
 async function existe(caminho: string): Promise<boolean> {
@@ -61,6 +74,7 @@ export const getBackupStatusFn = createServerFn({ method: "GET" })
       file: null,
       sizeBytes: null,
       backupDir: `${STATE_DIR}\\backups`,
+      secondary: classifySecondary(null),
     };
 
     if (!(await existe(INSTALL_STATE_FILE))) return vazio;
@@ -90,5 +104,6 @@ export const getBackupStatusFn = createServerFn({ method: "GET" })
       lastBackupAt: dados.lastBackupAt,
       file: dados.file,
       sizeBytes: dados.sizeBytes,
+      secondary: classifySecondary(dados.secondary),
     };
   });

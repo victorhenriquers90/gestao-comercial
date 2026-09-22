@@ -6,6 +6,7 @@ import {
   parseBackupState,
   HORAS_ATE_ATRASADO,
   HORAS_ATE_CRITICO,
+  classifySecondary,
 } from "./backup-status.ts";
 
 const agora = new Date("2026-09-19T14:00:00-03:00");
@@ -101,5 +102,85 @@ describe("formatBackupAge", () => {
     assert.equal(formatBackupAge(5.9), "há 5 horas");
     assert.equal(formatBackupAge(24), "há 1 dia");
     assert.equal(formatBackupAge(50), "há 2 dias");
+  });
+});
+
+describe("classifySecondary", () => {
+  const agora = new Date("2026-09-22T12:00:00-03:00");
+  const base = { dir: "D:\backups-gestao", ok: true, lastOkAt: null, error: null };
+
+  it("não configurada não é problema — é ausência", () => {
+    const s = classifySecondary(null, agora);
+    assert.equal(s.configurada, false);
+    assert.equal(s.severity, "desconhecido");
+  });
+
+  it("copiada hoje: em dia", () => {
+    const s = classifySecondary({ ...base, lastOkAt: "2026-09-22T11:00:00-03:00" }, agora);
+    assert.equal(s.severity, "ok");
+    assert.equal(s.dir, "D:\backups-gestao");
+  });
+
+  it("configurada e nunca funcionou é CRÍTICO, não 'desconhecido'", () => {
+    // Pior que não ter: alguém acredita que existe cópia fora da máquina.
+    const s = classifySecondary({ ...base, ok: false, error: "drive Z inexistente" }, agora);
+    assert.equal(s.severity, "critico");
+    assert.equal(s.error, "drive Z inexistente");
+  });
+
+  it("falhou hoje avisa hoje, sem esperar as 48h da idade", () => {
+    // O backup local está em dia e a cópia quebrou ontem à noite: esperar a
+    // idade passar de 48h seria um dia a menos pra consertar.
+    const s = classifySecondary(
+      { ...base, ok: false, lastOkAt: "2026-09-21T22:30:00-03:00", error: "pendrive removido" },
+      agora,
+    );
+    assert.equal(s.severity, "atrasado");
+  });
+
+  it("parada há mais de uma semana é crítico", () => {
+    const s = classifySecondary({ ...base, lastOkAt: "2026-09-10T22:30:00-03:00" }, agora);
+    assert.equal(s.severity, "critico");
+  });
+
+  it("o backup local em dia não salva a cópia externa parada", () => {
+    // O ponto de existirem duas severidades: uma verde não pode esconder a
+    // outra vermelha.
+    const local = classifyBackupAge("2026-09-22T11:00:00-03:00", agora);
+    const externa = classifySecondary({ ...base, lastOkAt: "2026-09-05T22:30:00-03:00" }, agora);
+    assert.equal(local.severity, "ok");
+    assert.equal(externa.severity, "critico");
+  });
+});
+
+describe("parseBackupState com cópia externa", () => {
+  it("lê o bloco secondary gravado pelo PowerShell", () => {
+    const bruto = JSON.stringify({
+      lastBackupAt: "2026-09-22T12:13:45-03:00",
+      file: "gestao_comercial_20260922_121344.dump",
+      sizeBytes: 227801,
+      secondary: {
+        dir: "D:\backups-gestao",
+        ok: true,
+        lastOkAt: "2026-09-22T12:13:45-03:00",
+        error: "",
+      },
+    });
+    const s = parseBackupState(bruto)!;
+    assert.equal(s.secondary?.dir, "D:\backups-gestao");
+    assert.equal(s.secondary?.ok, true);
+    // "" vem do PowerShell quando o parâmetro [string] não foi preenchido:
+    // é ausência de erro, não um erro sem texto.
+    assert.equal(s.secondary?.error, null);
+  });
+
+  it("instalação sem cópia externa: secondary null, não erro", () => {
+    const bruto = JSON.stringify({ lastBackupAt: "2026-09-22T12:00:00-03:00" });
+    assert.equal(parseBackupState(bruto)?.secondary, null);
+  });
+
+  it("bloco secondary sem dir é ignorado", () => {
+    const bruto = JSON.stringify({ lastBackupAt: "x", secondary: { ok: true } });
+    assert.equal(parseBackupState(bruto)?.secondary, null);
   });
 });

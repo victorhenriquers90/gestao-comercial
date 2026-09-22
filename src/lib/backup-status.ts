@@ -51,10 +51,26 @@ export function classifyBackupAge(
   return { severity: "ok", ageHours: idade };
 }
 
+/**
+ * A copia fora do disco do banco, como a rotina de backup a registrou.
+ *
+ * `lastOkAt` guarda o ultimo SUCESSO, nao a ultima tentativa: sem essa
+ * distincao nao daria pra dizer ha quantos dias a copia nao sai -- e e
+ * justamente isso que transforma um aviso em urgencia.
+ */
+export type SecondaryState = {
+  dir: string;
+  ok: boolean;
+  lastOkAt: string | null;
+  error: string | null;
+};
+
 export type BackupStateFile = {
   lastBackupAt: string | null;
   file: string | null;
   sizeBytes: number | null;
+  /** null = copia externa nao configurada nesta instalacao. */
+  secondary: SecondaryState | null;
 };
 
 /**
@@ -75,10 +91,76 @@ export function parseBackupState(bruto: string): BackupStateFile | null {
       lastBackupAt: typeof dados.lastBackupAt === "string" ? dados.lastBackupAt : null,
       file: typeof dados.file === "string" ? dados.file : null,
       sizeBytes: typeof dados.sizeBytes === "number" ? dados.sizeBytes : null,
+      secondary: parseSecondary(dados.secondary),
     };
   } catch {
     return null;
   }
+}
+
+function parseSecondary(bruto: unknown): SecondaryState | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const d = bruto as Record<string, unknown>;
+  const dir = typeof d.dir === "string" ? d.dir : "";
+  if (!dir) return null;
+  // PowerShell grava string vazia onde o TypeScript esperaria null: um
+  // parametro [string] nao inicializado vira "" no ConvertTo-Json, e "" 
+  // aqui significa ausencia de erro, nao um erro sem texto.
+  const erro = typeof d.error === "string" && d.error.trim() ? d.error : null;
+  return {
+    dir,
+    ok: d.ok === true,
+    lastOkAt: typeof d.lastOkAt === "string" && d.lastOkAt ? d.lastOkAt : null,
+    error: erro,
+  };
+}
+
+export type SecondaryStatus = {
+  configurada: boolean;
+  dir: string | null;
+  severity: BackupSeverity;
+  ageHours: number | null;
+  error: string | null;
+};
+
+/**
+ * Saude da copia externa, SEPARADA da do backup local.
+ *
+ * As duas podem divergir, e e esse o ponto: o backup local roda todo dia
+ * e diz OK enquanto o pendrive esta fora da tomada ha duas semanas. Uma
+ * severidade so mostraria verde e a loja acharia que tem copia fora da
+ * maquina.
+ */
+export function classifySecondary(
+  secondary: SecondaryState | null,
+  now: Date = new Date(),
+): SecondaryStatus {
+  if (!secondary) {
+    return { configurada: false, dir: null, severity: "desconhecido", ageHours: null, error: null };
+  }
+  // Configurada e nunca funcionou e pior que nao configurada: alguem
+  // acredita que existe copia.
+  if (!secondary.lastOkAt) {
+    return {
+      configurada: true,
+      dir: secondary.dir,
+      severity: "critico",
+      ageHours: null,
+      error: secondary.error,
+    };
+  }
+  const porIdade = classifyBackupAge(secondary.lastOkAt, now);
+  // Falha na ULTIMA tentativa vira aviso na hora, sem esperar a idade
+  // passar de 48h: a copia esta quebrada agora, e um dia de silencio e um
+  // dia a menos pra consertar antes de precisar dela.
+  const severity = secondary.error && porIdade.severity === "ok" ? "atrasado" : porIdade.severity;
+  return {
+    configurada: true,
+    dir: secondary.dir,
+    severity,
+    ageHours: porIdade.ageHours,
+    error: secondary.error,
+  };
 }
 
 /** "há 3 horas", "há 2 dias" -- para o aviso na tela. */
