@@ -18,19 +18,24 @@ import {
   isTaxRegime,
   validateNfceReadiness,
   type BuildNfceInput,
+  type NfceEnv,
 } from "@/lib/nfce";
+import {
+  canEmitForReal,
+  homologationWarning,
+  nfceBlockers,
+  type ReadinessInput,
+} from "@/lib/nfce-readiness";
 import type { PaymentMethod } from "@/lib/constants";
 import { audit, requireTenant } from "./context";
 import { type Row } from "@/lib/json";
 
-type FocusEnv = "homologacao" | "producao";
-
-const FOCUS_BASE_URL: Record<FocusEnv, string> = {
+const FOCUS_BASE_URL: Record<NfceEnv, string> = {
   homologacao: "https://homologacao.focusnfe.com.br",
   producao: "https://api.focusnfe.com.br",
 };
 
-function focusEnv(): FocusEnv {
+function focusEnv(): NfceEnv {
   return process.env.FOCUS_NFE_ENV === "producao" ? "producao" : "homologacao";
 }
 
@@ -62,10 +67,77 @@ export const nfceStatusFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => ({ available: Boolean(focusToken()), env: focusEnv() }));
 
+/**
+ * Pré-checagem fiscal: a loja consegue emitir hoje?
+ *
+ * A validação que existia roda POR VENDA, no clique de emitir. O lojista
+ * descobria que falta NCM com o cliente no balcão, um produto por vez --
+ * e só via o bloqueio seguinte depois de resolver esse. Aqui a lista sai
+ * inteira, antes da primeira venda.
+ *
+ * Gate em `users.read` e não em `settings.write`: é a mesma permissão que
+ * abre a tela de Configurações pro gerente (ver nav.ts). Ele é quem corre
+ * atrás do contador pelos NCMs; salvar continua exigindo settings.write.
+ */
+export const nfceReadinessFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "users.read");
+
+    const [company] = await sql<Row>`
+      select c.document, c.ie, c.tax_regime, s.nfce_enabled
+        from companies c
+        left join company_settings s on s.company_id = c.id
+       where c.id = ${tenant.companyId}
+    `;
+    const [produtos] = await sql<{ total: number; sem_ncm: number }>`
+      select count(*)::int as total,
+             count(*) filter (where ncm is null or btrim(ncm) = '')::int as sem_ncm
+        from products
+       where company_id = ${tenant.companyId} and deleted_at is null
+    `;
+    // Só os primeiros: a lista existe pra dar o caminho, não pra virar
+    // um segundo cadastro de produtos dentro de Configurações.
+    const exemplos = await sql<{ id: number; name: string }>`
+      select id, name from products
+       where company_id = ${tenant.companyId} and deleted_at is null
+         and (ncm is null or btrim(ncm) = '')
+       order by name limit 8
+    `;
+    const [vendas] = await sql<{ finalizadas: number; com_nota: number }>`
+      select count(*)::int as finalizadas,
+             count(*) filter (where nfce_env = 'producao' and nfce_status = 'autorizado')::int as com_nota
+        from sales
+       where company_id = ${tenant.companyId} and deleted_at is null and status = 'finalizada'
+    `;
+
+    const input: ReadinessInput = {
+      tokenPresent: Boolean(focusToken()),
+      env: focusEnv(),
+      enabled: company?.nfce_enabled === true,
+      hasCnpj: Boolean(nullableStr(company?.document)),
+      hasIe: Boolean(nullableStr(company?.ie)),
+      produtosTotal: num(produtos?.total),
+      produtosSemNcm: num(produtos?.sem_ncm),
+    };
+
+    return {
+      ...input,
+      blockers: nfceBlockers(input),
+      aviso: homologationWarning(input),
+      prontoParaValer: canEmitForReal(input),
+      exemplosSemNcm: exemplos.map((p) => ({ id: num(p.id), name: str(p.name) })),
+      vendasFinalizadas: num(vendas?.finalizadas),
+      vendasComNota: num(vendas?.com_nota),
+    };
+  });
+
 async function loadEmitInput(
   sql: Awaited<ReturnType<typeof requireTenant>>["sql"],
   companyId: number,
   saleId: number,
+  env: NfceEnv,
 ): Promise<{ input: BuildNfceInput } | { error: string }> {
   const [sale] = await sql<Row>`
     select s.*, cu.document as customer_document, cu.name as customer_name
@@ -95,7 +167,8 @@ async function loadEmitInput(
   const document = nullableStr(sale.customer_document) ?? nullableStr(sale.document);
 
   const input: BuildNfceInput = {
-    ref: buildNfceRef(companyId, saleId),
+    ref: buildNfceRef(companyId, saleId, env),
+    env,
     saleNumber: num(sale.number),
     soldAt: new Date(String(sale.sold_at)).toISOString(),
     emitter: {
@@ -127,7 +200,34 @@ export const emitNfceFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sales.write");
 
-    const loaded = await loadEmitInput(sql, tenant.companyId, data.saleId);
+    const env = focusEnv();
+
+    /*
+      Uma nota de TESTE não pode barrar a nota que vale.
+
+      Homologação existe pra testar, então esses testes vão acontecer --
+      e gravam status 'autorizado', chave, número e DANFE, iguais aos de
+      uma nota real. Sem esta checagem, toda venda usada pra testar
+      ficaria para sempre sem documento fiscal, parecendo que tem.
+
+      Reemitir no MESMO ambiente continua barrado: ali a nota ou já
+      existe, ou está em processamento, e insistir geraria duplicidade
+      de verdade.
+    */
+    const [atual] = await sql<{ nfce_status: string | null; nfce_env: string | null }>`
+      select nfce_status, nfce_env from sales
+       where id = ${data.saleId} and company_id = ${tenant.companyId}
+    `;
+    const emitida = atual?.nfce_status != null && atual.nfce_status !== "erro";
+    if (emitida && atual!.nfce_env === env) {
+      throw new Error(
+        env === "homologacao"
+          ? "Esta venda já tem nota de teste. Para emitir a real, o servidor precisa estar em produção."
+          : "Esta venda já tem nota fiscal emitida.",
+      );
+    }
+
+    const loaded = await loadEmitInput(sql, tenant.companyId, data.saleId, env);
     if ("error" in loaded) throw new Error(loaded.error);
     const { input } = loaded;
 
@@ -139,12 +239,25 @@ export const emitNfceFn = createServerFn({ method: "POST" })
 
     if (res.status === 200 || res.status === 202) {
       const status = nullableStr(res.body.status) ?? "processando_autorizacao";
+      /*
+        Chave, número, série e links são zerados junto: são da nota
+        anterior. Uma emissão de produção por cima de um teste herdaria a
+        chave do teste até alguém apertar 'Atualizar status' -- e nesse
+        meio-tempo a tela mostraria uma chave falsa com cara de fiscal.
+      */
       await sql`
-        update sales set nfce_ref = ${input.ref}, nfce_status = ${status}, nfce_error = null
+        update sales set nfce_ref = ${input.ref}, nfce_status = ${status}, nfce_env = ${env},
+          nfce_error = null, nfce_chave = null, nfce_numero = null, nfce_serie = null,
+          nfce_danfe_url = null, nfce_xml_url = null
         where id = ${data.saleId} and company_id = ${tenant.companyId}
       `;
-      await audit(sql, tenant, "emit", "nfce", data.saleId, null, { ref: input.ref, status });
-      return { ok: true as const, status };
+      await audit(sql, tenant, "emit", "nfce", data.saleId, null, {
+        ref: input.ref,
+        status,
+        env,
+        substituiuTeste: emitida,
+      });
+      return { ok: true as const, status, env };
     }
 
     const message =

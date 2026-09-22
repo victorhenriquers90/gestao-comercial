@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildNfcePayload,
   buildNfceRef,
+  HOMOLOGATION_BUYER_NAME,
   crtForRegime,
   icmsCodeForRegime,
   paymentCode,
@@ -14,6 +15,7 @@ import {
 function baseInput(overrides: Partial<BuildNfceInput> = {}): BuildNfceInput {
   return {
     ref: "gc-1-venda-50",
+    env: "producao",
     saleNumber: 50,
     soldAt: "2026-09-08T14:30:00-03:00",
     emitter: {
@@ -74,9 +76,17 @@ describe("paymentCode", () => {
 
 describe("buildNfceRef", () => {
   it("é determinística e única por empresa+venda", () => {
-    assert.equal(buildNfceRef(1, 50), "gc-1-venda-50");
-    assert.notEqual(buildNfceRef(1, 50), buildNfceRef(2, 50));
-    assert.notEqual(buildNfceRef(1, 50), buildNfceRef(1, 51));
+    assert.equal(buildNfceRef(1, 50, "producao"), "gc-1-venda-50");
+    assert.notEqual(buildNfceRef(1, 50, "producao"), buildNfceRef(2, 50, "producao"));
+    assert.notEqual(buildNfceRef(1, 50, "producao"), buildNfceRef(1, 51, "producao"));
+  });
+
+  it("teste e nota real nunca dividem a mesma referência", () => {
+    // Se a Focus NFe compartilhar namespace entre os ambientes, a emissão
+    // real de uma venda já testada voltaria como duplicada -- e a loja
+    // ficaria sem a única nota que vale.
+    assert.notEqual(buildNfceRef(1, 50, "homologacao"), buildNfceRef(1, 50, "producao"));
+    assert.equal(buildNfceRef(1, 50, "homologacao"), "gc-1-venda-50-hom");
   });
 });
 
@@ -178,5 +188,29 @@ describe("buildNfcePayload", () => {
     ) as Record<string, any>;
     assert.equal(cnpj.cnpj_destinatario, "11222333000181");
     assert.equal("cpf_destinatario" in cnpj, false);
+  });
+
+  it("em homologação, o nome do destinatário é o texto exigido pelo SEFAZ", () => {
+    // Regra do manual da NF-e: com destinatário em homologação, o xNome
+    // tem que ser esse texto exato, senão a emissão é recusada. E o nome
+    // real do cliente não viaja pra um ambiente de teste.
+    const p = buildNfcePayload(
+      baseInput({ env: "homologacao", buyer: { document: "52998224725", name: "Ana" } }),
+    ) as Record<string, any>;
+    assert.equal(p.nome_destinatario, HOMOLOGATION_BUYER_NAME);
+    assert.equal(p.cpf_destinatario, "52998224725");
+  });
+
+  it("sem documento não há destinatário nenhum, nem em homologação", () => {
+    const p = buildNfcePayload(baseInput({ env: "homologacao" })) as Record<string, any>;
+    assert.equal("nome_destinatario" in p, false);
+    assert.equal("cpf_destinatario" in p, false);
+  });
+
+  it("em produção o nome do cliente é preservado", () => {
+    const p = buildNfcePayload(
+      baseInput({ buyer: { document: "52998224725", name: "Ana" } }),
+    ) as Record<string, any>;
+    assert.equal(p.nome_destinatario, "Ana");
   });
 });

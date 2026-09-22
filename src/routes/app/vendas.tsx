@@ -148,23 +148,53 @@ function VendasPage() {
                 data={saleToReceipt(detail.data)}
                 company={receiptCompany(settings.data)}
               />
-              {nfceEnabled && String(detail.data.sale.status) === "finalizada" ? (
+              {nfceEnabled && String(detail.data.sale.status) === "finalizada"
+                ? (() => {
+                    const st = detail.data.sale.nfce_status
+                      ? String(detail.data.sale.nfce_status)
+                      : null;
+                    const env = detail.data.sale.nfce_env
+                      ? String(detail.data.sale.nfce_env)
+                      : null;
+                    /* Uma nota de TESTE nao barra a nota que vale: sem isto,
+                       toda venda usada pra testar ficaria para sempre sem
+                       documento fiscal, com cara de que tem. O servidor
+                       repete a checagem -- aqui e so o botao. */
+                    const substituiTeste =
+                      st != null &&
+                      st !== "erro" &&
+                      env === "homologacao" &&
+                      nfceStatus.data?.env === "producao";
+                    const podeEmitir = st == null || st === "erro" || substituiTeste;
+                    return (
                 <div className="no-print rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium">Nota fiscal (NFC-e)</p>
-                    {detail.data.sale.nfce_status ? (
-                      <Badge variant={statusBadgeVariant(String(detail.data.sale.nfce_status))}>
-                        {NFCE_STATUS_LABELS[String(detail.data.sale.nfce_status)] ?? String(detail.data.sale.nfce_status)}
-                      </Badge>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {/* Nota de teste nao pode parecer nota. Ela grava status
+                          'autorizado', chave, numero e DANFE iguais aos de uma real
+                          -- so este selo diz que nada daquilo vale. */}
+                      {detail.data.sale.nfce_env === "homologacao" ? (
+                        <Badge variant="danger">Teste — sem valor fiscal</Badge>
+                      ) : null}
+                      {detail.data.sale.nfce_status ? (
+                        <Badge variant={statusBadgeVariant(String(detail.data.sale.nfce_status))}>
+                          {NFCE_STATUS_LABELS[String(detail.data.sale.nfce_status)] ?? String(detail.data.sale.nfce_status)}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
                   {detail.data.sale.nfce_error ? (
                     <p className="mt-1 text-xs text-destructive">{String(detail.data.sale.nfce_error)}</p>
                   ) : null}
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {!detail.data.sale.nfce_status || detail.data.sale.nfce_status === "erro" ? (
+                    {podeEmitir ? (
                       <Button size="sm" disabled={nfceBusy || !nfceStatus.data?.available} onClick={() => void emitNfce()}>
-                        {nfceBusy ? "Emitindo…" : "Emitir NFC-e"}
+                        {nfceBusy
+                          ? "Emitindo…"
+                          : substituiTeste
+                            ? "Emitir nota real"
+                            : "Emitir NFC-e"}
                       </Button>
                     ) : null}
                     {detail.data.sale.nfce_status === "processando_autorizacao" ? (
@@ -185,8 +215,16 @@ function VendasPage() {
                       Emissão não configurada no servidor (FOCUS_NFE_TOKEN).
                     </p>
                   ) : null}
+                  {substituiTeste ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Esta venda tem nota de teste. Emitir agora gera a nota real e substitui
+                      os dados do teste.
+                    </p>
+                  ) : null}
                 </div>
-              ) : null}
+                    );
+                  })()
+                : null}
               {detail.data.commission ? (
                 <div className="rounded-lg border border-border bg-muted/40 p-3">
                   <p className="font-medium">

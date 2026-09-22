@@ -68,9 +68,34 @@ export function paymentCode(method: PaymentMethod): string {
   }
 }
 
-/** Referência única enviada à Focus NFe (idempotência do lado deles). */
-export function buildNfceRef(companyId: number, saleId: number): string {
-  return `gc-${companyId}-venda-${saleId}`;
+export type NfceEnv = "homologacao" | "producao";
+
+/**
+ * Nome que o SEFAZ exige no destinatário em ambiente de homologação.
+ *
+ * Não é enfeite: a regra do manual da NF-e manda esse texto exato no
+ * xNome quando há destinatário em homologação, e emissão fora disso é
+ * recusada. Se a Focus NFe já sobrescrever por conta própria, mandar o
+ * valor certo é redundante e inofensivo; se não sobrescrever, evita uma
+ * tarde inteira perdida lendo rejeição do SEFAZ.
+ *
+ * De quebra, o nome real do cliente não viaja para um ambiente de teste.
+ */
+export const HOMOLOGATION_BUYER_NAME =
+  "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
+
+/**
+ * Referência única enviada à Focus NFe (idempotência do lado deles).
+ *
+ * O ambiente entra na referência. Homologação e produção provavelmente
+ * têm namespaces separados lá -- URLs e tokens diferentes --, mas
+ * "provavelmente" é onde esse tipo de bug mora: se compartilharem, a
+ * emissão REAL de uma venda já testada seria recusada como duplicada e a
+ * loja ficaria justamente sem a nota que vale. Separar custa um sufixo.
+ */
+export function buildNfceRef(companyId: number, saleId: number, env: NfceEnv): string {
+  const base = `gc-${companyId}-venda-${saleId}`;
+  return env === "homologacao" ? `${base}-hom` : base;
 }
 
 export type NfceItemInput = {
@@ -102,6 +127,7 @@ export type NfceBuyerInput = { document: string | null; name: string | null };
 
 export type BuildNfceInput = {
   ref: string;
+  env: NfceEnv;
   saleNumber: number;
   soldAt: string;
   emitter: NfceEmitterInput;
@@ -143,9 +169,14 @@ export function buildNfcePayload(input: BuildNfceInput): Record<string, unknown>
     modalidade_frete: 9, // sem frete (venda de balcão)
     cnpj_emitente: input.emitter.cnpj,
     ...(input.buyer.document
-      ? input.buyer.document.length > 11
-        ? { cnpj_destinatario: input.buyer.document, nome_destinatario: input.buyer.name ?? undefined }
-        : { cpf_destinatario: input.buyer.document, nome_destinatario: input.buyer.name ?? undefined }
+      ? {
+          ...(input.buyer.document.length > 11
+            ? { cnpj_destinatario: input.buyer.document }
+            : { cpf_destinatario: input.buyer.document }),
+          nome_destinatario: input.env === "homologacao"
+            ? HOMOLOGATION_BUYER_NAME
+            : (input.buyer.name ?? undefined),
+        }
       : {}),
     items: input.items.map((item, i) => ({
       numero_item: i + 1,

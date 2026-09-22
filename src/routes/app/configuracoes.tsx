@@ -22,6 +22,7 @@ import {
   saveStoreFn,
   updateMemberFn,
 } from "@/lib/server/session";
+import { NfceReadinessPanel } from "@/components/nfce-readiness-panel";
 import { nfceStatusFn } from "@/lib/server/nfce";
 import { formatDateTime } from "@/lib/format";
 import { parseCnpj, maskCnpj } from "@/lib/document";
@@ -444,6 +445,7 @@ function ConfigPage() {
               Salvar
             </Button>
           </Card>
+          <NfceReadinessPanel />
         </TabsContent>
         <TabsContent value="cartoes">
           <CardRatesPanel />
