@@ -1319,12 +1319,45 @@ export const resumeHeldFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
+    // Um comando so (delete ... returning): com select e depois delete, dois
+    // cliques em Recuperar (duas abas) liam a mesma venda antes de qualquer
+    // um apagar, e o mesmo carrinho abria duas vezes.
     const [row] = await sql<Row>`
-      select * from held_sales
+      delete from held_sales
        where id = ${data.id} and company_id = ${tenant.companyId} and store_id = ${data.storeId}
+      returning *
     `;
-    if (!row) throw new Error("Venda em espera não encontrada.");
-    await sql`delete from held_sales where id = ${data.id} and company_id = ${tenant.companyId}`;
+    if (!row) throw new Error("Venda guardada não encontrada. Talvez já tenha sido recuperada.");
+
+    /*
+      Preco de AGORA das pecas guardadas. O carrinho guardado leva o preco da
+      hora em que foi guardado; se mudou no meio (promocao acabou, preco
+      corrigido), o checkout le a diferenca como alteracao manual de preco:
+      o caixa travava em "Sem permissao" e o admin vendia calado pelo preco
+      velho.
+    */
+    let ids: number[] = [];
+    try {
+      const payload = JSON.parse(String(row.payload ?? "{}")) as { cart?: { variantId?: unknown }[] };
+      ids = (Array.isArray(payload.cart) ? payload.cart : [])
+        .map((l) => Number(l?.variantId))
+        .filter((n) => Number.isInteger(n) && n > 0);
+    } catch {
+      ids = [];
+    }
+    const atuais = ids.length
+      ? await sql.query<{ variant_id: number; price: string | number; promo_price: string | number | null; stock: string | number }>(
+          `select v.id as variant_id, coalesce(v.price, p.price) as price, p.promo_price,
+                  coalesce(i.quantity, 0) as stock
+             from product_variants v
+             join products p on p.id = v.product_id
+             left join inventories i on i.variant_id = v.id and i.store_id = $2
+            where v.company_id = $1 and v.deleted_at is null and p.deleted_at is null
+              and v.id in (${ids.map((_, i) => `$${i + 3}`).join(",")})`,
+          [tenant.companyId, data.storeId, ...ids],
+        )
+      : [];
+
     return {
       id: num(row.id),
       customerId: row.customer_id == null ? null : num(row.customer_id),
@@ -1332,6 +1365,13 @@ export const resumeHeldFn = createServerFn({ method: "POST" })
       notes: row.notes == null ? "" : String(row.notes),
       discount: num(row.discount),
       payloadJson: String(row.payload ?? "{}"),
+      // Mesma regra do searchPosFn: preco = promocional do produto se houver.
+      current: atuais.map((a) => ({
+        variantId: num(a.variant_id),
+        price: num(a.promo_price) > 0 ? num(a.promo_price) : num(a.price),
+        listPrice: num(a.price),
+        stock: num(a.stock),
+      })),
     };
   });
 

@@ -333,7 +333,20 @@ function PdvPage() {
         notes?: string;
         cpfNota?: string;
       };
-      const next = Array.isArray(payload.cart) ? payload.cart : [];
+      const guardado = Array.isArray(payload.cart) ? payload.cart : [];
+      // Preco e estoque de agora, nao os da hora em que foi guardada.
+      const atual = new Map(row.current.map((c) => [c.variantId, c]));
+      let mudaram = 0;
+      let sairam = 0;
+      const next = guardado.flatMap((l) => {
+        const c = atual.get(l.variantId);
+        if (!c) {
+          sairam++;
+          return [];
+        }
+        if (Math.abs(c.price - l.price) > 0.004 || Math.abs(c.listPrice - l.listPrice) > 0.004) mudaram++;
+        return [{ ...l, price: c.price, listPrice: c.listPrice, stock: c.stock }];
+      });
       const nome = held.data?.find((h) => h.id === id)?.customerName ?? null;
       setCart(next);
       setSelectedId(next[next.length - 1]?.variantId ?? null);
@@ -344,7 +357,12 @@ function PdvPage() {
       setCpfNota(payload.cpfNota || "");
       setDocDispensado(Boolean(row.customerId || payload.cpfNota));
       setHeldOpen(false);
-      toast.success("Venda recuperada.");
+      const avisos = [
+        mudaram ? `${mudaram} ${mudaram === 1 ? "item mudou" : "itens mudaram"} de preço desde que a venda foi guardada` : null,
+        sairam ? `${sairam} ${sairam === 1 ? "item saiu" : "itens saíram"} do catálogo e ${sairam === 1 ? "foi removido" : "foram removidos"}` : null,
+      ].filter(Boolean);
+      if (avisos.length) toast.warning(`Venda recuperada. ${avisos.join("; ")}. Confira o total.`);
+      else toast.success("Venda recuperada.");
       void qc.invalidateQueries({ queryKey: ["held"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível recuperar a venda.");
