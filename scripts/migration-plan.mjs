@@ -44,3 +44,29 @@ export function pendingMigrations(paths, applied) {
     .sort((a, b) => a.name.localeCompare(b.name))
     .filter(({ name }) => !done.has(name));
 }
+
+/**
+ * Migrations registradas no banco cujo ARQUIVO nao existe mais.
+ *
+ * O contrario de `pendingMigrations`, e a direcao que ninguem olhava. Na loja
+ * piloto isso deixou passar um desvio de schema por onze dias: uma migration
+ * `0022_nfce_foundation.sql` rodou em 11/09/2026, criou duas tabelas, e depois
+ * foi APAGADA do repositorio e substituida por outra com o mesmo numero
+ * (`0022_nfce.sql`). O banco da loja ficou com 47 tabelas e uma instalacao
+ * nova de hoje teria 45 -- producao e cliente novo com schemas diferentes, o
+ * que faz qualquer diagnostico futuro comecar errado.
+ *
+ * Nao e erro fatal de proposito: uma migration antiga legitimamente removida
+ * (consolidada noutra, por exemplo) nao pode travar o deploy de uma loja que
+ * ja rodou aquilo. E aviso -- mas aviso que APARECE, que e o que faltava.
+ *
+ * @param {Iterable<string>} paths arquivos em disco
+ * @param {Iterable<string>} applied nomes registrados em `_migrations`
+ * @returns {string[]} nomes aplicados sem arquivo, em ordem
+ */
+export function orphanMigrations(paths, applied) {
+  const emDisco = new Set(
+    [...paths].filter(isMigrationFile).map((path) => migrationName(path)),
+  );
+  return [...applied].filter((name) => !emDisco.has(name)).sort((a, b) => a.localeCompare(b));
+}

@@ -10,7 +10,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { isMigrationFile, migrationName, pendingMigrations } from "./migration-plan.mjs";
+import {
+  isMigrationFile,
+  migrationName,
+  orphanMigrations,
+  pendingMigrations,
+} from "./migration-plan.mjs";
 import { projectRoot } from "./with-app-env.mjs";
 
 const AUTH_MIGRATION = "0001_auth.sql";
@@ -89,4 +94,50 @@ test("the copy check reads both files and catches an edit", () => {
   writeFileSync(join(root, "migrations", AUTH_MIGRATION), "create table t (x int);\n");
   const drifted = authSchemaCopy(root);
   assert.notEqual(drifted.copy, drifted.source);
+});
+
+// O caso real: 0022_nfce_foundation.sql rodou em 11/09/2026, criou duas
+// tabelas, e depois foi APAGADA do repo e substituida por 0022_nfce.sql --
+// duas migrations com o mesmo numero. O banco da loja ficou com 47 tabelas e
+// uma instalacao nova teria 45. Ninguem olhava essa direcao.
+test("orphanMigrations acusa migration registrada cujo arquivo sumiu", () => {
+  assert.deepEqual(
+    orphanMigrations(
+      ["migrations/0021_sale_document.sql", "migrations/0022_nfce.sql"],
+      ["0021_sale_document.sql", "0022_nfce_foundation.sql", "0022_nfce.sql"],
+    ),
+    ["0022_nfce_foundation.sql"],
+  );
+});
+
+test("orphanMigrations: tudo em ordem devolve lista vazia", () => {
+  assert.deepEqual(orphanMigrations(["migrations/0001_a.sql"], ["0001_a.sql"]), []);
+});
+
+test("orphanMigrations: arquivo ainda nao aplicado nao e orfao", () => {
+  // Essa direcao ja e de pendingMigrations; aqui nao pode virar alarme,
+  // senao todo deploy com migration nova gritaria.
+  assert.deepEqual(
+    orphanMigrations(["migrations/0001_a.sql", "migrations/0002_b.sql"], ["0001_a.sql"]),
+    [],
+  );
+});
+
+test("orphanMigrations compara por basename, igual ao resto do bookkeeping", () => {
+  assert.deepEqual(orphanMigrations(["migrations/auth/0001_auth.sql"], ["0001_auth.sql"]), []);
+});
+
+test("orphanMigrations ignora o que nao e .sql", () => {
+  // readdir tambem devolve a pasta `auth`; ela nao pode "cobrir" um nome.
+  assert.deepEqual(
+    orphanMigrations(["migrations/auth", "migrations/0001_a.sql"], ["0001_a.sql"]),
+    [],
+  );
+});
+
+test("orphanMigrations ordena, pra saida estavel", () => {
+  assert.deepEqual(orphanMigrations([], ["0030_z.sql", "0002_a.sql"]), [
+    "0002_a.sql",
+    "0030_z.sql",
+  ]);
 });

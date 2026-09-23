@@ -16,7 +16,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
-import { pendingMigrations } from "./migration-plan.mjs";
+import { orphanMigrations, pendingMigrations } from "./migration-plan.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -51,6 +51,20 @@ async function main() {
     const applied = (await client.query("SELECT name FROM _migrations")).rows.map(
       (r) => r.name,
     );
+
+    // A direcao que ninguem olhava: registrada no banco, sem arquivo no repo.
+    // Significa que este banco tem schema que uma instalacao nova nao teria.
+    // Aviso e nao erro: uma migration legitimamente consolidada noutra nao
+    // pode travar o deploy de uma loja que ja rodou aquilo.
+    const orfas = orphanMigrations(entries, applied);
+    if (orfas.length) {
+      console.warn(
+        `[migrate] AVISO: ${orfas.length} migration(s) registrada(s) sem arquivo no repositorio: ${orfas.join(", ")}`,
+      );
+      console.warn(
+        "[migrate] este banco pode ter tabelas que uma instalacao nova nao cria -- confira antes de comparar schemas.",
+      );
+    }
 
     let count = 0;
     for (const { name } of pendingMigrations(entries, applied)) {
