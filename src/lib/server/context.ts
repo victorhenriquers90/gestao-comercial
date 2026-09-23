@@ -1,5 +1,6 @@
 import { dbSource, getSql, type Sql } from "@/lib/db";
 import { demoSeedEnabled } from "@/lib/demo-seed";
+import { INVITE_COOKIE, NO_ACCESS_MESSAGE } from "@/lib/invite-constants";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
 import { num, str } from "@/lib/utils";
 import { seedCompany } from "./seed";
@@ -22,8 +23,39 @@ export type Tenant = {
 
 export async function requireTenant(userId: string): Promise<{ sql: Sql; tenant: Tenant }> {
   const sql = await getSql();
-  const tenant = await ensureTenant(sql, userId);
-  return { sql, tenant };
+  const convite = await readInviteCookie();
+  try {
+    const tenant = await ensureTenant(sql, userId, convite);
+    return { sql, tenant };
+  } finally {
+    // Usado ou recusado, o cookie sai: um convite vencido preso nele
+    // repetiria o mesmo erro em toda requisicao.
+    if (convite) await clearInviteCookie();
+  }
+}
+
+/*
+  import() dinamico, nao estatico: este arquivo chega ao bundle do
+  navegador (via server/nfce.ts), e modulo so-de-servidor importado no topo
+  quebra a pagina no carregamento. Mesmo padrao do gate-session.server.ts.
+  Fora de uma requisicao (script, teste) nao ha cookie -- e nao e erro.
+*/
+async function readInviteCookie(): Promise<string | null> {
+  try {
+    const { getCookie } = await import("@tanstack/react-start/server");
+    return getCookie(INVITE_COOKIE) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearInviteCookie(): Promise<void> {
+  try {
+    const { deleteCookie } = await import("@tanstack/react-start/server");
+    deleteCookie(INVITE_COOKIE, { path: "/" });
+  } catch {
+    // idem
+  }
 }
 
 export async function assertStore(
@@ -196,39 +228,30 @@ async function loadTenant(sql: Sql, userId: string): Promise<Tenant | null> {
   };
 }
 
-export async function ensureTenant(sql: Sql, userId: string): Promise<Tenant> {
+export async function ensureTenant(
+  sql: Sql,
+  userId: string,
+  inviteToken?: string | null,
+): Promise<Tenant> {
   const existing = await loadTenant(sql, userId);
   if (existing) return existing;
 
-  const user = await loadUser(sql, userId);
-  const email = user.email?.trim().toLowerCase() ?? "";
-
-  if (email) {
-    const invites = await sql<{
-      id: number;
-      company_id: number;
-      role: string;
-      store_id: number | null;
-    }>`
-      select id, company_id, role, store_id
-      from pending_invites
-      where lower(email) = ${email} and accepted_at is null
-      order by id desc
-      limit 1
-    `;
-    if (invites[0]) {
-      const inv = invites[0];
-      await sql`
-        insert into memberships (company_id, user_id, role, store_id)
-        values (${inv.company_id}, ${userId}, ${inv.role}, ${inv.store_id})
-        on conflict (company_id, user_id) do update set role = excluded.role, is_active = true
-      `;
-      await sql`update pending_invites set accepted_at = now() where id = ${inv.id}`;
-      const tenant = await loadTenant(sql, userId);
-      if (tenant) return tenant;
-    }
+  // Convite so pelo link (token). Casar pelo e-mail entregava o papel a
+  // quem cadastrasse aquele endereco primeiro -- o cadastro nao confere
+  // posse do e-mail.
+  if (inviteToken) {
+    const { acceptInvite } = await import("./invite-gate");
+    await acceptInvite(sql, userId, inviteToken);
+    const tenant = await loadTenant(sql, userId);
+    if (tenant) return tenant;
   }
 
+  // Empresa nova so no servidor vazio: e o dono instalando. Antes qualquer
+  // conta sem convite ganhava empresa propria no mesmo banco.
+  const [{ n: empresas }] = await sql<{ n: number }>`select count(*)::int as n from companies`;
+  if (Number(empresas) > 0) throw new Error(NO_ACCESS_MESSAGE);
+
+  const user = await loadUser(sql, userId);
   const firstName = user.name?.split(" ")[0] || "Minha";
   const companyName = `${firstName} Comércio`;
   const [company] = await sql<{ id: number }>`

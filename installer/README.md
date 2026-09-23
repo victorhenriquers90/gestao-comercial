@@ -86,6 +86,26 @@ PowerShell aqui ja reflete no proximo `dotnet publish`.
 7. Agenda o backup diario do banco e ja roda um na hora, pra falha de
    configuracao aparecer na frente de quem instalou.
 
+## Primeiro acesso e equipe
+
+O cadastro e fechado. So duas contas podem ser criadas:
+
+- **A primeira do servidor**, em `/login?cadastro`. Ela vira a dona da
+  empresa (administrador). Crie-a logo depois de instalar, com o dono da
+  loja do lado -- enquanto ela nao existe, quem abrir esse endereco primeiro
+  vira o dono.
+- **Quem tem link de convite.** Em Configuracoes > Equipe o administrador
+  gera o link (vale 7 dias, uma pessoa so) e manda por WhatsApp. O link e o
+  que da acesso, nao o e-mail: o cadastro nao confere posse de e-mail, entao
+  convite "por e-mail" entregava o papel a quem cadastrasse o endereco
+  primeiro.
+
+Quem entra sem convite ve "Peca ao administrador um link de convite" e nao
+ganha empresa. Link perdido ou vencido: "Novo link" na lista de convites
+pendentes (o antigo para de valer).
+
+A instalacao comeca **sem dados de demonstracao** (`GC_DEMO_SEED` vazio).
+
 ## Backup e restauracao
 
 O backup diario roda as 22:30 pela tarefa do Windows `GestaoComercial-Backup`

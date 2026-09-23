@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { BackupStatusCard } from "@/components/backup-status-card";
 import { CardRatesPanel } from "@/components/card-rates-panel";
 import { IssSettingsPanel } from "@/components/iss-rate";
+import { InvitePanel } from "@/components/invite-panel";
 import { ImageField } from "@/components/image-editor";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,7 +17,6 @@ import { can, ROLE_LABELS, ROLES } from "@/lib/permissions";
 import {
   getSettingsFn,
   getTenantFn,
-  inviteMemberFn,
   listAuditFn,
   saveCompanyFn,
   saveStoreFn,
@@ -95,7 +95,6 @@ function ConfigPage() {
     taxRegime: "simples" as TaxRegime,
     nfceEnabled: false,
   });
-  const [invite, setInvite] = useState({ email: "", role: "vendedor" });
   const [storeName, setStoreName] = useState("");
   const [salvando, setSalvando] = useState<string | null>(null);
 
@@ -346,29 +345,11 @@ function ConfigPage() {
                 </Select>
               </div>
             ))}
-            <Field label="Convidar por e-mail">
-              <Input value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} />
-            </Field>
-            <Select value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </Select>
-            <Button
-              disabled={salvando === "convite"}
-              onClick={() =>
-                void salvar(
-                  "convite",
-                  () => inviteMemberFn({ data: invite }),
-                  "Convite enviado. A pessoa entra ao autenticar com este e-mail.",
-                  () => void qc.invalidateQueries({ queryKey: ["settings"] }),
-                )
-              }
-            >
-              Convidar
-            </Button>
+            {papel && can(papel, "users.write") ? (
+              <InvitePanel
+                convites={(settings.data?.invites ?? []) as unknown as Parameters<typeof InvitePanel>[0]["convites"]}
+              />
+            ) : null}
           </Card>
         </TabsContent>
         <TabsContent value="print">

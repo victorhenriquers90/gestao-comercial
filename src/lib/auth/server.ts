@@ -35,7 +35,10 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
-import { ensureDbReady, getPglite } from "../db";
+import { APIError } from "better-auth/api";
+import { ensureDbReady, getPglite, getSql } from "../db";
+import { INVITE_COOKIE } from "../invite-constants";
+import { signupAllowed } from "../server/invite-gate";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
@@ -230,6 +233,24 @@ export const auth = betterAuth({
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+
+  // Cadastro fechado: toda criacao de usuario (e-mail/senha, OAuth, gate)
+  // passa por aqui. So o primeiro usuario do servidor (o dono instalando)
+  // ou quem traz um convite valido no cookie do link.
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (_user, ctx) => {
+          const sql = await getSql();
+          if (await signupAllowed(sql, ctx?.getCookie(INVITE_COOKIE) ?? null)) return;
+          throw new APIError("FORBIDDEN", {
+            code: "SIGNUP_CLOSED",
+            message: "Cadastro só por convite. Peça ao administrador um link de convite.",
+          });
+        },
+      },
+    },
+  },
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a

@@ -8,6 +8,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient, authEnabled, ensureCsrfCookie } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME } from "@/lib/constants";
+import { ROLE_LABELS, type Role } from "@/lib/permissions";
+import { acceptInviteFn, openInviteFn } from "@/lib/server/session";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
@@ -26,7 +28,10 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   PASSWORD_TOO_LONG: "A senha é longa demais.",
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "Já existe uma conta com este e-mail.",
   FAILED_TO_CREATE_USER: "Não foi possível criar a conta.",
+  SIGNUP_CLOSED: "Cadastro só por convite. Peça ao administrador um link de convite.",
 };
+
+type ConviteInfo = { companyName: string; role: string; label: string };
 
 function authErrorMessage(code: string | undefined, fallback: string): string {
   return (code && AUTH_ERROR_MESSAGES[code]) || fallback;
@@ -38,16 +43,46 @@ function authErrorMessage(code: string | undefined, fallback: string): string {
  * primeira conta/empresa; no dia a dia da loja o login nao deve convidar
  * ninguem a criar uma empresa nova por engano.
  */
-function useWantsSignup(): boolean {
+function useSearchParam(name: string): string | null {
   const loc = useLocation();
-  return new URLSearchParams(loc.searchStr.replace(/^\?/, "")).has("cadastro");
+  return new URLSearchParams(loc.searchStr.replace(/^\?/, "")).get(name);
 }
 
 function LoginPage() {
   const { user, isPending } = useCurrentUserState();
   const navigate = useNavigate();
-  const wantsSignup = useWantsSignup();
-  const [mode, setMode] = useState<"in" | "up">(wantsSignup ? "up" : "in");
+  const wantsSignup = useSearchParam("cadastro") !== null;
+  const conviteToken = useSearchParam("convite");
+  const [mode, setMode] = useState<"in" | "up">(wantsSignup || conviteToken ? "up" : "in");
+  const [convite, setConvite] = useState<ConviteInfo | null>(null);
+  const [conviteErro, setConviteErro] = useState<string | null>(null);
+  const [aceitando, setAceitando] = useState(false);
+
+  // Sem conta: valida o link e deixa o token num cookie httpOnly, que o
+  // cadastro e o primeiro acesso a /app leem no servidor.
+  useEffect(() => {
+    if (!conviteToken || isPending || user) return;
+    let vivo = true;
+    openInviteFn({ data: { token: conviteToken } })
+      .then((info) => vivo && setConvite(info))
+      .catch((err: unknown) =>
+        vivo && setConviteErro(err instanceof Error ? err.message : "Convite inválido ou expirado."),
+      );
+    return () => {
+      vivo = false;
+    };
+  }, [conviteToken, isPending, user]);
+
+  // Ja logado: aceita direto e segue pro sistema.
+  useEffect(() => {
+    if (!conviteToken || isPending || !user || aceitando) return;
+    setAceitando(true);
+    acceptInviteFn({ data: { token: conviteToken } })
+      .then(() => navigate({ to: "/app" }))
+      .catch((err: unknown) =>
+        setConviteErro(err instanceof Error ? err.message : "Não foi possível aceitar o convite."),
+      );
+  }, [conviteToken, isPending, user, aceitando, navigate]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,6 +116,22 @@ function LoginPage() {
       </main>
     );
   }
+  if (user && conviteToken) {
+    return (
+      <main className="grid min-h-dvh place-items-center p-6 text-center">
+        <div className="max-w-sm space-y-4">
+          {conviteErro ? (
+            <>
+              <p className="text-sm text-destructive">{conviteErro}</p>
+              <Button onClick={() => navigate({ to: "/app" })}>Ir para o sistema</Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aceitando o convite…</p>
+          )}
+        </div>
+      </main>
+    );
+  }
   if (user) {
     navigate({ to: "/app" });
     return null;
@@ -91,6 +142,9 @@ function LoginPage() {
     setError(null);
     setBusy(true);
     ensureCsrfCookie();
+    // O aceite vem daqui, logo depois de autenticar; o efeito de "ja
+    // logado" nao pode disparar junto (o segundo aceite leria "invalido").
+    if (conviteToken) setAceitando(true);
     try {
       if (mode === "up") {
         const res = await authClient.signUp.email({
@@ -108,6 +162,7 @@ function LoginPage() {
         });
         if (res.error) throw new Error(authErrorMessage(res.error.code, "Não foi possível entrar. Tente novamente."));
       }
+      if (conviteToken) await acceptInviteFn({ data: { token: conviteToken } });
       navigate({ to: "/app" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha na autenticação.");
@@ -145,10 +200,17 @@ function LoginPage() {
               {signingUp ? "Criar a loja" : "Abrir a loja"}
             </h1>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-              {signingUp
-                ? "Uma empresa, um painel. Depois você convida a equipe."
-                : "Acesse o PDV, a folha e o caixa da operação."}
+              {convite
+                ? `Você foi convidado para ${convite.companyName} como ${ROLE_LABELS[convite.role as Role] ?? convite.role}. ${signingUp ? "Crie sua conta para entrar." : "Entre com sua conta para aceitar."}`
+                : signingUp
+                  ? "Uma empresa, um painel. Depois você convida a equipe."
+                  : "Acesse o PDV, a folha e o caixa da operação."}
             </p>
+            {conviteErro && !user ? (
+              <p className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {conviteErro}
+              </p>
+            ) : null}
 
             {authEnabled ? (
               <>
@@ -229,13 +291,24 @@ function LoginPage() {
 
             {signingUp ? (
               <p className="mt-6 text-center text-sm text-muted-foreground">
-                Já tem uma loja cadastrada?{" "}
+                {convite ? "Já tem conta?" : "Já tem uma loja cadastrada?"}{" "}
                 <button
                   type="button"
                   className="inline-flex h-11 items-center font-medium text-primary"
                   onClick={switchMode}
                 >
                   Entrar
+                </button>
+              </p>
+            ) : convite ? (
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                Ainda não tem conta?{" "}
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center font-medium text-primary"
+                  onClick={switchMode}
+                >
+                  Criar conta
                 </button>
               </p>
             ) : null}

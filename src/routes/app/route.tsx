@@ -2,6 +2,8 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/app-shell";
 import { Skeleton } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { signOut } from "@/lib/auth/client";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getTenantFn } from "@/lib/server/session";
@@ -42,11 +44,18 @@ function AppLayout() {
   }
   if (!user) return <RedirectToSignIn />;
   if (tenant.error || !tenant.data) {
+    // Conta sem empresa (cadastro fechado, convite ainda nao aceito) cai
+    // aqui: sem o Sair, a pessoa ficava presa numa tela sem saida.
     return (
       <div className="grid min-h-screen place-items-center p-6 text-center">
-        <p className="text-sm text-destructive">
-          {tenant.error instanceof Error ? tenant.error.message : "Não foi possível carregar a empresa."}
-        </p>
+        <div className="max-w-sm space-y-4">
+          <p className="text-sm text-destructive">
+            {tenant.error instanceof Error ? tenant.error.message : "Não foi possível carregar a empresa."}
+          </p>
+          <Button variant="outline" onClick={() => void signOut()}>
+            Sair
+          </Button>
+        </div>
       </div>
     );
   }

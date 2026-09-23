@@ -6,6 +6,11 @@ import { formatBRL } from "@/lib/format";
 import { assertCan, can, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { audit, requireTenant } from "./context";
+import { acceptInvite, findOpenInvite } from "./invite-gate";
+import { getSql } from "@/lib/db";
+import { hashInviteToken, inviteExpiry, newInviteToken } from "@/lib/invite";
+import { INVITE_COOKIE, INVITE_TTL_DAYS } from "@/lib/invite-constants";
+import { deleteCookie, setCookie } from "@tanstack/react-start/server";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseCnpj } from "@/lib/document";
@@ -387,8 +392,11 @@ export const getSettingsFn = createServerFn({ method: "GET" })
     const invites = !podeVerEquipe
       ? []
       : await sql<Row>`
-          select id, email, role, created_at from pending_invites
-          where company_id = ${tenant.companyId} and accepted_at is null
+          select id, email as label, role, created_at, expires_at,
+                 (token_hash is null or expires_at <= now()) as vencido
+            from pending_invites
+           where company_id = ${tenant.companyId} and accepted_at is null
+           order by created_at desc
         `;
     const stores = await sql<Row>`
       select id, name, code, phone, address, city, state, zip, is_active
@@ -540,28 +548,101 @@ export const saveStoreFn = createServerFn({ method: "POST" })
     return { id: row!.id };
   });
 
+/*
+  Convite = link com token. Antes o convite casava pelo e-mail (ou, se ja
+  existisse conta com aquele e-mail, entrava direto na empresa) -- e como o
+  cadastro nao confere posse do e-mail, quem cadastrasse o endereco
+  primeiro levava o papel convidado. O token so aparece aqui, uma vez; no
+  banco fica o hash.
+*/
 export const inviteMemberFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { email: string; role: string }) => d)
+  .validator((d: { label?: string; role: string }) => ({
+    ...d,
+    label: optionalLine(d.label, 120) ?? "",
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "users.write");
-    const email = data.email.trim().toLowerCase();
     const role: Role = isRole(data.role) ? data.role : "vendedor";
-    const existing = await sql<{ id: string }>`select id from "user" where lower(email) = ${email}`;
-    if (existing[0]) {
-      await sql`
-        insert into memberships (company_id, user_id, role)
-        values (${tenant.companyId}, ${existing[0].id}, ${role})
-        on conflict (company_id, user_id) do update set role = excluded.role, is_active = true
-      `;
-    } else {
-      await sql`
-        insert into pending_invites (company_id, email, role, invited_by)
-        values (${tenant.companyId}, ${email}, ${role}, ${tenant.userId})
-      `;
+    const token = newInviteToken();
+    const [row] = await sql<{ id: number }>`
+      insert into pending_invites (company_id, email, role, invited_by, token_hash, expires_at)
+      values (${tenant.companyId}, ${data.label}, ${role}, ${tenant.userId},
+              ${hashInviteToken(token)}, ${inviteExpiry().toISOString()})
+      returning id
+    `;
+    await audit(sql, tenant, "invite", "membership", row!.id, null, { role, label: data.label });
+    return { token, expiresInDays: INVITE_TTL_DAYS };
+  });
+
+// Link perdido ou vencido: gera outro. O antigo para de valer na hora.
+export const renewInviteFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "users.write");
+    const token = newInviteToken();
+    const [row] = await sql<{ id: number }>`
+      update pending_invites
+         set token_hash = ${hashInviteToken(token)}, expires_at = ${inviteExpiry().toISOString()}
+       where id = ${data.id} and company_id = ${tenant.companyId} and accepted_at is null
+      returning id
+    `;
+    if (!row) throw new Error("Convite não encontrado ou já aceito.");
+    await audit(sql, tenant, "renew", "invite", data.id, null, null);
+    return { token, expiresInDays: INVITE_TTL_DAYS };
+  });
+
+export const revokeInviteFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "users.write");
+    await sql`
+      delete from pending_invites
+       where id = ${data.id} and company_id = ${tenant.companyId} and accepted_at is null
+    `;
+    await audit(sql, tenant, "revoke", "invite", data.id, null, null);
+    return { ok: true };
+  });
+
+/**
+ * Abre o link de convite: sem login (quem chega ainda nao tem conta).
+ * Guarda o token num cookie httpOnly -- e dali que o cadastro (hook do
+ * Better Auth) e o primeiro acesso a /app o leem. Devolve so o que a tela
+ * precisa pra dizer "voce foi convidado para X como Y".
+ */
+export const openInviteFn = createServerFn({ method: "POST" })
+  .validator((d: { token: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const inv = await findOpenInvite(sql, data.token);
+    if (!inv) throw new Error("Convite inválido ou expirado. Peça um novo link ao administrador.");
+    setCookie(INVITE_COOKIE, data.token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 86_400,
+    });
+    return { companyName: inv.companyName, role: inv.role, label: inv.label };
+  });
+
+// Quem ja tem conta e esta logado abre o link: aceita na hora.
+export const acceptInviteFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { token: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await acceptInvite(sql, context.userId, data.token);
+    try {
+      deleteCookie(INVITE_COOKIE, { path: "/" });
+    } catch {
+      // sem cookie pra limpar
     }
-    await audit(sql, tenant, "invite", "membership", email, null, { role });
     return { ok: true };
   });
 
