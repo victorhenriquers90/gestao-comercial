@@ -8,6 +8,7 @@ import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
 import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
+import { PURCHASE_STATUS } from "@/lib/constants";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
   optionalLine,
@@ -664,6 +665,12 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.write");
+    // "recebido" so pelo receivePurchaseFn: salvo por aqui, o pedido ficava
+    // recebido sem somar estoque nem gerar a conta a pagar, e o botao
+    // Receber passava a recusar ("ja recebido").
+    if (!(PURCHASE_STATUS as readonly string[]).includes(data.status) || data.status === "recebido") {
+      throw new Error("Status de pedido inválido.");
+    }
     await assertStore(sql, tenant.companyId, data.storeId);
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
     await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
@@ -696,7 +703,9 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     const purchaseId = await sql.transaction(async (sql) => {
       let id = data.id;
       if (id) {
-        const cur = await sql<{ status: string }>`select status from purchases where id = ${id} and company_id = ${tenant.companyId}`;
+        const cur = await sql<{ status: string }>`
+          select status from purchases where id = ${id} and company_id = ${tenant.companyId} for update
+        `;
         if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
         await sql`
           update purchases set supplier_id = ${data.supplierId ?? null}, status = ${data.status}, notes = ${data.notes ?? null},
@@ -735,22 +744,28 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.receive");
-    const [p] = await sql<{ id: number; status: string; store_id: number; supplier_id: number | null; total: string | number; number: number }>`
-      select id, status, store_id, supplier_id, total, number from purchases where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (!p) throw new Error("Pedido não encontrado.");
-    if (p.status === "recebido") throw new Error("Pedido já recebido.");
-    if (p.status === "cancelado") throw new Error("Pedido cancelado.");
-    const items = await sql<{ variant_id: number; product_id: number; quantity: string | number; unit_cost: string | number }>`
-      select variant_id, product_id, quantity, unit_cost from purchase_items where purchase_id = ${p.id}
-    `;
     /*
       Recebimento inteiro numa transacao. Solto, um erro no meio deixava
       estoque de PARTE dos itens ja somado com o pedido ainda 'pendente' --
       e a guarda de reentrada olha justamente o status, entao receber de
       novo somaria o estoque desses itens uma segunda vez.
+
+      A guarda de status tambem fica aqui dentro, depois do `for update`.
+      Lida fora, dois cliques em "Receber" (ou um reenvio da rede) passavam
+      os dois: estoque somado em dobro e DUAS contas a pagar pro fornecedor.
     */
     await sql.transaction(async (sql) => {
+      const [p] = await sql<{ id: number; status: string; store_id: number; supplier_id: number | null; total: string | number; number: number }>`
+        select id, status, store_id, supplier_id, total, number from purchases
+         where id = ${data.id} and company_id = ${tenant.companyId}
+         for update
+      `;
+      if (!p) throw new Error("Pedido não encontrado.");
+      if (p.status === "recebido") throw new Error("Pedido já recebido.");
+      if (p.status === "cancelado") throw new Error("Pedido cancelado.");
+      const items = await sql<{ variant_id: number; product_id: number; quantity: string | number; unit_cost: string | number }>`
+        select variant_id, product_id, quantity, unit_cost from purchase_items where purchase_id = ${p.id}
+      `;
       for (const item of items) {
         await applyStockChange(sql, {
           companyId: tenant.companyId,

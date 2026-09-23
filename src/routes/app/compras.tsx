@@ -164,7 +164,7 @@ function ComprasPage() {
           </Field>
           <Field label="Status" className="mt-block">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-              {PURCHASE_STATUS.map((s) => (
+              {PURCHASE_STATUS.filter((s) => s !== "recebido").map((s) => (
                 <option key={s} value={s}>
                   {PURCHASE_STATUS_LABELS[s]}
                 </option>
