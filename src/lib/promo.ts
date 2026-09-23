@@ -1,3 +1,4 @@
+import { ymdLocal } from "./local-date.ts";
 export type Promo = {
   id: number;
   name: string;
@@ -21,7 +22,7 @@ function ymd(value: string) {
   return value.slice(0, 10);
 }
 
-export function isPromoLive(p: Promo, today = new Date().toISOString().slice(0, 10)) {
+export function isPromoLive(p: Promo, today = ymdLocal()) {
   if (!p.isActive) return false;
   const start = ymd(p.startsAt);
   const end = ymd(p.endsAt);

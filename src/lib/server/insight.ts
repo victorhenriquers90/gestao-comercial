@@ -4,6 +4,7 @@ import { assertCan } from "@/lib/permissions";
 import { resolvePeriod, type PeriodKey } from "@/lib/period";
 import { num } from "@/lib/utils";
 import { requireTenant } from "./context";
+import { ymdLocal } from "@/lib/local-date";
 
 function andEq(
   params: unknown[],
@@ -45,7 +46,7 @@ export const dashboardFn = createServerFn({ method: "POST" })
          and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
          ${kpiScope}`;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = ymdLocal();
     const monthStart = `${today.slice(0, 7)}-01`;
 
     const todayParams: unknown[] = [tenant.companyId];

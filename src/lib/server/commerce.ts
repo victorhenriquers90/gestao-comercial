@@ -33,6 +33,7 @@ import { sanitizeMultiline } from "@/lib/sanitize";
 import { loadCommissionRules, loadSellerTargetBonuses, parseBreakdown, sellerMonthRevenue, taxForSeller, taxInsert } from "./commission";
 import { assertOwned, assertStore, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
+import { ymdLocal } from "@/lib/local-date";
 
 export type CartItemIn = {
   variantId: number;
@@ -1113,7 +1114,7 @@ export const createReturnFn = createServerFn({ method: "POST" })
       if (ar) {
         const nextAmt = Math.max(0, Number((num(ar.amount) - total).toFixed(2)));
         const received = num(ar.received_amount);
-        const today = new Date().toISOString().slice(0, 10);
+        const today = ymdLocal();
         const status =
           nextAmt <= 0.009
             ? "cancelado"

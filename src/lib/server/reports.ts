@@ -13,6 +13,7 @@ import { dump, type Row } from "@/lib/json";
 import { num } from "@/lib/utils";
 import { requireTenant } from "./context";
 import { loadRetentionGuide } from "./retention";
+import { ymdLocal } from "@/lib/local-date";
 
 export type ColKind = "money" | "qty" | "pct" | "text" | "date";
 
@@ -88,7 +89,7 @@ function prevWindow(from: string, to: string) {
   const days = Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000) + 1);
   const prevTo = new Date(a.getTime() - 86400000);
   const prevFrom = new Date(prevTo.getTime() - (days - 1) * 86400000);
-  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const ymd = ymdLocal;
   return { from: ymd(prevFrom), to: ymd(prevTo), days };
 }
 

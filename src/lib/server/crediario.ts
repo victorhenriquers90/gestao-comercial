@@ -5,6 +5,7 @@ import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { requireTenant } from "./context";
+import { ymdLocal } from "@/lib/local-date";
 
 /**
  * Cobranca: quem deve, ha quanto tempo, e como falar com a pessoa.
@@ -42,7 +43,7 @@ export const listCrediarioFn = createServerFn({ method: "POST" })
       [tenant.companyId, data.storeId ?? null],
     );
 
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = ymdLocal();
     type Parcela = {
       id: number;
       dueDate: string;

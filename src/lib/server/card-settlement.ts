@@ -5,6 +5,7 @@ import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { audit, requireTenant } from "./context";
+import { ymdLocal } from "@/lib/local-date";
 
 /**
  * Conciliacao de cartao: dar baixa no que a adquirente depositou.
@@ -40,7 +41,7 @@ export const listCardSettlementsFn = createServerFn({ method: "POST" })
       [tenant.companyId, data.storeId ?? null],
     );
 
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = ymdLocal();
     const lotes = rows.map((r) => {
       const dueDate = String(r.due_date).slice(0, 10);
       return {

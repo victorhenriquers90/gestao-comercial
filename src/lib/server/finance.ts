@@ -18,12 +18,13 @@ import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
 import { assertOwned, assertStore, audit, requireTenant, type Tenant } from "./context";
 import { taxForSeller, taxInsert } from "./commission";
+import { ymdLocal } from "@/lib/local-date";
 
 function accountStatus(row: { status: string; due_date: string; amount: unknown; paid?: unknown; received?: unknown }) {
   if (row.status === "pago" || row.status === "cancelado") return row.status;
   const open = num(row.amount) - num(row.paid ?? row.received);
   if (open <= 0.009) return "pago";
-  if (row.due_date < new Date().toISOString().slice(0, 10) && row.status !== "pago") return "vencido";
+  if (row.due_date < ymdLocal() && row.status !== "pago") return "vencido";
   if (open < num(row.amount)) return "parcial";
   return row.status;
 }
@@ -1309,7 +1310,7 @@ async function settleSellerBatch(
     values (
       ${tenant.companyId}, ${storeId ?? null},
       ${"Comissão líquida " + who + saleBit},
-      'Folha', ${tax.net}, ${new Date().toISOString().slice(0, 10)},
+      'Folha', ${tax.net}, ${ymdLocal()},
       'caixa', ${tenant.userId}
     )
   `;
@@ -1319,7 +1320,7 @@ async function settleSellerBatch(
       values (
         ${tenant.companyId}, ${storeId ?? null},
         ${"Retenção INSS/IRRF/ISS · " + who + saleBit},
-        'Impostos', ${tax.totalTax}, ${new Date().toISOString().slice(0, 10)},
+        'Impostos', ${tax.totalTax}, ${ymdLocal()},
         'caixa', ${tenant.userId}
       )
     `;

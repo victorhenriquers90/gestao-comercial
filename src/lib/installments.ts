@@ -7,6 +7,8 @@
  * e o tipo de pergunta que ninguem consegue responder seis meses depois.
  */
 
+import { ymdLocal } from "./local-date.ts";
+
 export type Installment = {
   /** 1, 2, 3... */
   number: number;
@@ -22,7 +24,8 @@ function round2(v: number): number {
 function addDays(from: Date, days: number): string {
   const d = new Date(from.getTime());
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  // Local, nao toISOString: venda as 22h vencia um dia depois.
+  return ymdLocal(d);
 }
 
 /**
