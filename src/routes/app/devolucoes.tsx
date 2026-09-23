@@ -220,7 +220,6 @@ function DevolucoesPage() {
                 .filter((l) => l.qty > 0)
                 .map((l) => ({
                   saleItemId: l.saleItemId,
-                  variantId: l.variantId,
                   quantity: l.qty,
                 }));
               if (!items.length) return toast.error("Informe a quantidade a devolver.");

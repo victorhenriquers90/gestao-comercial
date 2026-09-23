@@ -912,61 +912,15 @@ export const createReturnFn = createServerFn({ method: "POST" })
       reason: string;
       // Sem `amount`: o valor e calculado no servidor a partir da venda
       // original. Aceitar o campo e ignora-lo faria parecer que ele importa.
-      items: { saleItemId: number; variantId: number; quantity: number }[];
+      // Sem variantId: a variante sai do item da venda original. Vinda do
+      // cliente, devolvia-se o item barato creditando estoque de outro.
+      items: { saleItemId: number; quantity: number }[];
     }) => d,
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "returns.write");
-    const [sale] = await sql<{ id: number; store_id: number; status: string; number: number }>`
-      select id, store_id, status, number from sales where id = ${data.saleId} and company_id = ${tenant.companyId}
-    `;
-    if (!sale) throw new Error("Venda não encontrada.");
-    if (sale.status === "cancelada") throw new Error("Venda cancelada não aceita devolução.");
     if (!data.items.length) throw new Error("Informe os itens a devolver.");
-    const original = await sql<{
-      id: number;
-      variant_id: number;
-      quantity: string | number;
-      total: string | number;
-    }>`
-      select id, variant_id, quantity, total from sale_items where sale_id = ${sale.id}
-    `;
-    const already = await sql<{ sale_item_id: number; qty: string | number }>`
-      select ri.sale_item_id, coalesce(sum(ri.quantity),0) as qty
-        from return_items ri
-        join returns r on r.id = ri.return_id
-       where r.sale_id = ${sale.id}
-       group by ri.sale_item_id
-    `;
-    const used: Record<number, number> = {};
-    for (const r of already) used[num(r.sale_item_id)] = num(r.qty);
-    // O valor devolvido e calculado AQUI, a partir do que a venda cobrou --
-    // nao e aceito do cliente. A quantidade ja era conferida (item pertence a
-    // venda, respeita o saldo devolvivel), mas `amount` entrava cru: dava para
-    // devolver 1 peca de R$ 10 registrando R$ 5.000 de credito. Nao ha
-    // desembolso automatico, mas e por esse numero que a loja reembolsa e que
-    // os relatorios de devolucao contam. O estorno de comissao, logo abaixo,
-    // ja derivava o unitario da venda original -- aqui passa a fazer igual.
-    const valorPorItem = new Map<number, number>();
-    for (const item of data.items) {
-      // isFinite junto: NaN <= 0 e FALSE, entao NaN passava por esta guarda.
-      if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
-        throw new Error("Quantidade inválida.");
-      }
-      const orig = original.find((o) => o.id === item.saleItemId);
-      if (!orig) throw new Error("Item não pertence a esta venda.");
-      const qtdOriginal = num(orig.quantity);
-      const left = qtdOriginal - (used[item.saleItemId] ?? 0);
-      if (item.quantity > left + 0.001) {
-        throw new Error(`Quantidade acima do disponível para devolução (${left}).`);
-      }
-      const unitario = qtdOriginal > 0 ? num(orig.total) / qtdOriginal : 0;
-      valorPorItem.set(item.saleItemId, Number((unitario * item.quantity).toFixed(2)));
-    }
-    const total = Number(
-      data.items.reduce((a, i) => a + (valorPorItem.get(i.saleItemId) ?? 0), 0).toFixed(2),
-    );
     /*
       Devolucao inteira numa transacao: cabecalho, itens, volta do estoque,
       estorno da comissao, devolucao em dinheiro no caixa e a notificacao.
@@ -975,23 +929,91 @@ export const createReturnFn = createServerFn({ method: "POST" })
       de parte dos itens de volta e o dinheiro NAO estornado -- ou o
       contrario. E o tipo de meia-operacao que so aparece na conferencia do
       fim do dia, quando ninguem mais lembra do que aconteceu no balcao.
+
+      A conferencia do saldo devolvivel tambem mora aqui dentro, depois do
+      `for update` na venda. Lida fora, duas devolucoes simultaneas (duas
+      abas, reenvio da rede) viam o mesmo saldo, passavam as duas e
+      devolviam a peca duas vezes -- estoque e dinheiro do caixa em dobro.
+      O lock tambem serializa com o cancelamento, que trava a mesma linha.
     */
     const ret = await sql.transaction(async (sql) => {
+      const [sale] = await sql<{ id: number; store_id: number; status: string; number: number }>`
+        select id, store_id, status, number from sales
+         where id = ${data.saleId} and company_id = ${tenant.companyId}
+         for update
+      `;
+      if (!sale) throw new Error("Venda não encontrada.");
+      if (sale.status === "cancelada") throw new Error("Venda cancelada não aceita devolução.");
+      const original = await sql<{
+        id: number;
+        variant_id: number;
+        quantity: string | number;
+        total: string | number;
+      }>`
+        select id, variant_id, quantity, total from sale_items where sale_id = ${sale.id}
+      `;
+      const already = await sql<{ sale_item_id: number; qty: string | number }>`
+        select ri.sale_item_id, coalesce(sum(ri.quantity),0) as qty
+          from return_items ri
+          join returns r on r.id = ri.return_id
+         where r.sale_id = ${sale.id}
+         group by ri.sale_item_id
+      `;
+      const used: Record<number, number> = {};
+      for (const r of already) used[num(r.sale_item_id)] = num(r.qty);
+      // O valor devolvido e calculado AQUI, a partir do que a venda cobrou --
+      // nao e aceito do cliente. A quantidade ja era conferida (item pertence a
+      // venda, respeita o saldo devolvivel), mas `amount` entrava cru: dava para
+      // devolver 1 peca de R$ 10 registrando R$ 5.000 de credito. Nao ha
+      // desembolso automatico, mas e por esse numero que a loja reembolsa e que
+      // os relatorios de devolucao contam. O estorno de comissao, logo abaixo,
+      // ja derivava o unitario da venda original -- aqui passa a fazer igual.
+      const valorPorItem = new Map<number, number>();
+      const varianteDoItem = new Map<number, number>();
+      // Soma por item do pedido: o mesmo saleItemId repetido em duas linhas
+      // passava a conferencia uma vez por linha.
+      const pedido: Record<number, number> = {};
+      for (const item of data.items) {
+        // isFinite junto: NaN <= 0 e FALSE, entao NaN passava por esta guarda.
+        if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+          throw new Error("Quantidade inválida.");
+        }
+        const orig = original.find((o) => o.id === item.saleItemId);
+        if (!orig) throw new Error("Item não pertence a esta venda.");
+        const qtdOriginal = num(orig.quantity);
+        pedido[item.saleItemId] = (pedido[item.saleItemId] ?? 0) + item.quantity;
+        const left = qtdOriginal - (used[item.saleItemId] ?? 0);
+        if (pedido[item.saleItemId]! > left + 0.001) {
+          throw new Error(`Quantidade acima do disponível para devolução (${left}).`);
+        }
+        const unitario = qtdOriginal > 0 ? num(orig.total) / qtdOriginal : 0;
+        valorPorItem.set(
+          item.saleItemId,
+          Number((unitario * pedido[item.saleItemId]!).toFixed(2)),
+        );
+        varianteDoItem.set(item.saleItemId, num(orig.variant_id));
+      }
+      const total = Number(
+        [...valorPorItem.values()].reduce((a, v) => a + v, 0).toFixed(2),
+      );
+
       const [retorno] = await sql<{ id: number }>`
         insert into returns (company_id, store_id, sale_id, user_id, kind, reason, total)
         values (${tenant.companyId}, ${sale.store_id}, ${sale.id}, ${tenant.userId}, ${data.kind}, ${data.reason}, ${total})
         returning id
       `;
-      for (const item of data.items) {
+      for (const [saleItemId, quantidade] of Object.entries(pedido)) {
+        const itemId = Number(saleItemId);
+        const variantId = varianteDoItem.get(itemId)!;
         await sql`
           insert into return_items (company_id, return_id, sale_item_id, variant_id, quantity, amount)
-          values (${tenant.companyId}, ${retorno!.id}, ${item.saleItemId}, ${item.variantId}, ${item.quantity}, ${valorPorItem.get(item.saleItemId) ?? 0})
+          values (${tenant.companyId}, ${retorno!.id}, ${itemId}, ${variantId}, ${quantidade}, ${valorPorItem.get(itemId) ?? 0})
         `;
         await applyStockChange(sql, {
           companyId: tenant.companyId,
           storeId: sale.store_id,
-          variantId: item.variantId,
-          delta: item.quantity,
+          variantId,
+          delta: quantidade,
           type: "devolucao",
           userId: tenant.userId,
           note: data.reason,
@@ -1138,7 +1160,7 @@ export const createReturnFn = createServerFn({ method: "POST" })
       await audit(sql, tenant, "create", "return", retorno!.id, null, { saleId: sale.id, total, kind });
 
       // `kind` e decidido dentro da transacao (total / parcial / troca).
-      return { id: retorno!.id, kind };
+      return { id: retorno!.id, kind, total, saleId: sale.id };
     });
     /*
       Devolução com nota autorizada não tem conserto único: total dentro
@@ -1149,7 +1171,7 @@ export const createReturnFn = createServerFn({ method: "POST" })
     */
     const [nota] = await sql<Row>`
       select nfce_status, nfce_authorized_at from sales
-       where id = ${sale.id} and company_id = ${tenant.companyId}
+       where id = ${ret.saleId} and company_id = ${tenant.companyId}
     `;
     let pendencia: string | null = null;
     if (nota != null && String(nota.nfce_status) === "autorizado") {
@@ -1161,9 +1183,9 @@ export const createReturnFn = createServerFn({ method: "POST" })
       // por acidente numa refatoracao futura.
       const tipo = ret.kind as "total" | "parcial" | "troca";
       pendencia = pendenciaText(pendenciaForReturn(tipo, janela.provavelmenteExpirado));
-      await marcarPendenciaFiscal(sql, tenant.companyId, sale.id, pendencia);
+      await marcarPendenciaFiscal(sql, tenant.companyId, ret.saleId, pendencia);
     }
-    return { id: ret.id, kind: ret.kind, total, pendenciaFiscal: pendencia };
+    return { id: ret.id, kind: ret.kind, total: ret.total, pendenciaFiscal: pendencia };
   });
 
 export const listReturnsFn = createServerFn({ method: "GET" })
