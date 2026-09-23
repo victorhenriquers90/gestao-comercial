@@ -39,14 +39,14 @@ export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRe
         <table>
           <thead>
             <tr>
-              <th className="w-10 text-right">#</th>
-              <th className="pdv-col-code w-36">Código</th>
+              <th className="pdv-col-idx text-right">#</th>
+              <th className="pdv-col-code">Código</th>
               <th>Produto</th>
-              <th className="w-32 text-center">Qtd</th>
-              <th className="w-28 text-right">Unitário</th>
-              <th className="pdv-col-disc w-24 text-right">Desconto</th>
-              <th className="w-28 text-right">Total</th>
-              <th className="w-12">
+              <th className="pdv-col-qty text-center">Qtd</th>
+              <th className="pdv-col-unit text-right">Unitário</th>
+              <th className="pdv-col-disc text-right">Desconto</th>
+              <th className="pdv-col-total text-right">Total</th>
+              <th className="pdv-col-rm">
                 <span className="sr-only">Remover</span>
               </th>
             </tr>
@@ -74,7 +74,7 @@ export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRe
                   }
                   onClick={() => onSelect(l.variantId)}
                 >
-                  <td className="num text-muted-foreground">{i + 1}</td>
+                  <td className="pdv-col-idx num text-muted-foreground">{i + 1}</td>
                   <td className="pdv-col-code">
                     <span className="block truncate text-xs text-muted-foreground tabular">{l.sku ?? "—"}</span>
                   </td>
@@ -93,19 +93,19 @@ export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRe
                       </span>
                     ) : null}
                   </td>
-                  <td className="text-center">
+                  <td className="pdv-col-qty text-center">
                     <QtyStepper
                       label={l.label}
                       value={l.qty}
                       onChange={(q) => onQty(l.variantId, q)}
                     />
                   </td>
-                  <td className="num">{formatBRL(l.sellPrice)}</td>
+                  <td className="pdv-col-unit num">{formatBRL(l.sellPrice)}</td>
                   <td className={cn("pdv-col-disc num", l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground")}>
                     {l.lineDiscount > 0 ? `− ${formatBRL(l.lineDiscount)}` : "—"}
                   </td>
-                  <td className="num font-semibold">{formatBRL(l.sellPrice * l.qty - l.lineDiscount)}</td>
-                  <td className="text-right">
+                  <td className="pdv-col-total num font-semibold">{formatBRL(l.sellPrice * l.qty - l.lineDiscount)}</td>
+                  <td className="pdv-col-rm text-right">
                     <Button
                       size="icon-sm"
                       variant="ghost"

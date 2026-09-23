@@ -1100,6 +1100,31 @@
     display: none;
   }
 
+  /* Larguras aqui, nao como w-* no <th>: utilitario vence camada de
+     componente, e ai as consultas de container abaixo nao conseguiam
+     encolher coluna nenhuma -- no celular o Produto ficava com 0px. */
+  .pdv-col-idx {
+    width: 2.5rem;
+  }
+  .pdv-col-code {
+    width: 9rem;
+  }
+  .pdv-col-qty {
+    width: 8rem;
+  }
+  .pdv-col-unit {
+    width: 7rem;
+  }
+  .pdv-col-disc {
+    width: 6rem;
+  }
+  .pdv-col-total {
+    width: 7rem;
+  }
+  .pdv-col-rm {
+    width: 3rem;
+  }
+
   /* Tela estreita: some Codigo e Desconto; o SKU desce pra baixo do nome. */
   @container pdv-cart (max-width: 46rem) {
     .pdv-col-code,
@@ -1108,6 +1133,34 @@
     }
     .pdv-sku-inline {
       display: inline;
+    }
+  }
+
+  /* Celular: sai tambem # e Unitario (o total da linha fica), e os
+     controles apertam. O nome do produto e o que nao pode sumir. */
+  @container pdv-cart (max-width: 30rem) {
+    .pdv-col-idx,
+    .pdv-col-unit {
+      display: none;
+    }
+    .pdv-col-qty {
+      width: 6.25rem;
+    }
+    .pdv-col-total {
+      width: 5.75rem;
+    }
+    .pdv-col-rm {
+      width: 2.5rem;
+    }
+    .pdv-cart th,
+    .pdv-cart td {
+      padding-inline: 0.5rem;
+    }
+    .pdv-qty button {
+      width: 1.75rem;
+    }
+    .pdv-qty input {
+      width: 2.25rem;
     }
   }
 
