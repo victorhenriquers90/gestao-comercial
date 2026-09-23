@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { NativeCheckbox } from "@/components/ui/select";
+import { NativeCheckbox, Select } from "@/components/ui/select";
+import { RECEIPT_METHOD_LABELS, RECEIPT_METHODS, type ReceiptMethod } from "@/lib/constants";
 import { EmptyState, KpiCard } from "@/components/shared";
 import { AGING_LABELS, type AgingBucket } from "@/lib/crediario-aging";
 import { formatBRL, formatDate, formatDoc, formatPhone } from "@/lib/format";
@@ -28,6 +29,9 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
   const [aberto, setAberto] = useState<number | null>(null);
   const [recebendo, setRecebendo] = useState<number | null>(null);
   const [valor, setValor] = useState("");
+  // Dinheiro por padrao: e o caso do balcao. Em dinheiro a parcela entra no
+  // caixa aberto da loja (e sem caixa aberto o servidor recusa).
+  const [forma, setForma] = useState<ReceiptMethod>("dinheiro");
 
   const dados = useQuery({
     queryKey: ["crediario", storeId, apenasVencidos],
@@ -182,6 +186,18 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                               value={valor}
                               onChange={(e) => setValor(e.target.value)}
                             />
+                            <Select
+                              className="w-40"
+                              aria-label="Forma de recebimento"
+                              value={forma}
+                              onChange={(e) => setForma(e.target.value as ReceiptMethod)}
+                            >
+                              {RECEIPT_METHODS.map((m) => (
+                                <option key={m} value={m}>
+                                  {RECEIPT_METHOD_LABELS[m]}
+                                </option>
+                              ))}
+                            </Select>
                             <Button
                               size="sm"
                               onClick={async () => {
@@ -191,7 +207,8 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                                 const v = valor.trim() ? parseMoneyInput(valor) : p.open;
                                 if (!Number.isFinite(v) || v <= 0) return;
                                 const ok = await runAction(
-                                  () => settleReceivableFn({ data: { id: p.id, amount: v } }),
+                                  () =>
+                                    settleReceivableFn({ data: { id: p.id, amount: v, method: forma, storeId } }),
                                   { sucesso: "Recebimento registrado." },
                                 );
                                 if (!ok) return;
@@ -200,6 +217,7 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                                 void qc.invalidateQueries({ queryKey: ["crediario"] });
                                 void qc.invalidateQueries({ queryKey: ["ar"] });
                                 void qc.invalidateQueries({ queryKey: ["customers"] });
+                                void qc.invalidateQueries({ queryKey: ["register"] });
                               }}
                             >
                               Confirmar
@@ -215,6 +233,7 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                             onClick={() => {
                               setRecebendo(p.id);
                               setValor("");
+                              setForma("dinheiro");
                             }}
                           >
                             Receber

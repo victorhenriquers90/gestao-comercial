@@ -7,7 +7,7 @@ import {
   needsExplanation,
   normalizeBreakdown,
 } from "@/lib/cash-count";
-import { isTargetBonusKind, type TargetBonusKind } from "@/lib/constants";
+import { isReceiptMethod, isTargetBonusKind, type TargetBonusKind } from "@/lib/constants";
 import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
@@ -199,17 +199,59 @@ export const saveReceivableFn = createServerFn({ method: "POST" })
 
 export const settleReceivableFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; amount: number; interest?: number; discount?: number }) => d)
+  .validator(
+    (d: {
+      id: number;
+      amount: number;
+      interest?: number;
+      discount?: number;
+      method: string;
+      /** Loja cujo caixa recebe o dinheiro (a tela atual). */
+      storeId?: number | null;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
     const baixa = parseSettlement(data);
+    if (!isReceiptMethod(data.method)) throw new Error("Informe como o cliente pagou.");
+    const metodo = data.method;
     const status = await sql.transaction(async (sql) => {
-      const [row] = await sql<{ amount: string | number; received_amount: string | number }>`
-        select amount, received_amount from accounts_receivable
+      const [row] = await sql<{
+        amount: string | number;
+        received_amount: string | number;
+        store_id: number | null;
+        description: string | null;
+      }>`
+        select amount, received_amount, store_id, description from accounts_receivable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
+
+      /*
+        Parcela paga em DINHEIRO no balcao entra na gaveta. Antes a baixa nao
+        lancava nada no caixa: o esperado do fechamento nao sabia desse
+        dinheiro e a gaveta fechava com SOBRA sem explicacao -- todo dia, numa
+        loja que vive de crediario. Agora vira movimentacao 'recebimento' no
+        caixa aberto da loja (e sem caixa aberto nao da pra receber em
+        especie, igual a venda).
+      */
+      if (metodo === "dinheiro") {
+        const lojaId = data.storeId ?? row.store_id ?? null;
+        if (!lojaId) throw new Error("Selecione a loja que está recebendo o dinheiro.");
+        await assertStore(sql, tenant.companyId, lojaId);
+        const [reg] = await sql<{ id: number }>`
+          select id from cash_registers
+           where company_id = ${tenant.companyId} and store_id = ${lojaId} and status = 'open'
+           limit 1
+        `;
+        if (!reg) throw new Error("Abra o caixa desta loja para receber em dinheiro.");
+        await sql`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+          values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'recebimento', 'dinheiro',
+                  ${baixa.amount}, ${`Recebimento: ${row.description ?? `título ${data.id}`}`})
+        `;
+      }
       const rec = Number((num(row.received_amount) + baixa.amount).toFixed(2));
       const target = num(row.amount) + baixa.interest - baixa.discount;
       const status = rec + 0.05 >= target ? "pago" : "parcial";
@@ -225,6 +267,7 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
       await audit(sql, tenant, "receive", "accounts_receivable", data.id, null, {
         amount: baixa.amount,
         status,
+        method: metodo,
       });
       return status;
     });
@@ -310,6 +353,8 @@ type RegisterSummary = {
   sangria: number;
   suprimento: number;
   devolucoes: number;
+  /** Parcelas/titulos recebidos em dinheiro no turno. */
+  recebimentos: number;
   /**
    * Os numeros que entregam o dinheiro esperado. `null` enquanto a
    * conferencia esta cega.
@@ -426,7 +471,11 @@ async function loadOpenRegister(
   const refunds = byMethod
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
     .reduce((a, m) => a + num(m.total), 0);
-  const expectedCash = num(reg.opening_amount) + cashSales + suprimento - sangria - refunds;
+  // Parcela de crediario/titulo paga em especie no balcao: entra na gaveta.
+  const recebimentos = byMethod
+    .filter((m) => m.type === "recebimento" && m.method === "dinheiro")
+    .reduce((a, m) => a + num(m.total), 0);
+  const expectedCash = num(reg.opening_amount) + cashSales + recebimentos + suprimento - sangria - refunds;
 
   return {
     register: {
@@ -448,6 +497,7 @@ async function loadOpenRegister(
       sangria,
       suprimento,
       devolucoes: refunds,
+      recebimentos,
       cash: revelar ? { sales, cashSales, expectedCash: money(expectedCash) } : null,
     },
   };

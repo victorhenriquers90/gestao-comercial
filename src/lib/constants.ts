@@ -157,7 +157,22 @@ export const CASH_MOVE_LABELS: Record<string, string> = {
   abertura: "Abertura",
   fechamento: "Fechamento",
   devolucao: "Devolução",
+  recebimento: "Recebimento",
 };
+
+/** Como o cliente pagou um titulo (parcela de crediario, conta a receber). */
+export const RECEIPT_METHODS = ["dinheiro", "pix", "debito", "credito", "transferencia"] as const;
+export type ReceiptMethod = (typeof RECEIPT_METHODS)[number];
+export const RECEIPT_METHOD_LABELS: Record<ReceiptMethod, string> = {
+  dinheiro: "Dinheiro",
+  pix: "PIX",
+  debito: "Cartão de débito",
+  credito: "Cartão de crédito",
+  transferencia: "Transferência",
+};
+export function isReceiptMethod(v: unknown): v is ReceiptMethod {
+  return typeof v === "string" && (RECEIPT_METHODS as readonly string[]).includes(v);
+}
 
 export const CASH_ACCOUNT_KINDS = ["caixa", "banco", "pix", "cartao", "carteira"] as const;
 export const CASH_ACCOUNT_LABELS: Record<string, string> = {

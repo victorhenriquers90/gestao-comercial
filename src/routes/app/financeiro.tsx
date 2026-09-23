@@ -10,7 +10,15 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
-import { ACCOUNT_STATUS_LABELS, CASH_ACCOUNT_LABELS, EXPENSE_CATEGORIES, PAYMENT_LABELS } from "@/lib/constants";
+import {
+  ACCOUNT_STATUS_LABELS,
+  CASH_ACCOUNT_LABELS,
+  EXPENSE_CATEGORIES,
+  PAYMENT_LABELS,
+  RECEIPT_METHOD_LABELS,
+  RECEIPT_METHODS,
+  type ReceiptMethod,
+} from "@/lib/constants";
 import { parseMoneyInput } from "@/lib/money-input";
 import { runAction } from "@/lib/run-action";
 import { CrediarioPanel } from "@/components/crediario-panel";
@@ -55,6 +63,9 @@ function FinanceiroPage() {
   const range = resolvePeriod("month");
   const [openPay, setOpenPay] = useState(false);
   const [openRec, setOpenRec] = useState(false);
+  /** Titulo sendo recebido e como o cliente pagou (sem padrao: aqui pode ser banco). */
+  const [recebendoId, setRecebendoId] = useState<number | null>(null);
+  const [formaRec, setFormaRec] = useState<ReceiptMethod | "">("");
   /** Trava o envio da despesa: dois cliques gravavam dois lancamentos iguais. */
   const [lancandoDespesa, setLancandoDespesa] = useState(false);
   const [desc, setDesc] = useState("");
@@ -245,23 +256,65 @@ function FinanceiroPage() {
                   </Td>
                   <Td>
                     {r.status !== "pago" && r.status !== "cancelado" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            await settleReceivableFn({
-                              data: { id: num(r.id), amount: num(r.amount) - num(r.received_amount) },
-                            });
-                            toast.success("Recebimento registrado.");
-                            void qc.invalidateQueries({ queryKey: ["ar"] });
-                          } catch (e) {
-                            toast.error(e instanceof Error ? e.message : "Falha");
-                          }
-                        }}
-                      >
-                        Receber
-                      </Button>
+                      recebendoId === num(r.id) ? (
+                        // Pergunta COMO foi pago antes de dar baixa: em dinheiro
+                        // o valor entra no caixa aberto; antes a baixa nao
+                        // lancava nada e a gaveta fechava com sobra.
+                        <div className="flex items-center gap-2">
+                          <Select
+                            className="h-8 w-40"
+                            aria-label="Forma de recebimento"
+                            value={formaRec}
+                            onChange={(e) => setFormaRec(e.target.value as ReceiptMethod | "")}
+                          >
+                            <option value="">Como pagou?</option>
+                            {RECEIPT_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {RECEIPT_METHOD_LABELS[m]}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="sm"
+                            disabled={!formaRec}
+                            onClick={async () => {
+                              if (!formaRec) return;
+                              const ok = await runAction(
+                                () =>
+                                  settleReceivableFn({
+                                    data: {
+                                      id: num(r.id),
+                                      amount: num(r.amount) - num(r.received_amount),
+                                      method: formaRec,
+                                      storeId: storeId ?? null,
+                                    },
+                                  }),
+                                { sucesso: "Recebimento registrado." },
+                              );
+                              if (!ok) return;
+                              setRecebendoId(null);
+                              void qc.invalidateQueries({ queryKey: ["ar"] });
+                              void qc.invalidateQueries({ queryKey: ["register"] });
+                            }}
+                          >
+                            Confirmar
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRecebendoId(null)}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRecebendoId(num(r.id));
+                            setFormaRec("");
+                          }}
+                        >
+                          Receber
+                        </Button>
+                      )
                     ) : null}
                   </Td>
                 </tr>

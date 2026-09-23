@@ -343,6 +343,9 @@ function CaixaPage() {
             <KpiCard label="Vendas no turno" value={String(d.summary?.salesCount ?? 0)} />
             <KpiCard label="PIX" value={formatBRL(d.summary?.pix ?? 0)} />
             <KpiCard label="Cartões" value={formatBRL(d.summary?.cards ?? 0)} />
+            {d.summary?.recebimentos ? (
+              <KpiCard label="Parcelas recebidas em dinheiro" value={formatBRL(d.summary.recebimentos)} />
+            ) : null}
           </div>
 
           {/* O dinheiro esperado NAO aparece aqui. Ver cash-count.ts: com o
