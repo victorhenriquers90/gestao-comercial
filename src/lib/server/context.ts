@@ -1,4 +1,5 @@
-import { getSql, type Sql } from "@/lib/db";
+import { dbSource, getSql, type Sql } from "@/lib/db";
+import { demoSeedEnabled } from "@/lib/demo-seed";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
 import { num, str } from "@/lib/utils";
 import { seedCompany } from "./seed";
@@ -236,18 +237,29 @@ export async function ensureTenant(sql: Sql, userId: string): Promise<Tenant> {
     returning id
   `;
   const companyId = company!.id;
+  const demo = demoSeedEnabled(dbSource, process.env.GC_DEMO_SEED);
 
-  const [store] = await sql<{ id: number }>`
-    insert into stores (company_id, name, code, city, state)
-    values (${companyId}, 'Loja Centro', 'LJ01', 'São Paulo', 'SP')
-    returning id
-  `;
+  // Sem demonstracao: uma loja so, sem cidade inventada -- endereco errado
+  // aqui iria parar em cupom e nota. O dono completa em Configuracoes.
+  const [store] = demo
+    ? await sql<{ id: number }>`
+        insert into stores (company_id, name, code, city, state)
+        values (${companyId}, 'Loja Centro', 'LJ01', 'São Paulo', 'SP')
+        returning id
+      `
+    : await sql<{ id: number }>`
+        insert into stores (company_id, name, code)
+        values (${companyId}, 'Loja principal', 'LJ01')
+        returning id
+      `;
   const storeId = store!.id;
 
-  await sql`
-    insert into stores (company_id, name, code, city, state)
-    values (${companyId}, 'Loja Shopping', 'LJ02', 'São Paulo', 'SP')
-  `;
+  if (demo) {
+    await sql`
+      insert into stores (company_id, name, code, city, state)
+      values (${companyId}, 'Loja Shopping', 'LJ02', 'São Paulo', 'SP')
+    `;
+  }
 
   await sql`
     insert into memberships (company_id, user_id, role, store_id)
@@ -277,17 +289,19 @@ export async function ensureTenant(sql: Sql, userId: string): Promise<Tenant> {
               : "Carteira";
     await sql`
       insert into cash_accounts (company_id, store_id, name, kind, opening_balance)
-      values (${companyId}, ${storeId}, ${label}, ${kind}, ${kind === "caixa" ? 350 : 0})
+      values (${companyId}, ${storeId}, ${label}, ${kind}, ${demo && kind === "caixa" ? 350 : 0})
     `;
   }
 
-  await seedCompany(sql, {
-    companyId,
-    storeId,
-    userId,
-    companyName,
-    userName: user.name,
-  });
+  if (demo) {
+    await seedCompany(sql, {
+      companyId,
+      storeId,
+      userId,
+      companyName,
+      userName: user.name,
+    });
+  }
 
   const tenant = await loadTenant(sql, userId);
   if (!tenant) throw new Error("Falha ao inicializar a empresa.");
