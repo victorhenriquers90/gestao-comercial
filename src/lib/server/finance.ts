@@ -1214,7 +1214,8 @@ async function loadPendingCommissions(
        left join commission_rules cr on cr.id = c.rule_id
       where c.company_id = $1 and c.status = 'pendente'
         and ($2::int is null or c.seller_id = $2)
-      order by c.seller_id, c.id`,
+      order by c.seller_id, c.id
+      for update of c`,
     [companyId, sellerId ?? null],
   );
   const mapped = rows.map((r) => ({
@@ -1356,17 +1357,28 @@ export const payCommissionFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    const pending = await loadPendingCommissions(sql, tenant.companyId, undefined, [data.id]);
-    if (!pending.length) {
-      const [row] = await sql<{ status: string }>`
-        select status from commissions where id = ${data.id} and company_id = ${tenant.companyId}
-      `;
-      if (!row) throw new Error("Comissão não encontrada.");
-      throw new Error("Só comissões pendentes podem ser pagas.");
-    }
-    const header = await companySlipHeader(sql, tenant.companyId);
-    const slip = await settleSellerBatch(sql, tenant, pending, data.storeId, header);
-    return dump({ ok: true, net: slip.tax.net, amount: slip.tax.gross, slips: [slip] });
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    /*
+      Pagamento inteiro numa transacao, com as comissoes travadas (`for
+      update` no loadPendingCommissions). Solto, dois cliques em Pagar
+      carregavam as mesmas pendentes: o `status = 'pendente'` do update
+      impedia virar duas vezes, mas as DESPESAS e o recibo saiam em dobro --
+      folha contada duas vezes e um segundo recibo pra pagar de novo. E uma
+      falha entre o update e o insert deixava comissao paga sem despesa.
+    */
+    return sql.transaction(async (sql) => {
+      const pending = await loadPendingCommissions(sql, tenant.companyId, undefined, [data.id]);
+      if (!pending.length) {
+        const [row] = await sql<{ status: string }>`
+          select status from commissions where id = ${data.id} and company_id = ${tenant.companyId}
+        `;
+        if (!row) throw new Error("Comissão não encontrada.");
+        throw new Error("Só comissões pendentes podem ser pagas.");
+      }
+      const header = await companySlipHeader(sql, tenant.companyId);
+      const slip = await settleSellerBatch(sql, tenant, pending, data.storeId, header);
+      return dump({ ok: true, net: slip.tax.net, amount: slip.tax.gross, slips: [slip] });
+    });
   });
 
 export const payPendingCommissionsFn = createServerFn({ method: "POST" })
@@ -1375,20 +1387,25 @@ export const payPendingCommissionsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    const pending = await loadPendingCommissions(sql, tenant.companyId, data.sellerId);
-    if (!pending.length) throw new Error("Nenhuma comissão pendente neste filtro.");
-    const header = await companySlipHeader(sql, tenant.companyId);
-    const groups = new Map<number, PendingCommission[]>();
-    for (const row of pending) {
-      const list = groups.get(row.seller_id) ?? [];
-      list.push(row);
-      groups.set(row.seller_id, list);
-    }
-    const slips: CommissionSlipData[] = [];
-    for (const group of groups.values()) {
-      slips.push(await settleSellerBatch(sql, tenant, group, data.storeId, header));
-    }
-    const amount = money(slips.reduce((a, s) => a + s.tax.gross, 0));
-    const net = money(slips.reduce((a, s) => a + s.tax.net, 0));
-    return dump({ ok: true, count: pending.length, amount, net, slips });
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    // Mesma transacao+lock do payCommissionFn; aqui tambem evita pagar
+    // metade dos vendedores e parar no meio.
+    return sql.transaction(async (sql) => {
+      const pending = await loadPendingCommissions(sql, tenant.companyId, data.sellerId);
+      if (!pending.length) throw new Error("Nenhuma comissão pendente neste filtro.");
+      const header = await companySlipHeader(sql, tenant.companyId);
+      const groups = new Map<number, PendingCommission[]>();
+      for (const row of pending) {
+        const list = groups.get(row.seller_id) ?? [];
+        list.push(row);
+        groups.set(row.seller_id, list);
+      }
+      const slips: CommissionSlipData[] = [];
+      for (const group of groups.values()) {
+        slips.push(await settleSellerBatch(sql, tenant, group, data.storeId, header));
+      }
+      const amount = money(slips.reduce((a, s) => a + s.tax.gross, 0));
+      const net = money(slips.reduce((a, s) => a + s.tax.net, 0));
+      return dump({ ok: true, count: pending.length, amount, net, slips });
+    });
   });
