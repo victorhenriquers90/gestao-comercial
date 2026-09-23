@@ -13,6 +13,10 @@ export type ReceiptItem = {
 export type ReceiptPay = {
   method: string;
   amount: number;
+  /** Dinheiro: o que o cliente entregou. */
+  received?: number;
+  change?: number;
+  installments?: number;
 };
 
 export type ReceiptData = {
@@ -77,7 +81,12 @@ export function Receipt({
           {company?.phone ? <p>{company.phone}</p> : null}
         </header>
         <hr className="my-2 border-dashed border-black/40" />
-        <p>Cupom nº {data.number}</p>
+        {/* Este papel nao e a NFC-e (essa sai do provedor fiscal, com chave
+            e QR code). Chamar de "cupom" e nao dizer que nao e fiscal faz o
+            cliente -- e o fiscal -- tomar comprovante por nota. */}
+        <p className="text-center font-semibold">COMPROVANTE DE VENDA</p>
+        <p className="mb-1 text-center">Não é documento fiscal</p>
+        <p>Venda nº {data.number}</p>
         <p>{formatDateTime(data.soldAt)}</p>
         {data.storeName ? <p>Loja: {data.storeName}</p> : null}
         <p>Cliente: {data.customerName || "Consumidor"}</p>
@@ -117,10 +126,31 @@ export function Receipt({
         </p>
         <hr className="my-2 border-dashed border-black/40" />
         {data.payments.map((p, i) => (
-          <p key={i} className="flex justify-between">
-            <span>{PAYMENT_LABELS[p.method as keyof typeof PAYMENT_LABELS] ?? p.method}</span>
-            <span>{formatBRL(p.amount)}</span>
-          </p>
+          <div key={i}>
+            <p className="flex justify-between">
+              <span>
+                {PAYMENT_LABELS[p.method as keyof typeof PAYMENT_LABELS] ?? p.method}
+                {(p.method === "credito" || p.method === "crediario") && (p.installments ?? 1) > 1
+                  ? ` ${p.installments}x`
+                  : ""}
+              </span>
+              <span>{formatBRL(p.amount)}</span>
+            </p>
+            {/* Recebido e troco: e o que o cliente confere antes de sair do
+                balcao. So aparece quando houve troco de fato. */}
+            {p.method === "dinheiro" && (p.change ?? 0) > 0.004 && p.received != null ? (
+              <>
+                <p className="flex justify-between pl-2">
+                  <span>Recebido</span>
+                  <span>{formatBRL(p.received)}</span>
+                </p>
+                <p className="flex justify-between pl-2">
+                  <span>Troco</span>
+                  <span>{formatBRL(p.change)}</span>
+                </p>
+              </>
+            ) : null}
+          </div>
         ))}
         {data.notes ? <p className="mt-2">Obs.: {data.notes}</p> : null}
         <hr className="my-2 border-dashed border-black/40" />

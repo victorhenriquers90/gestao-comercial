@@ -678,7 +678,15 @@ export const checkoutFn = createServerFn({ method: "POST" })
         discount: l.discount,
         total: l.total,
       })),
-      payments: data.payments.map((p) => ({ method: p.method, amount: num(p.amount) })),
+      // O que foi GRAVADO (validado), nao o que o cliente mandou -- e com
+      // recebido/troco/parcelas, que o comprovante precisa mostrar.
+      payments: pagamentos.map((p) => ({
+        method: p.method,
+        amount: p.amount,
+        received: p.received,
+        change: p.method === "dinheiro" ? Math.max(0, p.received - p.amount) : 0,
+        installments: p.installments,
+      })),
       commission,
     };
   });
