@@ -123,6 +123,9 @@ function PdvPage() {
   const [custOpen, setCustOpen] = useState(false);
   const [discOpen, setDiscOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // `busy` e estado: dois disparos no mesmo tick (atalho + clique, duas
+  // teclas rapidas) ainda leem false. A ref trava na hora, sincrona.
+  const acaoEmCurso = useRef(false);
   const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [payments, setPayments] = useState<PayRow[]>([emptyPay()]);
@@ -282,6 +285,12 @@ function PdvPage() {
       // perdendo o CPF que estava sendo pedido naquele instante.
       const dialogoAberto = document.querySelector('[role="dialog"][data-state="open"]') !== null;
       if (dialogoAberto && e.key !== "Escape") return;
+      // Tecla segurada repete a cada ~30ms: F10 um pouco mais longo
+      // finalizava a mesma venda varias vezes antes da primeira voltar.
+      if (e.repeat && /^F\d{1,2}$/.test(e.key)) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "F2") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -332,6 +341,8 @@ function PdvPage() {
       toast.error("Selecione uma loja.");
       return;
     }
+    if (acaoEmCurso.current) return;
+    acaoEmCurso.current = true;
     try {
       await holdSaleFn({
         data: {
@@ -352,6 +363,8 @@ function PdvPage() {
       void qc.invalidateQueries({ queryKey: ["held"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível guardar.");
+    } finally {
+      acaoEmCurso.current = false;
     }
   }
 
@@ -473,6 +486,8 @@ function PdvPage() {
       toast.error("Informe as formas de pagamento.");
       return;
     }
+    if (acaoEmCurso.current) return;
+    acaoEmCurso.current = true;
     setBusy(true);
     try {
       const res = await checkoutFn({
@@ -511,6 +526,7 @@ function PdvPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível finalizar.");
     } finally {
+      acaoEmCurso.current = false;
       setBusy(false);
     }
   }
