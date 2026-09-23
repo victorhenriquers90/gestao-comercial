@@ -60,7 +60,13 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 ## Invariantes (não quebrar)
 
 1. **Desktop-first.** Layout de caixa, não app de celular. PDV em duas colunas
-   (peças | cupom).
+   (itens da venda | cupom): busca + tabela de itens na coluna larga, total +
+   pagamento + ações no cupom. Resultado da busca é painel suspenso — não
+   volte a dar a coluna larga para os resultados (a venda ficava com um item
+   visível em 1366×768). Componentes em `src/components/pdv/`, contas em
+   `src/lib/pdv-sale.ts` (testadas). O Finalizar nunca sai da vista: ações
+   presas no pé do cupom e modo compacto em telas baixas (~650px de viewport
+   num monitor 1366×768 com navegador).
 2. **Caixa aberto** para finalizar venda (`checkoutFn`).
 3. **Um caixa aberto por loja** (índice parcial `cash_registers_one_open_idx`).
 4. **CPF/CNPJ:** vazio ok; preenchido = módulo 11; único por empresa
@@ -93,8 +99,12 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 ## Domínio rápido
 
 - **PDV** (`/app/pdv`): F2 busca, F4 documento, F6 desconto, F8 pagamento,
-  F9 espera, F10 finaliza. Crediário exige cliente (CPF na nota cria
-  Consumidor).
+  F9 guardar, F10 finaliza (sem pagamento informado = dinheiro, valor exato;
+  com pagamento informado, usa o informado mesmo com o F8 fechado). Com a
+  busca vazia: ↑/↓ escolhe item, +/− quantidade, Delete remove. O pedido de
+  CPF é um lembrete no cupom, não um diálogo automático (o diálogo roubava o
+  foco e a próxima bipagem caía no campo de CPF). Crediário exige cliente
+  (CPF na nota cria Consumidor).
 - **Vendedores:** regime `none|clt|autonomo|mei|pj` define CPF vs CNPJ.
 - **Promoções** entram no preço da linha via `bestPromo`.
 - **Estoque** por variante × loja; `allow_negative_stock` nas settings.
