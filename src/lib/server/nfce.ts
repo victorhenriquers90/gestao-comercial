@@ -274,9 +274,12 @@ export const emitNfceFn = createServerFn({ method: "POST" })
 
     const message =
       nullableStr(res.body.mensagem) ?? nullableStr(res.body.erro) ?? `Falha ao emitir (HTTP ${res.status}).`;
+    // Duas emissoes simultaneas: o ref e o mesmo, o provedor recusa a
+    // segunda -- e essa recusa nao pode pisar no 'autorizado' da primeira.
     await sql`
       update sales set nfce_status = 'erro', nfce_error = ${message}
       where id = ${data.saleId} and company_id = ${tenant.companyId}
+        and not (coalesce(nfce_env, '') = ${env} and coalesce(nfce_status, 'erro') <> 'erro')
     `;
     return { ok: false as const, errors: [message] };
   });
