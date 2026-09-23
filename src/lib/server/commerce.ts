@@ -31,7 +31,7 @@ import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument } from "@/lib/document";
 import { sanitizeMultiline } from "@/lib/sanitize";
 import { loadCommissionRules, loadSellerTargetBonuses, parseBreakdown, sellerMonthRevenue, taxForSeller, taxInsert } from "./commission";
-import { assertStore, audit, nextNumber, requireTenant } from "./context";
+import { assertOwned, assertStore, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 
 export type CartItemIn = {
@@ -153,6 +153,8 @@ export const checkoutFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
     await assertStore(sql, tenant.companyId, data.storeId);
+    await assertOwned(sql, tenant.companyId, "customers", data.customerId);
+    await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     if (!data.items.length) throw new Error("Inclua ao menos um item.");
     const [regOpen] = await sql<{ id: number }>`
       select id from cash_registers
@@ -1225,6 +1227,8 @@ export const holdSaleFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
     await assertStore(sql, tenant.companyId, data.storeId);
+    await assertOwned(sql, tenant.companyId, "customers", data.customerId);
+    await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     let parsed: HeldPayload;
     try {
       parsed = JSON.parse(data.payloadJson) as HeldPayload;
@@ -1342,6 +1346,8 @@ export const savePromotionFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "promotions.write");
+    await assertOwned(sql, tenant.companyId, "products", data.productId);
+    await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
     if (data.id) {
       await sql`
         update promotions set name = ${data.name}, kind = ${data.kind}, percent = ${data.percent ?? null},

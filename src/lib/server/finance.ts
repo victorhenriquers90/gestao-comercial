@@ -16,7 +16,7 @@ import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-hand
 import { num } from "@/lib/utils";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
-import { assertStore, audit, requireTenant, type Tenant } from "./context";
+import { assertOwned, assertStore, audit, requireTenant, type Tenant } from "./context";
 import { taxForSeller, taxInsert } from "./commission";
 
 function accountStatus(row: { status: string; due_date: string; amount: unknown; paid?: unknown; received?: unknown }) {
@@ -74,6 +74,8 @@ export const savePayableFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
+    await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     if (data.id) {
       await sql`
         update accounts_payable set description = ${data.description}, category = ${data.category ?? null},
@@ -173,6 +175,8 @@ export const saveReceivableFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
+    await assertOwned(sql, tenant.companyId, "customers", data.customerId);
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     if (data.id) {
       await sql`
         update accounts_receivable set description = ${data.description}, due_date = ${data.dueDate},
@@ -939,6 +943,7 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     await sql`
       insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
       values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category ?? null}, ${data.amount}, ${data.spentAt}, ${data.accountKind ?? null}, ${tenant.userId})
@@ -1049,6 +1054,9 @@ export const saveTargetFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "targets.write");
+    await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
+    await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     const name = data.name.trim();
     if (!name) throw new Error("Informe o nome da meta.");
     const amount = Number(data.amount);

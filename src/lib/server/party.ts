@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertFreeDocument, audit, requireTenant } from "./context";
+import { assertFreeDocument, assertOwned, audit, requireTenant } from "./context";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument, parseCnpj, sellerDocKind, onlyDigits } from "@/lib/document";
@@ -234,6 +234,7 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "customers.write");
+    await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     await assertFreeDocument(sql, "customers", tenant.companyId, data.document, data.id, "um cliente");
     if (data.id) {
       await sql`
@@ -298,6 +299,7 @@ export const saveCrmTaskFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "crm.write");
+    await assertOwned(sql, tenant.companyId, "customers", data.customerId);
     await sql`
       insert into crm_tasks (company_id, customer_id, user_id, title, due_at)
       values (${tenant.companyId}, ${data.customerId}, ${tenant.userId}, ${data.title}, ${data.dueAt ?? null})
@@ -629,6 +631,7 @@ export const saveSellerFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sellers.write");
+    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     await assertFreeDocument(sql, "sellers", tenant.companyId, data.document, data.id, "um vendedor");
     const taxRegime = data.taxRegime && ["none", "clt", "autonomo", "mei", "pj"].includes(data.taxRegime)
       ? data.taxRegime

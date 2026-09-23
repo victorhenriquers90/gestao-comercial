@@ -37,6 +37,32 @@ export async function assertStore(
   if (!rows.length) throw new Error("Loja inválida para esta empresa.");
 }
 
+const OWNED = {
+  customers: "Cliente inválido",
+  sellers: "Vendedor inválido",
+  suppliers: "Fornecedor inválido",
+  brands: "Marca inválida",
+  categories: "Categoria inválida",
+  products: "Produto inválido",
+  stores: "Loja inválida",
+} as const;
+
+// Qualquer conta nova ganha empresa propria no mesmo banco: um id vindo do
+// cliente pode ser de outra empresa, e o join na leitura mostraria os dados dela.
+export async function assertOwned(
+  sql: Sql,
+  companyId: number,
+  table: keyof typeof OWNED,
+  id: number | null | undefined,
+): Promise<void> {
+  if (id == null) return;
+  const rows = await sql.query<{ id: number }>(
+    `select id from ${table} where id = $1 and company_id = $2`,
+    [id, companyId],
+  );
+  if (!rows.length) throw new Error(`${OWNED[table]} para esta empresa.`);
+}
+
 export async function assertVariants(
   sql: Sql,
   companyId: number,

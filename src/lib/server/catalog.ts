@@ -3,7 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { ncmValidSql, parseNcm } from "@/lib/ncm";
 import { num } from "@/lib/utils";
-import { assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
+import { assertOwned, assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
 import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
@@ -33,6 +33,7 @@ export const saveCategoryFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.write");
+    await assertOwned(sql, tenant.companyId, "categories", data.parentId);
     const [row] = await sql<{ id: number }>`
       insert into categories (company_id, name, parent_id)
       values (${tenant.companyId}, ${data.name.trim()}, ${data.parentId ?? null})
@@ -214,6 +215,9 @@ export const saveProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.write");
+    await assertOwned(sql, tenant.companyId, "brands", data.brandId ? num(data.brandId) : null);
+    await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
+    await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
 
     /*
       Produto, marca, variantes e auditoria numa transacao so.
@@ -661,6 +665,7 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.write");
     await assertStore(sql, tenant.companyId, data.storeId);
+    await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
     await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
     /*
       Quantidade, custo e os extras entravam crus e iam direto pro banco.
