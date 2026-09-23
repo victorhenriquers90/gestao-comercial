@@ -113,6 +113,24 @@ export const saveCardRatesFn = createServerFn({ method: "POST" })
     return { ok: true, total: validas.length };
   });
 
+/**
+ * Dinheiro vivo que a venda ainda "tem" na gaveta: o que entrou em especie
+ * menos o que ja voltou (devolucao ou cancelamento). E o teto do que pode
+ * sair do caixa como estorno -- nem mais (troco nao volta duas vezes), nem
+ * menos (senao o esperado do fechamento fica inflado).
+ */
+export async function dinheiroAindaNaVenda(sql: Sql, saleId: number): Promise<number> {
+  const [pago] = await sql<{ v: string | number }>`
+    select coalesce(sum(amount), 0) as v from payments
+     where sale_id = ${saleId} and method = 'dinheiro'
+  `;
+  const [devolvido] = await sql<{ v: string | number }>`
+    select coalesce(sum(amount), 0) as v from cash_movements
+     where sale_id = ${saleId} and type in ('devolucao', 'cancelamento')
+  `;
+  return Number(Math.max(0, num(pago?.v) - num(devolvido?.v)).toFixed(2));
+}
+
 function mapPromo(r: Row): Promo {
   return {
     id: num(r.id),
@@ -866,9 +884,17 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
         select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
       `;
       if (reg) {
+        /*
+          O dinheiro da venda volta pro cliente -- sai da gaveta. Antes o
+          lancamento ia com valor 0: o esperado do fechamento continuava
+          contando a venda cancelada, e a diferenca aparecia como FALTA do
+          operador. Desconta o que ja voltou em devolucao parcial.
+        */
+        const estorno = await dinheiroAindaNaVenda(tx, sale.id);
         await tx`
-          insert into cash_movements (company_id, store_id, register_id, user_id, type, amount, description, sale_id)
-          values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento', 0, ${"Cancelamento venda nº " + sale.number}, ${sale.id})
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description, sale_id)
+          values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento',
+                  ${estorno > 0.009 ? "dinheiro" : null}, ${estorno}, ${"Cancelamento venda nº " + sale.number}, ${sale.id})
         `;
       }
       await tx`
@@ -1129,22 +1155,7 @@ export const createReturnFn = createServerFn({ method: "POST" })
         `;
       }
 
-      const cashPaid = (
-        await sql<{ v: string | number }>`
-          select coalesce(sum(amount),0) as v from payments
-           where sale_id = ${sale.id} and method = 'dinheiro'
-        `
-      )[0];
-      const alreadyCash = (
-        await sql<{ v: string | number }>`
-          select coalesce(sum(amount),0) as v from cash_movements
-           where sale_id = ${sale.id} and type in ('devolucao','cancelamento')
-        `
-      )[0];
-      const cashRefund = Math.min(
-        Math.max(0, num(cashPaid?.v) - num(alreadyCash?.v)),
-        total,
-      );
+      const cashRefund = Math.min(await dinheiroAindaNaVenda(sql, sale.id), total);
       if (cashRefund > 0.009) {
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
