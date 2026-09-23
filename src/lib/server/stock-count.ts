@@ -113,43 +113,53 @@ export const saveCountItemFn = createServerFn({ method: "POST" })
     await assertVariants(sql, tenant.companyId, [data.variantId]);
     const counted = parseCountedQuantity(data.counted);
 
-    const [count] = await sql<{ store_id: number; status: string }>`
-      select store_id, status from stock_counts
-       where id = ${data.countId} and company_id = ${tenant.companyId}
-    `;
-    if (!count) throw new Error("Inventário não encontrado.");
-    if (count.status !== "aberto") throw new Error("Este inventário já foi encerrado.");
-
     /*
-      O `expected` e relido a CADA contagem, nao apenas na primeira.
-
-      Recontar e uma observacao nova da prateleira. Se entre a primeira
-      contagem e a recontagem uma peca foi vendida, o esperado de agora e
-      outro -- e e contra ele que o contado de agora precisa ser comparado.
-      Congelar o esperado da primeira vez faria a recontagem produzir uma
-      diferenca que nao existe.
+      `for share` no cabecalho: conflita com o `for update` do Aplicar, mas
+      nao entre quem esta contando -- varias pessoas bipando ao mesmo tempo
+      seguem sem se esperar. Sem a trava, uma bipagem no meio do Aplicar
+      entrava num inventario ja aplicado: "salvo" na tela, diferenca nunca
+      lancada, e o inventario listando a peca como contada.
     */
-    const [inv] = await sql<{ quantity: string | number }>`
-      select quantity from inventories
-       where company_id = ${tenant.companyId} and store_id = ${count.store_id}
-         and variant_id = ${data.variantId}
-    `;
-    const expected = num(inv?.quantity);
+    return sql.transaction(async (sql) => {
+      const [count] = await sql<{ store_id: number; status: string }>`
+        select store_id, status from stock_counts
+         where id = ${data.countId} and company_id = ${tenant.companyId}
+         for share
+      `;
+      if (!count) throw new Error("Inventário não encontrado.");
+      if (count.status !== "aberto") throw new Error("Este inventário já foi encerrado.");
 
-    await sql`
-      insert into stock_count_items (
-        company_id, count_id, variant_id, expected, counted, counted_at, counted_by
-      ) values (
-        ${tenant.companyId}, ${data.countId}, ${data.variantId}, ${expected}, ${counted},
-        now(), ${tenant.userId}
-      )
-      on conflict (count_id, variant_id) do update
-        set expected = excluded.expected,
-            counted = excluded.counted,
-            counted_at = now(),
-            counted_by = excluded.counted_by
-    `;
-    return { expected, counted, diff: Number((counted - expected).toFixed(3)) };
+      /*
+        O `expected` e relido a CADA contagem, nao apenas na primeira.
+
+        Recontar e uma observacao nova da prateleira. Se entre a primeira
+        contagem e a recontagem uma peca foi vendida, o esperado de agora e
+        outro -- e e contra ele que o contado de agora precisa ser comparado.
+        Congelar o esperado da primeira vez faria a recontagem produzir uma
+        diferenca que nao existe.
+      */
+      const [inv] = await sql<{ quantity: string | number }>`
+        select quantity from inventories
+         where company_id = ${tenant.companyId} and store_id = ${count.store_id}
+           and variant_id = ${data.variantId}
+      `;
+      const expected = num(inv?.quantity);
+
+      await sql`
+        insert into stock_count_items (
+          company_id, count_id, variant_id, expected, counted, counted_at, counted_by
+        ) values (
+          ${tenant.companyId}, ${data.countId}, ${data.variantId}, ${expected}, ${counted},
+          now(), ${tenant.userId}
+        )
+        on conflict (count_id, variant_id) do update
+          set expected = excluded.expected,
+              counted = excluded.counted,
+              counted_at = now(),
+              counted_by = excluded.counted_by
+      `;
+      return { expected, counted, diff: Number((counted - expected).toFixed(3)) };
+    });
   });
 
 export const removeCountItemFn = createServerFn({ method: "POST" })
@@ -158,17 +168,23 @@ export const removeCountItemFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
-    const [count] = await sql<{ status: string }>`
-      select status from stock_counts where id = ${data.countId} and company_id = ${tenant.companyId}
-    `;
-    if (!count) throw new Error("Inventário não encontrado.");
-    if (count.status !== "aberto") throw new Error("Este inventário já foi encerrado.");
-    await sql`
-      delete from stock_count_items
-       where count_id = ${data.countId} and variant_id = ${data.variantId}
-         and company_id = ${tenant.companyId}
-    `;
-    return { ok: true };
+    // Mesma trava do saveCountItemFn: apagar linha de inventario ja aplicado
+    // tiraria do registro uma diferenca que foi lancada no estoque.
+    return sql.transaction(async (sql) => {
+      const [count] = await sql<{ status: string }>`
+        select status from stock_counts
+         where id = ${data.countId} and company_id = ${tenant.companyId}
+         for share
+      `;
+      if (!count) throw new Error("Inventário não encontrado.");
+      if (count.status !== "aberto") throw new Error("Este inventário já foi encerrado.");
+      await sql`
+        delete from stock_count_items
+         where count_id = ${data.countId} and variant_id = ${data.variantId}
+           and company_id = ${tenant.companyId}
+      `;
+      return { ok: true };
+    });
   });
 
 export const cancelStockCountFn = createServerFn({ method: "POST" })
