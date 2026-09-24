@@ -83,6 +83,32 @@ function empty(title: string, columns: string[], kinds: ColKind[]) {
   return pack({ title, columns, rows: [], kinds, kpis: [{ label: "Registros", value: "0" }] });
 }
 
+/**
+ * Liquido de devolucao, por venda (`s` precisa ser o alias de `sales`).
+ *
+ * `sales.total`/`sales.cost_total` NUNCA sao reduzidos numa devolucao
+ * parcial -- o valor fiscal original tem que ficar intacto. Sem este join,
+ * todo relatorio que soma `total` filtrando so `status = 'finalizada'` fazia
+ * a venda com devolucao parcial SUMIR INTEIRA do relatorio, nao so o valor
+ * devolvido. Mesmo padrao ja validado em insight.ts/commission.ts.
+ */
+const RETURN_BY_SALE = `
+  left join lateral (
+    select coalesce(sum(ri.amount), 0) as returned_revenue,
+           coalesce(sum(ri.quantity * si.cost), 0) as returned_cost
+      from return_items ri
+      join sale_items si on si.id = ri.sale_item_id
+     where si.sale_id = s.id
+  ) ret on true`;
+
+/** Mesma coisa, por LINHA (`si` precisa ser o alias de `sale_items`) -- mais preciso quando o relatorio ja agrega por item/produto. */
+const RETURN_BY_ITEM = `
+  left join lateral (
+    select coalesce(sum(ri.quantity), 0) as returned_qty,
+           coalesce(sum(ri.amount), 0) as returned_amount
+      from return_items ri where ri.sale_item_id = si.id
+  ) ret on true`;
+
 function prevWindow(from: string, to: string) {
   const a = new Date(`${from}T00:00:00`);
   const b = new Date(`${to}T00:00:00`);
@@ -114,14 +140,16 @@ export const reportFn = createServerFn({ method: "POST" })
     const type = data.type;
 
     if (type === "resumo") {
-      const kpiSql = `select coalesce(sum(total),0) as revenue, count(*)::int as sales,
-                             coalesce(avg(total),0) as ticket, coalesce(sum(total - cost_total),0) as profit,
-                             coalesce(sum(discount),0) as disc, coalesce(sum(cost_total),0) as cost
-                        from sales
-                       where company_id = $1 and deleted_at is null and status = 'finalizada'
-                         and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
-                         and ($4::int is null or store_id = $4)
-                         and ($5::int is null or seller_id = $5)`;
+      const kpiSql = `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue, count(*)::int as sales,
+                             coalesce(avg(s.total - coalesce(ret.returned_revenue,0)),0) as ticket,
+                             coalesce(sum((s.total - coalesce(ret.returned_revenue,0)) - (s.cost_total - coalesce(ret.returned_cost,0))),0) as profit,
+                             coalesce(sum(s.discount),0) as disc, coalesce(sum(s.cost_total - coalesce(ret.returned_cost,0)),0) as cost
+                        from sales s
+                        ${RETURN_BY_SALE}
+                       where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+                         and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
+                         and ($4::int is null or s.store_id = $4)
+                         and ($5::int is null or s.seller_id = $5)`;
       const [cur] = await sql.query<{
         revenue: string | number;
         sales: number;
@@ -143,13 +171,15 @@ export const reportFn = createServerFn({ method: "POST" })
       const prevRev = num(old?.revenue);
       const trend = prevRev ? ((revenue - prevRev) / prevRev) * 100 : revenue ? 100 : 0;
       const series = await sql.query<{ d: string; total: string | number; n: number }>(
-        `select to_char(sold_at::date, 'DD/MM') as d, coalesce(sum(total),0) as total, count(*)::int as n
-           from sales
-          where company_id = $1 and deleted_at is null and status = 'finalizada'
-            and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
-            and ($4::int is null or store_id = $4)
-            and ($5::int is null or seller_id = $5)
-          group by 1, sold_at::date order by sold_at::date`,
+        `select to_char(s.sold_at::date, 'DD/MM') as d,
+                coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as total, count(*)::int as n
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+            and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
+            and ($4::int is null or s.store_id = $4)
+            and ($5::int is null or s.seller_id = $5)
+          group by 1, s.sold_at::date order by s.sold_at::date`,
         params,
       );
       const [rec] = await sql.query<{ v: string | number }>(
@@ -221,11 +251,14 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "vendedor") {
       const rows = (
         await sql.query<Row>(
-          `select coalesce(sl.name,'Sem vendedor') as name, count(*)::int as n, sum(s.total) as total, avg(s.total) as ticket,
+          `select coalesce(sl.name,'Sem vendedor') as name, count(*)::int as n,
+                  sum(s.total - coalesce(ret.returned_revenue,0)) as total,
+                  avg(s.total - coalesce(ret.returned_revenue,0)) as ticket,
                   coalesce((select sum(c.amount) from commissions c where c.seller_id = s.seller_id
                             and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')),0) as comm
              from sales s left join sellers sl on sl.id = s.seller_id
-            where s.company_id = $1 and s.status = 'finalizada'
+             ${RETURN_BY_SALE}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -248,10 +281,14 @@ export const reportFn = createServerFn({ method: "POST" })
       const title = type === "menos" ? "Menos vendidos" : type === "mais" ? "Mais vendidos" : "Mix de produtos";
       const rows = (
         await sql.query<Row>(
-          `select si.description, sum(si.quantity) as qty, sum(si.total) as total,
-                  sum(si.cost * si.quantity) as cost, sum(si.total - si.cost * si.quantity) as profit
+          `select si.description,
+                  sum(si.quantity - coalesce(ret.returned_qty,0)) as qty,
+                  sum(si.total - coalesce(ret.returned_amount,0)) as total,
+                  sum(si.cost * (si.quantity - coalesce(ret.returned_qty,0))) as cost,
+                  sum((si.total - coalesce(ret.returned_amount,0)) - si.cost * (si.quantity - coalesce(ret.returned_qty,0))) as profit
              from sale_items si join sales s on s.id = si.sale_id
-            where s.company_id = $1 and s.status = 'finalizada'
+             ${RETURN_BY_ITEM}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -273,9 +310,12 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "abc") {
       const raw = (
         await sql.query<Row>(
-          `select si.description, sum(si.total) as total, sum(si.quantity) as qty
+          `select si.description,
+                  sum(si.total - coalesce(ret.returned_amount,0)) as total,
+                  sum(si.quantity - coalesce(ret.returned_qty,0)) as qty
              from sale_items si join sales s on s.id = si.sale_id
-            where s.company_id = $1 and s.status = 'finalizada'
+             ${RETURN_BY_ITEM}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -319,12 +359,15 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "categoria") {
       const rows = (
         await sql.query<Row>(
-          `select coalesce(c.name,'Sem categoria') as name, sum(si.quantity) as qty, sum(si.total) as total
+          `select coalesce(c.name,'Sem categoria') as name,
+                  sum(si.quantity - coalesce(ret.returned_qty,0)) as qty,
+                  sum(si.total - coalesce(ret.returned_amount,0)) as total
              from sale_items si
              join sales s on s.id = si.sale_id
              join products p on p.id = si.product_id
              left join categories c on c.id = p.category_id
-            where s.company_id = $1 and s.status = 'finalizada'
+             ${RETURN_BY_ITEM}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -344,9 +387,12 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "cliente") {
       const rows = (
         await sql.query<Row>(
-          `select coalesce(c.name,'Consumidor') as name, count(*)::int as n, sum(s.total) as total, avg(s.total) as ticket
+          `select coalesce(c.name,'Consumidor') as name, count(*)::int as n,
+                  sum(s.total - coalesce(ret.returned_revenue,0)) as total,
+                  avg(s.total - coalesce(ret.returned_revenue,0)) as ticket
              from sales s left join customers c on c.id = s.customer_id
-            where s.company_id = $1 and s.status = 'finalizada'
+             ${RETURN_BY_SALE}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -366,13 +412,16 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "lucro" || type === "margem") {
       const rows = (
         await sql.query<Row>(
-          `select to_char(sold_at::date,'YYYY-MM-DD') as d, sum(total) as total, sum(cost_total) as cost,
-                  sum(total - cost_total) as profit
-             from sales
-            where company_id = $1 and status = 'finalizada'
-              and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
-              and ($4::int is null or store_id = $4)
-              and ($5::int is null or seller_id = $5)
+          `select to_char(s.sold_at::date,'YYYY-MM-DD') as d,
+                  sum(s.total - coalesce(ret.returned_revenue,0)) as total,
+                  sum(s.cost_total - coalesce(ret.returned_cost,0)) as cost,
+                  sum((s.total - coalesce(ret.returned_revenue,0)) - (s.cost_total - coalesce(ret.returned_cost,0))) as profit
+             from sales s
+             ${RETURN_BY_SALE}
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
+              and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
+              and ($4::int is null or s.store_id = $4)
+              and ($5::int is null or s.seller_id = $5)
             group by 1 order by 1`,
           params,
         )
@@ -409,13 +458,16 @@ export const reportFn = createServerFn({ method: "POST" })
         cost: string | number;
         subtotal: string | number;
       }>(
-        `select coalesce(sum(total),0) as revenue, coalesce(sum(discount),0) as disc,
-                coalesce(sum(cost_total),0) as cost, coalesce(sum(subtotal),0) as subtotal
-           from sales
-          where company_id = $1 and status = 'finalizada' and deleted_at is null
-            and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
-            and ($4::int is null or store_id = $4)
-            and ($5::int is null or seller_id = $5)`,
+        `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue,
+                coalesce(sum(s.discount),0) as disc,
+                coalesce(sum(s.cost_total - coalesce(ret.returned_cost,0)),0) as cost,
+                coalesce(sum(s.subtotal),0) as subtotal
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial') and s.deleted_at is null
+            and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
+            and ($4::int is null or s.store_id = $4)
+            and ($5::int is null or s.seller_id = $5)`,
         params,
       );
       const [ex] = await sql.query<{ v: string | number }>(
@@ -471,9 +523,13 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "pagamento") {
       const rows = (
         await sql.query<Row>(
+          // p.amount (nao s.total): o que entrou de verdade por forma de
+          // pagamento no checkout, e devolucao nao desfaz o pagamento
+          // original -- so devolvida_parcial entra no filtro, sem descontar
+          // nada, pra parar de sumir a venda inteira da mistura.
           `select p.method, count(*)::int as n, sum(p.amount) as total
              from payments p join sales s on s.id = p.sale_id
-            where s.company_id = $1 and s.status = 'finalizada'
+            where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
               and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
               and ($4::int is null or s.store_id = $4)
               and ($5::int is null or s.seller_id = $5)
@@ -524,9 +580,11 @@ export const reportFn = createServerFn({ method: "POST" })
 
     if (type === "giro") {
       const days = prevWindow(data.from, data.to).days;
-      const soldSql = `coalesce((select sum(si.quantity) from sale_items si
+      const soldSql = `coalesce((select sum(si.quantity - coalesce(
+                              (select sum(ri.quantity) from return_items ri where ri.sale_item_id = si.id), 0))
+                            from sale_items si
                             join sales s on s.id = si.sale_id
-                           where si.variant_id = v.id and s.status = 'finalizada'
+                           where si.variant_id = v.id and s.status in ('finalizada','devolvida_parcial')
                              and s.company_id = $1
                              and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
                              and ($4::int is null or s.store_id = $4)),0)`;
