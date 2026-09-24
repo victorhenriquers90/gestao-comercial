@@ -15,6 +15,27 @@ import {
   sanitizeMultiline,
 } from "@/lib/sanitize";
 
+/**
+ * Liquido de devolucao, por venda (usa `sales.id` sem alias -- so serve
+ * pra sites que chamam a tabela pelo proprio nome).
+ *
+ * `sales.total` NUNCA e reduzido numa devolucao parcial -- sem este join,
+ * a compra total/LTV do cliente contava a peca devolvida como se ainda
+ * tivesse sido vendida (quando a venda inteira nao sumia primeiro, por
+ * causa do filtro `status = 'finalizada'`). Mesmo padrao ja validado em
+ * insight.ts/reports.ts/commission.ts. Os sites que usam tagged template
+ * (`` sql`...` ``) escrevem o mesmo join por extenso: `${...}` num tagged
+ * template vira PARAMETRO, nao texto SQL cru, entao esta constante so serve
+ * pros sites em `.query()`.
+ */
+const RETURN_BY_SALE = `
+  left join lateral (
+    select coalesce(sum(ri.amount), 0) as returned_revenue
+      from return_items ri
+      join sale_items si on si.id = ri.sale_item_id
+     where si.sale_id = sales.id
+  ) ret on true`;
+
 export const listCustomersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { q?: string; stage?: string; kind?: "pf" | "pj"; debit?: boolean }) => d)
@@ -54,9 +75,10 @@ export const listCustomersFn = createServerFn({ method: "POST" })
               tk.next_due
          from customers c
          left join (
-           select customer_id, sum(total) as total_bought, max(sold_at) as last_purchase
+           select customer_id, sum(sales.total - coalesce(ret.returned_revenue,0)) as total_bought, max(sold_at) as last_purchase
              from sales
-            where company_id = $1 and status = 'finalizada' and deleted_at is null
+             ${RETURN_BY_SALE}
+            where company_id = $1 and status in ('finalizada','devolvida_parcial') and deleted_at is null
             group by customer_id
          ) sv on sv.customer_id = c.id
          left join (
@@ -110,10 +132,17 @@ export const getCustomerFn = createServerFn({ method: "POST" })
       order by sold_at desc limit 50
     `;
     const products = await sql<Row>`
-      select si.description, sum(si.quantity) as qty, sum(si.total) as total
+      select si.description,
+             sum(si.quantity - coalesce(ret.returned_qty,0)) as qty,
+             sum(si.total - coalesce(ret.returned_amount,0)) as total
       from sale_items si
       join sales s on s.id = si.sale_id
-      where s.customer_id = ${data.id} and s.status = 'finalizada'
+      left join lateral (
+        select coalesce(sum(ri.quantity), 0) as returned_qty,
+               coalesce(sum(ri.amount), 0) as returned_amount
+          from return_items ri where ri.sale_item_id = si.id
+      ) ret on true
+      where s.customer_id = ${data.id} and s.status in ('finalizada','devolvida_parcial')
       group by si.description
       order by total desc
       limit 20
@@ -130,8 +159,17 @@ export const getCustomerFn = createServerFn({ method: "POST" })
       select * from crm_tasks where customer_id = ${data.id} order by created_at desc
     `;
     const stats = await sql<{ total: string | number; n: number; avg: string | number }>`
-      select coalesce(sum(total),0) as total, count(*)::int as n, coalesce(avg(total),0) as avg
-      from sales where customer_id = ${data.id} and status = 'finalizada'
+      select coalesce(sum(sales.total - coalesce(ret.returned_revenue,0)),0) as total,
+             count(*)::int as n,
+             coalesce(avg(sales.total - coalesce(ret.returned_revenue,0)),0) as avg
+      from sales
+      left join lateral (
+        select coalesce(sum(ri.amount), 0) as returned_revenue
+          from return_items ri
+          join sale_items si on si.id = ri.sale_item_id
+         where si.sale_id = sales.id
+      ) ret on true
+      where customer_id = ${data.id} and status in ('finalizada','devolvida_parcial')
     `;
     return dump({
       customer: {
@@ -552,8 +590,12 @@ export const listSellersFn = createServerFn({ method: "GET" })
     assertCan(tenant.role, "sellers.read");
     const rows = await sql<Row>`
       select sl.*,
-        coalesce((select sum(s.total) from sales s
-                  where s.seller_id = sl.id and s.status = 'finalizada'
+        coalesce((select sum(s.total - coalesce(
+                    (select sum(ri.amount) from return_items ri
+                       join sale_items si on si.id = ri.sale_item_id
+                      where si.sale_id = s.id), 0))
+                  from sales s
+                  where s.seller_id = sl.id and s.status in ('finalizada','devolvida_parcial')
                     and s.sold_at >= date_trunc('month', now())),0) as month_revenue,
         coalesce((select sum(c.amount) from commissions c
                   where c.seller_id = sl.id

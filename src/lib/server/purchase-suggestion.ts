@@ -45,10 +45,17 @@ export const suggestPurchaseFn = createServerFn({ method: "POST" })
          left join inventories i on i.variant_id = v.id and i.store_id = $2
          left join suppliers f on f.id = p.supplier_id
          left join (
-           select si.variant_id, sum(si.quantity) as vendido
+           -- devolvida_parcial entra, liquido do que voltou: sem isto a
+           -- venda inteira sumia do consumo do produto por causa de UMA
+           -- peca devolvida, subestimando quanto repor.
+           select si.variant_id, sum(si.quantity - coalesce(ret.returned_qty,0)) as vendido
              from sale_items si
              join sales sa on sa.id = si.sale_id
-            where sa.company_id = $1 and sa.status = 'finalizada' and sa.deleted_at is null
+             left join lateral (
+               select coalesce(sum(ri.quantity), 0) as returned_qty
+                 from return_items ri where ri.sale_item_id = si.id
+             ) ret on true
+            where sa.company_id = $1 and sa.status in ('finalizada','devolvida_parcial') and sa.deleted_at is null
               and sa.store_id = $2
               -- Sem cast na coluna: comparar sold_at direto com now() menos o
               -- intervalo usa indice; castar a coluna para date nao usaria.
