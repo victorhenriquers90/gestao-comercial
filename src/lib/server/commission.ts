@@ -172,13 +172,24 @@ export async function sellerMonthRevenue(
   sellerId: number,
   excludeSaleId?: number,
 ): Promise<number> {
+  /*
+    devolvida_parcial entra, mas LIQUIDA da devolucao -- nao pelo `total`
+    cheio. `sales.total` nunca e reduzido numa devolucao parcial (o valor
+    fiscal original tem que continuar intacto), entao somar `total` cru de
+    toda venda com devolucao parcial inflava a faixa de comissao do
+    vendedor pela mesma peca duas vezes: uma na venda, outra ja creditada
+    de volta pro cliente.
+  */
   const [row] = await sql.query<{ total: string | number }>(
-    `select coalesce(sum(total),0) as total
-       from sales
-      where company_id = $1 and seller_id = $2
-        and status in ('finalizada','devolvida_parcial')
-        and sold_at >= date_trunc('month', now())
-        and ($3::int is null or id <> $3)`,
+    `select coalesce(sum(s.total - coalesce(ret.returned, 0)),0) as total
+       from sales s
+       left join lateral (
+         select sum(r.total) as returned from returns r where r.sale_id = s.id
+       ) ret on true
+      where s.company_id = $1 and s.seller_id = $2
+        and s.status in ('finalizada','devolvida_parcial')
+        and s.sold_at >= date_trunc('month', now())
+        and ($3::int is null or s.id <> $3)`,
     [companyId, sellerId, excludeSaleId ?? null],
   );
   return num(row?.total);
@@ -202,16 +213,25 @@ export async function loadSellerTargetBonuses(
     bloco lateral enxerga a linha `t`. E `left join`, nao `join`: meta sem
     venda no periodo tem que aparecer com realizado zero, nao sumir da lista
     (seria bonus calculado sobre uma meta invisivel).
+
+    devolvida_parcial entra, liquida da devolucao -- mesma correcao de
+    `sellerMonthRevenue` acima, pelo mesmo motivo: sem isto, uma devolucao
+    pequena fazia a venda inteira sumir da meta (o vendedor perdia o
+    progresso da venda toda por causa de uma peca), quando so o valor
+    devolvido deveria sair da conta.
   */
   const rows = await sql.query<Row>(
     `select t.id, t.name, t.amount, t.bonus_kind, t.bonus_value,
             coalesce(r.v, 0) as realized
        from targets t
        left join lateral (
-         select coalesce(sum(s.total), 0) as v
+         select coalesce(sum(s.total - coalesce(ret.returned, 0)), 0) as v
            from sales s
+           left join lateral (
+             select sum(rt.total) as returned from returns rt where rt.sale_id = s.id
+           ) ret on true
           where s.company_id = t.company_id
-            and s.status = 'finalizada' and s.deleted_at is null
+            and s.status in ('finalizada', 'devolvida_parcial') and s.deleted_at is null
             and s.sold_at >= t.period_start
             and s.sold_at < (t.period_end + interval '1 day')
             and (t.store_id is null or s.store_id = t.store_id)
