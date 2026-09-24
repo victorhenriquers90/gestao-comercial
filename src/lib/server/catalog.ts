@@ -675,6 +675,22 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
     await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
     /*
+      productId vem do CLIENTE, mas quem manda e a variante: o formulario
+      monta os dois juntos, mas nada impede um payload direto com um par que
+      nao bate (variantId de um produto, productId de outro). Sem isto,
+      purchase_items gravaria o produto errado, e receivePurchaseFn dali a
+      diante atualizaria custo do produto errado -- o mesmo desvio que o
+      checkout ja evita derivando product_id da variante, nunca do cliente.
+    */
+    const produtoDaVariante = new Map(
+      (
+        await sql.query<{ id: number; product_id: number }>(
+          `select id, product_id from product_variants where company_id = $1 and id = any($2::int[])`,
+          [tenant.companyId, data.items.map((i) => i.variantId)],
+        )
+      ).map((r) => [r.id, r.product_id]),
+    );
+    /*
       Quantidade, custo e os extras entravam crus e iam direto pro banco.
       Dois buracos reais nisso:
 
@@ -687,6 +703,7 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     */
     const itens = data.items.map((i) => ({
       ...i,
+      productId: produtoDaVariante.get(i.variantId) ?? i.productId,
       quantity: parseStockQuantity(i.quantity, `quantidade de "${i.description}"`),
       unitCost: parseUnitCost(i.unitCost, `custo de "${i.description}"`),
     }));
