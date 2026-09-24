@@ -125,16 +125,18 @@ venda inteira SUMIR da conta por causa de uma peça devolvida, em vez de só
 o valor devolvido sair. Corrigido em `commission.ts` (faixa de comissão,
 progresso de meta), `insight.ts` (dashboard inteiro), `reports.ts`
 (resumo, vendedor, produto/ABC/categoria/cliente, lucro/margem, DRE, giro),
-`party.ts` (LTV do cliente, faturamento do vendedor) e
-`purchase-suggestion.ts` (consumo diário). Padrão: `status in
-('finalizada','devolvida_parcial')` + `left join lateral` somando
-`return_items` — por venda (`si.sale_id = s.id`) na maioria, por linha
-(`ri.sale_item_id = si.id`) onde o relatório já agrega por produto, mais
-preciso. Em tagged template (`` sql`...` ``) o join vai escrito por
-extenso — `${...}` ali vira parâmetro, não texto SQL cru, então não dá pra
-reusar a constante que os sites em `.query()` compartilham. Exceção
-deliberada: o relatório de "Pagamentos" soma `payments.amount` (o que
-entrou de verdade em cada forma no checkout), não `sales.total` — devolução
+`party.ts` (LTV do cliente, faturamento do vendedor), `purchase-suggestion.ts`
+(consumo diário) e `finance.ts` (fluxo de caixa, progresso de meta na tela
+Metas — mais uma cópia do mesmo cálculo de "realizado" de commission.ts/
+insight.ts). Padrão: `status in ('finalizada','devolvida_parcial')` +
+`left join lateral` somando `return_items` — por venda (`si.sale_id =
+s.id`) na maioria, por linha (`ri.sale_item_id = si.id`) onde o relatório
+já agrega por produto, mais preciso. Em tagged template (`` sql`...` ``) o
+join vai escrito por extenso — `${...}` ali vira parâmetro, não texto SQL
+cru, então não dá pra reusar a constante que os sites em `.query()`
+compartilham. Exceção deliberada: fluxo de caixa e o relatório de
+"Pagamentos" somam `payments.amount` (o que entrou de verdade em cada
+forma no checkout), não `sales.total` — devolução
 não desfaz o pagamento original, só alargou o filtro de status, sem
 descontar nada.
 
