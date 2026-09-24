@@ -16,6 +16,28 @@ function andEq(
   return ` and ${column} = $${params.length}`;
 }
 
+/**
+ * Liquido de devolucao, por venda (`s` precisa ser o alias da tabela `sales`).
+ *
+ * `sales.total`/`sales.cost_total` NUNCA sao reduzidos numa devolucao
+ * parcial -- o valor fiscal original tem que ficar intacto (e' por isso que
+ * o comprovante e a NFC-e ja emitida continuam mostrando o total cheio).
+ * Sem este join, todo KPI que soma `total` filtrando so `status =
+ * 'finalizada'` fazia a venda com devolucao parcial SUMIR INTEIRA da conta
+ * -- uma devolucao de uma peca de R$10 numa venda de R$500 tirava os R$500
+ * inteiros do faturamento, nao so os R$10. A correcao e' na LEITURA: soma o
+ * que foi devolvido e desconta na hora de agregar, incluindo
+ * `devolvida_parcial` no filtro de status.
+ */
+const RETURN_BY_SALE = `
+  left join lateral (
+    select coalesce(sum(ri.amount), 0) as returned_revenue,
+           coalesce(sum(ri.quantity * si.cost), 0) as returned_cost
+      from return_items ri
+      join sale_items si on si.id = ri.sale_item_id
+     where si.sale_id = s.id
+  ) ret on true`;
+
 export const dashboardFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -35,28 +57,29 @@ export const dashboardFn = createServerFn({ method: "POST" })
     const sellerId = data.sellerId ?? null;
 
     const kpiParams: unknown[] = [tenant.companyId, range.from, range.to];
-    const kpiScope = `${andEq(kpiParams, "store_id", storeId)}${andEq(kpiParams, "seller_id", sellerId)}`;
+    const kpiScope = `${andEq(kpiParams, "s.store_id", storeId)}${andEq(kpiParams, "s.seller_id", sellerId)}`;
     const kpiSql = `
-      select coalesce(sum(total),0) as revenue,
+      select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue,
              count(*)::int as sales,
-             coalesce(avg(total),0) as ticket,
-             coalesce(sum(total - cost_total),0) as profit
-        from sales
-       where company_id = $1 and deleted_at is null and status = 'finalizada'
-         and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
+             coalesce(avg(s.total - coalesce(ret.returned_revenue,0)),0) as ticket,
+             coalesce(sum((s.total - coalesce(ret.returned_revenue,0)) - (s.cost_total - coalesce(ret.returned_cost,0))),0) as profit
+        from sales s
+        ${RETURN_BY_SALE}
+       where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+         and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
          ${kpiScope}`;
 
     const today = ymdLocal();
     const monthStart = `${today.slice(0, 7)}-01`;
 
     const todayParams: unknown[] = [tenant.companyId];
-    const todayScope = andEq(todayParams, "store_id", storeId);
+    const todayScope = andEq(todayParams, "s.store_id", storeId);
     const monthParams: unknown[] = [tenant.companyId, monthStart];
-    const monthScope = andEq(monthParams, "store_id", storeId);
+    const monthScope = andEq(monthParams, "s.store_id", storeId);
     const seriesParams: unknown[] = [tenant.companyId, range.from, range.to];
-    const seriesScope = `${andEq(seriesParams, "store_id", storeId)}${andEq(seriesParams, "seller_id", sellerId)}`;
+    const seriesScope = `${andEq(seriesParams, "s.store_id", storeId)}${andEq(seriesParams, "s.seller_id", sellerId)}`;
     const monthlyParams: unknown[] = [tenant.companyId];
-    const monthlyScope = andEq(monthlyParams, "store_id", storeId);
+    const monthlyScope = andEq(monthlyParams, "s.store_id", storeId);
     const mixParams: unknown[] = [tenant.companyId, range.from, range.to];
     const mixScope = andEq(mixParams, "s.store_id", storeId);
     const sellerParams: unknown[] = [tenant.companyId, range.from, range.to];
@@ -90,16 +113,20 @@ export const dashboardFn = createServerFn({ method: "POST" })
         ...kpiParams.slice(3),
       ]),
       sql.query<{ revenue: string | number; sales: number }>(
-        `select coalesce(sum(total),0) as revenue, count(*)::int as sales from sales
-          where company_id = $1 and deleted_at is null and status = 'finalizada'
-            and sold_at >= current_date and sold_at < current_date + interval '1 day'
+        `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue, count(*)::int as sales
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+            and s.sold_at >= current_date and s.sold_at < current_date + interval '1 day'
             ${todayScope}`,
         todayParams,
       ),
       sql.query<{ revenue: string | number }>(
-        `select coalesce(sum(total),0) as revenue from sales
-          where company_id = $1 and deleted_at is null and status = 'finalizada'
-            and sold_at >= $2::date
+        `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+            and s.sold_at >= $2::date
             ${monthScope}`,
         monthParams,
       ),
@@ -114,28 +141,42 @@ export const dashboardFn = createServerFn({ method: "POST" })
         [tenant.companyId],
       ),
       sql.query<{ d: string; total: string | number; n: number }>(
-        `select to_char(sold_at::date, 'YYYY-MM-DD') as d, coalesce(sum(total),0) as total, count(*)::int as n
-           from sales
-          where company_id = $1 and deleted_at is null and status = 'finalizada'
-            and sold_at >= $2::date and sold_at < ($3::date + interval '1 day')
+        `select to_char(s.sold_at::date, 'YYYY-MM-DD') as d,
+                coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as total, count(*)::int as n
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+            and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
             ${seriesScope}
           group by 1 order by 1`,
         seriesParams,
       ),
       sql.query<{ m: string; total: string | number }>(
-        `select to_char(date_trunc('month', sold_at), 'YYYY-MM') as m, coalesce(sum(total),0) as total
-           from sales
-          where company_id = $1 and deleted_at is null and status = 'finalizada'
-            and sold_at >= (current_date - interval '11 months')
+        `select to_char(date_trunc('month', s.sold_at), 'YYYY-MM') as m,
+                coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as total
+           from sales s
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.deleted_at is null and s.status in ('finalizada','devolvida_parcial')
+            and s.sold_at >= (current_date - interval '11 months')
             ${monthlyScope}
           group by 1 order by 1`,
         monthlyParams,
       ),
       sql.query<{ name: string; qty: string | number; total: string | number }>(
-        `select si.description as name, sum(si.quantity) as qty, sum(si.total) as total
+        // Liquido por LINHA (nao por venda): o return_items de uma devolucao
+        // aponta pro sale_item exato, entao da pra descontar so a peca
+        // devolvida do produto certo, mais preciso que ratear por venda.
+        `select si.description as name,
+                sum(si.quantity - coalesce(ret.returned_qty,0)) as qty,
+                sum(si.total - coalesce(ret.returned_amount,0)) as total
            from sale_items si
            join sales s on s.id = si.sale_id
-          where s.company_id = $1 and s.status = 'finalizada'
+           left join lateral (
+             select coalesce(sum(ri.quantity),0) as returned_qty,
+                    coalesce(sum(ri.amount),0) as returned_amount
+               from return_items ri where ri.sale_item_id = si.id
+           ) ret on true
+          where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
             and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
             ${mixScope}
           group by si.description
@@ -143,10 +184,12 @@ export const dashboardFn = createServerFn({ method: "POST" })
         mixParams,
       ),
       sql.query<{ name: string; total: string | number; n: number }>(
-        `select coalesce(sl.name, 'Sem vendedor') as name, sum(s.total) as total, count(*)::int as n
+        `select coalesce(sl.name, 'Sem vendedor') as name,
+                sum(s.total - coalesce(ret.returned_revenue,0)) as total, count(*)::int as n
            from sales s
            left join sellers sl on sl.id = s.seller_id
-          where s.company_id = $1 and s.status = 'finalizada'
+           ${RETURN_BY_SALE}
+          where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
             and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
             ${sellerScope}
           group by 1
@@ -222,16 +265,17 @@ export const dashboardFn = createServerFn({ method: "POST" })
       targetIds.length === 0
         ? []
         : await sql.query<{ id: number; v: string | number }>(
-            `select t.id, coalesce(sum(s.total),0) as v
+            `select t.id, coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as v
                from targets t
                left join sales s
                  on s.company_id = t.company_id
-                and s.status = 'finalizada'
+                and s.status in ('finalizada','devolvida_parcial')
                 and s.deleted_at is null
                 and s.sold_at >= t.period_start
                 and s.sold_at < (t.period_end + interval '1 day')
                 and (t.store_id is null or s.store_id = t.store_id)
                 and (t.seller_id is null or s.seller_id = t.seller_id)
+               ${RETURN_BY_SALE}
               where t.company_id = $1 and t.id = any($2::int[])
               group by t.id`,
             [tenant.companyId, targetIds],
