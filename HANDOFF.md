@@ -118,6 +118,26 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 
 ## O que já está feito (não refazer)
 
+Faturamento líquido de devolução: `sales.total`/`cost_total` nunca são
+reduzidos numa devolução parcial (o valor fiscal original tem que ficar
+intacto), então toda soma que filtrava só `status = 'finalizada'` fazia a
+venda inteira SUMIR da conta por causa de uma peça devolvida, em vez de só
+o valor devolvido sair. Corrigido em `commission.ts` (faixa de comissão,
+progresso de meta), `insight.ts` (dashboard inteiro), `reports.ts`
+(resumo, vendedor, produto/ABC/categoria/cliente, lucro/margem, DRE, giro),
+`party.ts` (LTV do cliente, faturamento do vendedor) e
+`purchase-suggestion.ts` (consumo diário). Padrão: `status in
+('finalizada','devolvida_parcial')` + `left join lateral` somando
+`return_items` — por venda (`si.sale_id = s.id`) na maioria, por linha
+(`ri.sale_item_id = si.id`) onde o relatório já agrega por produto, mais
+preciso. Em tagged template (`` sql`...` ``) o join vai escrito por
+extenso — `${...}` ali vira parâmetro, não texto SQL cru, então não dá pra
+reusar a constante que os sites em `.query()` compartilham. Exceção
+deliberada: o relatório de "Pagamentos" soma `payments.amount` (o que
+entrou de verdade em cada forma no checkout), não `sales.total` — devolução
+não desfaz o pagamento original, só alargou o filtro de status, sem
+descontar nada.
+
 Backup do banco (`installer\lib\Backup.ps1`, `Backup-GestaoComercial.ps1`,
 `Restore-GestaoComercial.ps1`): tarefa diária do Windows às 22:30 por SYSTEM,
 dump `-Fc` verificado com `pg_restore --list` **antes** de receber o nome
@@ -184,25 +204,10 @@ texto no tema do app.
    existindo no código (migrations no `npm run build`), mas não é o que está
    em produção — não mexa nele achando que é o alvo.
 
-2. **Devolução parcial some da venda inteira em faturamento/relatório/LTV.**
-   `sales.total` nunca é reduzido numa devolução parcial (o valor fiscal
-   original tem que ficar intacto). `commission.ts` tinha duas funções que
-   erravam em direções opostas por causa disso — corrigido (ver commit
-   "devolucao parcial contava errado na comissao"), somando liquido
-   (`total - soma de returns.sale_id`) e incluindo `devolvida_parcial`. O
-   MESMO problema continua, sem corrigir, em ~20 outros pontos que somam
-   `sales.total`/`s.total` filtrando só `status = 'finalizada'`:
-   `insight.ts` (dashboard: KPI principal, hoje, mês, série diária, mensal,
-   top produtos/vendedores), `reports.ts` (praticamente todos os relatórios
-   de venda), `party.ts` (histórico e LTV do cliente, total do vendedor),
-   `purchase-suggestion.ts` (consumo diário pra sugestão de compra). Em todos
-   esses, uma venda com devolução parcial (mesmo de uma peça de R$10 numa
-   venda de R$500) some INTEIRA da conta — sub-conta, não dobra, mas mesma
-   causa raiz. Não tentei corrigir tudo de uma vez: são ~20 pontos de leitura
-   espalhados por 4 arquivos, e vale a pena decidir antes se o padrão certo é
-   repetir o `left join lateral` de `commission.ts` em cada um ou criar uma
-   view/coluna computada de "total líquido de devolução" pra não duplicar a
-   mesma subquery 20 vezes.
+2. ~~Devolução parcial some da venda inteira em faturamento/relatório/LTV~~
+   — **corrigido por completo** em `commission.ts`, `insight.ts`,
+   `reports.ts`, `party.ts` e `purchase-suggestion.ts`. Ver "O que já está
+   feito" para o padrão usado.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
