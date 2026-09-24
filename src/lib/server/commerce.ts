@@ -1130,7 +1130,21 @@ export const createReturnFn = createServerFn({ method: "POST" })
         }
       }
 
-      const [ar] = await sql<{
+      /*
+        TODAS as parcelas em aberto, nao so a primeira. Crediario e cartao
+        parcelado gravam uma linha de accounts_receivable POR PARCELA
+        (splitCrediario/liquidacao.installments no checkout) -- uma venda de
+        3x tem 3 linhas. Pegar so uma (`limit 1`) e descontar o valor
+        devolvido INTEIRO dela cortava o troco no zero da propria parcela: o
+        resto do valor devolvido sumia, e as parcelas seguintes continuavam
+        cobrando o preco cheio de peca que ja voltou pra loja -- cliente
+        pagando por algo que devolveu.
+
+        Abate em cascata, da parcela que vence primeiro pra ultima, ate o
+        valor devolvido acabar: conserva o valor inteiro (nenhum centavo
+        perdido nem duplicado) e da alivio imediato na proxima cobranca.
+      */
+      const arsAbertas = await sql<{
         id: number;
         amount: string | number;
         received_amount: string | number;
@@ -1139,23 +1153,28 @@ export const createReturnFn = createServerFn({ method: "POST" })
         select id, amount, received_amount, due_date from accounts_receivable
          where sale_id = ${sale.id} and company_id = ${tenant.companyId}
            and status in ('pendente','parcial','vencido')
-         limit 1
+         order by due_date asc, id asc
       `;
-      if (ar) {
-        const nextAmt = Math.max(0, Number((num(ar.amount) - total).toFixed(2)));
-        const received = num(ar.received_amount);
-        const today = ymdLocal();
+      let restanteDevolucao = total;
+      const today = ymdLocal();
+      for (const parcela of arsAbertas) {
+        if (restanteDevolucao <= 0.009) break;
+        const amt = num(parcela.amount);
+        const abate = Math.min(amt, restanteDevolucao);
+        const nextAmt = Number((amt - abate).toFixed(2));
+        restanteDevolucao = Number((restanteDevolucao - abate).toFixed(2));
+        const received = num(parcela.received_amount);
         const status =
           nextAmt <= 0.009
             ? "cancelado"
             : received + 0.009 >= nextAmt
               ? "pago"
-              : String(ar.due_date).slice(0, 10) < today
+              : String(parcela.due_date).slice(0, 10) < today
                 ? "vencido"
                 : "pendente";
         await sql`
           update accounts_receivable set amount = ${nextAmt}, status = ${status}
-          where id = ${ar.id}
+          where id = ${parcela.id}
         `;
       }
 
