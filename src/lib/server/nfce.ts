@@ -505,8 +505,14 @@ export async function cancelarNfce(
       nullableStr(res.body.mensagem) ??
       nullableStr(res.body.erro) ??
       `HTTP ${res.status}`;
+    // cancelWindow espera o instante da AUTORIZACAO (e' a partir dali que o
+    // SEFAZ conta os 30 minutos) -- nfce_cancelled_at so seria preenchido
+    // depois de um cancelamento que DEU CERTO, entao aqui (cancelamento que
+    // acabou de FALHAR) ele e sempre null, e o aviso "fora do prazo" nunca
+    // aparecia: uma nota autorizada ha 3 dias mandava tentar cancelar de
+    // novo em vez de avisar na hora que o unico jeito e a NF-e de devolucao.
     const janela = cancelWindow(
-      sale.nfce_cancelled_at == null ? null : String(sale.nfce_cancelled_at),
+      sale.nfce_authorized_at == null ? null : String(sale.nfce_authorized_at),
     );
     const texto = pendenciaText(
       janela.provavelmenteExpirado ? "fora_do_prazo" : "cancelamento_falhou",
