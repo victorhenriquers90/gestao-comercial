@@ -184,6 +184,26 @@ texto no tema do app.
    existindo no código (migrations no `npm run build`), mas não é o que está
    em produção — não mexa nele achando que é o alvo.
 
+2. **Devolução parcial some da venda inteira em faturamento/relatório/LTV.**
+   `sales.total` nunca é reduzido numa devolução parcial (o valor fiscal
+   original tem que ficar intacto). `commission.ts` tinha duas funções que
+   erravam em direções opostas por causa disso — corrigido (ver commit
+   "devolucao parcial contava errado na comissao"), somando liquido
+   (`total - soma de returns.sale_id`) e incluindo `devolvida_parcial`. O
+   MESMO problema continua, sem corrigir, em ~20 outros pontos que somam
+   `sales.total`/`s.total` filtrando só `status = 'finalizada'`:
+   `insight.ts` (dashboard: KPI principal, hoje, mês, série diária, mensal,
+   top produtos/vendedores), `reports.ts` (praticamente todos os relatórios
+   de venda), `party.ts` (histórico e LTV do cliente, total do vendedor),
+   `purchase-suggestion.ts` (consumo diário pra sugestão de compra). Em todos
+   esses, uma venda com devolução parcial (mesmo de uma peça de R$10 numa
+   venda de R$500) some INTEIRA da conta — sub-conta, não dobra, mas mesma
+   causa raiz. Não tentei corrigir tudo de uma vez: são ~20 pontos de leitura
+   espalhados por 4 arquivos, e vale a pena decidir antes se o padrão certo é
+   repetir o `left join lateral` de `commission.ts` em cada um ou criar uma
+   view/coluna computada de "total líquido de devolução" pra não duplicar a
+   mesma subquery 20 vezes.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
