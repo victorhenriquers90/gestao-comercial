@@ -126,7 +126,12 @@ definitivo (escrito como `.partial` até passar), retenção 30 dias com piso de
 atualização abortada), e `-BackupSecondaryDir` para cópia fora da máquina.
 Testado na loja piloto: 44 tabelas, contagem de linhas do dump conferida
 contra o banco vivo tabela a tabela, e a verificação rejeitando dump
-truncado e vazio.
+truncado e vazio. A tela de Configurações lê `last-backup.json`
+(`src/lib/server/backup.ts`, `src/lib/backup-status.ts`,
+`BackupStatusCard`) e avisa quando o último backup passa de 48h (crítico
+com 7 dias), com severidade separada para a cópia externa — o backup local
+pode estar em dia enquanto o pendrive está fora da tomada há semanas, e as
+duas coisas não podem virar um "OK" só.
 
 Cadastro completo (produto/grade, cliente, fornecedor, compra, estoque,
 financeiro, caixa, CRM, metas, promoções, devoluções, relatórios). Folha de
@@ -178,13 +183,6 @@ texto no tema do app.
    Tailscale). Ver `installer\README.md`. O caminho Vercel + Neon continua
    existindo no código (migrations no `npm run build`), mas não é o que está
    em produção — não mexa nele achando que é o alvo.
-
-2. **Visibilidade do backup no sistema.** A rotina de backup existe e grava
-   `C:\ProgramData\GestaoComercial\backups\last-backup.json`, mas nada no app
-   lê esse arquivo. A falha clássica desse tipo de rotina é parar de rodar
-   sem ninguém perceber — "não dar erro" é exatamente como o silêncio se
-   parece. Falta um aviso em Configurações quando o último backup passar de
-   ~48h.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em

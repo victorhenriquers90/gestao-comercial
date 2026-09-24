@@ -16,7 +16,7 @@ import type { Sql } from "@/lib/db";
 import { type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { requireTenant } from "./context";
+import { assertOwned, requireTenant } from "./context";
 
 export function parseBreakdown(raw: unknown): CommissionLineOut[] {
   const src = typeof raw === "string" ? (() => {
@@ -309,6 +309,12 @@ export const saveCommissionRuleFn = createServerFn({ method: "POST" })
     if (n.kind === "fixed_unit" && n.percent > 10000) {
       throw new Error("Valor por peça inválido.");
     }
+    // Regra de outra empresa nunca bateria com venda daqui, mas o dropdown
+    // so oferece o que e desta empresa -- so chega ID de outra por chamada
+    // direta a API, e a regra ficaria salva sem NUNCA se aplicar a nada.
+    await assertOwned(sql, tenant.companyId, "sellers", n.sellerId);
+    await assertOwned(sql, tenant.companyId, "categories", n.categoryId);
+    await assertOwned(sql, tenant.companyId, "products", n.productId);
     const skipPromo = Boolean(n.skipPromo) && !n.onlyPromo;
     const onlyPromo = Boolean(n.onlyPromo);
     const tiersJson = JSON.stringify(n.tiers);
