@@ -203,126 +203,223 @@ async function loadEmitInput(
   return { input };
 }
 
+type TenantSql = Awaited<ReturnType<typeof requireTenant>>;
+type EmitResult = { ok: true; status: string; env: NfceEnv } | { ok: false; errors: string[] };
+
+/**
+ * Emite a NFC-e de uma venda. Corpo do emitNfceFn, separado pra ser usado
+ * tambem na emissao automatica do PDV -- as duas portas passam pela MESMA
+ * regra (duplicidade, validacao fiscal, gravacao do status).
+ */
+async function emitirNfce(sql: TenantSql["sql"], tenant: TenantSql["tenant"], saleId: number): Promise<EmitResult> {
+  const env = focusEnv();
+
+  /*
+    Uma nota de TESTE não pode barrar a nota que vale.
+
+    Homologação existe pra testar, então esses testes vão acontecer --
+    e gravam status 'autorizado', chave, número e DANFE, iguais aos de
+    uma nota real. Sem esta checagem, toda venda usada pra testar
+    ficaria para sempre sem documento fiscal, parecendo que tem.
+
+    Reemitir no MESMO ambiente continua barrado: ali a nota ou já
+    existe, ou está em processamento, e insistir geraria duplicidade
+    de verdade.
+  */
+  const [atual] = await sql<{ nfce_status: string | null; nfce_env: string | null }>`
+    select nfce_status, nfce_env from sales
+     where id = ${saleId} and company_id = ${tenant.companyId}
+  `;
+  const emitida = atual?.nfce_status != null && atual.nfce_status !== "erro";
+  if (emitida && atual!.nfce_env === env) {
+    throw new Error(
+      env === "homologacao"
+        ? "Esta venda já tem nota de teste. Para emitir a real, o servidor precisa estar em produção."
+        : "Esta venda já tem nota fiscal emitida.",
+    );
+  }
+
+  const loaded = await loadEmitInput(sql, tenant.companyId, saleId, env);
+  if ("error" in loaded) throw new Error(loaded.error);
+  const { input } = loaded;
+
+  const errors = validateNfceReadiness(input);
+  if (errors.length) return { ok: false, errors };
+
+  const payload = buildNfcePayload(input);
+  const res = await focusRequest(`/v2/nfce?ref=${encodeURIComponent(input.ref)}`, "POST", payload);
+
+  if (res.status === 200 || res.status === 202) {
+    const status = nullableStr(res.body.status) ?? "processando_autorizacao";
+    /*
+      Chave, número, série e links são zerados junto: são da nota
+      anterior. Uma emissão de produção por cima de um teste herdaria a
+      chave do teste até alguém apertar 'Atualizar status' -- e nesse
+      meio-tempo a tela mostraria uma chave falsa com cara de fiscal.
+    */
+    await sql`
+      update sales set nfce_ref = ${input.ref}, nfce_status = ${status}, nfce_env = ${env},
+        nfce_error = null, nfce_chave = null, nfce_numero = null, nfce_serie = null,
+        nfce_danfe_url = null, nfce_xml_url = null,
+        nfce_pendencia = null, nfce_cancel_protocol = null, nfce_cancelled_at = null,
+        nfce_authorized_at = ${status === "autorizado" ? new Date().toISOString() : null}
+      where id = ${saleId} and company_id = ${tenant.companyId}
+    `;
+    await audit(sql, tenant, "emit", "nfce", saleId, null, {
+      ref: input.ref,
+      status,
+      env,
+      substituiuTeste: emitida,
+    });
+    return { ok: true, status, env };
+  }
+
+  const message =
+    nullableStr(res.body.mensagem) ?? nullableStr(res.body.erro) ?? `Falha ao emitir (HTTP ${res.status}).`;
+  // Duas emissoes simultaneas: o ref e o mesmo, o provedor recusa a
+  // segunda -- e essa recusa nao pode pisar no 'autorizado' da primeira.
+  await sql`
+    update sales set nfce_status = 'erro', nfce_error = ${message}
+    where id = ${saleId} and company_id = ${tenant.companyId}
+      and not (coalesce(nfce_env, '') = ${env} and coalesce(nfce_status, 'erro') <> 'erro')
+  `;
+  return { ok: false, errors: [message] };
+}
+
 export const emitNfceFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { saleId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sales.write");
-
-    const env = focusEnv();
-
-    /*
-      Uma nota de TESTE não pode barrar a nota que vale.
-
-      Homologação existe pra testar, então esses testes vão acontecer --
-      e gravam status 'autorizado', chave, número e DANFE, iguais aos de
-      uma nota real. Sem esta checagem, toda venda usada pra testar
-      ficaria para sempre sem documento fiscal, parecendo que tem.
-
-      Reemitir no MESMO ambiente continua barrado: ali a nota ou já
-      existe, ou está em processamento, e insistir geraria duplicidade
-      de verdade.
-    */
-    const [atual] = await sql<{ nfce_status: string | null; nfce_env: string | null }>`
-      select nfce_status, nfce_env from sales
-       where id = ${data.saleId} and company_id = ${tenant.companyId}
-    `;
-    const emitida = atual?.nfce_status != null && atual.nfce_status !== "erro";
-    if (emitida && atual!.nfce_env === env) {
-      throw new Error(
-        env === "homologacao"
-          ? "Esta venda já tem nota de teste. Para emitir a real, o servidor precisa estar em produção."
-          : "Esta venda já tem nota fiscal emitida.",
-      );
-    }
-
-    const loaded = await loadEmitInput(sql, tenant.companyId, data.saleId, env);
-    if ("error" in loaded) throw new Error(loaded.error);
-    const { input } = loaded;
-
-    const errors = validateNfceReadiness(input);
-    if (errors.length) return { ok: false as const, errors };
-
-    const payload = buildNfcePayload(input);
-    const res = await focusRequest(`/v2/nfce?ref=${encodeURIComponent(input.ref)}`, "POST", payload);
-
-    if (res.status === 200 || res.status === 202) {
-      const status = nullableStr(res.body.status) ?? "processando_autorizacao";
-      /*
-        Chave, número, série e links são zerados junto: são da nota
-        anterior. Uma emissão de produção por cima de um teste herdaria a
-        chave do teste até alguém apertar 'Atualizar status' -- e nesse
-        meio-tempo a tela mostraria uma chave falsa com cara de fiscal.
-      */
-      await sql`
-        update sales set nfce_ref = ${input.ref}, nfce_status = ${status}, nfce_env = ${env},
-          nfce_error = null, nfce_chave = null, nfce_numero = null, nfce_serie = null,
-          nfce_danfe_url = null, nfce_xml_url = null,
-          nfce_pendencia = null, nfce_cancel_protocol = null, nfce_cancelled_at = null,
-          nfce_authorized_at = ${status === "autorizado" ? new Date().toISOString() : null}
-        where id = ${data.saleId} and company_id = ${tenant.companyId}
-      `;
-      await audit(sql, tenant, "emit", "nfce", data.saleId, null, {
-        ref: input.ref,
-        status,
-        env,
-        substituiuTeste: emitida,
-      });
-      return { ok: true as const, status, env };
-    }
-
-    const message =
-      nullableStr(res.body.mensagem) ?? nullableStr(res.body.erro) ?? `Falha ao emitir (HTTP ${res.status}).`;
-    // Duas emissoes simultaneas: o ref e o mesmo, o provedor recusa a
-    // segunda -- e essa recusa nao pode pisar no 'autorizado' da primeira.
-    await sql`
-      update sales set nfce_status = 'erro', nfce_error = ${message}
-      where id = ${data.saleId} and company_id = ${tenant.companyId}
-        and not (coalesce(nfce_env, '') = ${env} and coalesce(nfce_status, 'erro') <> 'erro')
-    `;
-    return { ok: false as const, errors: [message] };
+    return emitirNfce(sql, tenant, data.saleId);
   });
+
+/**
+ * Link de arquivo da Focus. A API devolve caminho RELATIVO ao host dela
+ * ("/arquivos/..."); guardado assim, o link abria no host do proprio
+ * sistema e dava 404. URL absoluta passa como veio.
+ */
+function focusFileUrl(path: string | null, env: NfceEnv): string | null {
+  if (!path) return null;
+  return path.startsWith("/") ? `${FOCUS_BASE_URL[env]}${path}` : path;
+}
+
+async function atualizarStatusNfce(sql: TenantSql["sql"], tenant: TenantSql["tenant"], saleId: number) {
+  const [sale] = await sql<{ nfce_ref: string | null; nfce_env: string | null }>`
+    select nfce_ref, nfce_env from sales where id = ${saleId} and company_id = ${tenant.companyId}
+  `;
+  if (!sale?.nfce_ref) throw new Error("Esta venda ainda não teve nota fiscal emitida.");
+  const env: NfceEnv = sale.nfce_env === "producao" || sale.nfce_env === "homologacao" ? sale.nfce_env : focusEnv();
+
+  const res = await focusRequest(`/v2/nfce/${encodeURIComponent(sale.nfce_ref)}`, "GET");
+  const status = nullableStr(res.body.status) ?? "erro";
+  const chave = nullableStr(res.body.chave_nfe);
+  const numero = nullableStr(res.body.numero);
+  const serie = nullableStr(res.body.serie);
+  const danfeUrl = focusFileUrl(nullableStr(res.body.caminho_danfe), env);
+  const xmlUrl = focusFileUrl(nullableStr(res.body.caminho_xml_nota_fiscal), env);
+  const error = status.startsWith("erro")
+    ? (nullableStr(res.body.mensagem_sefaz) ?? nullableStr(res.body.mensagem))
+    : null;
+
+  await sql`
+    update sales set
+      nfce_status = ${status},
+      nfce_chave = ${chave},
+      nfce_numero = ${numero},
+      nfce_serie = ${serie},
+      nfce_danfe_url = ${danfeUrl},
+      nfce_xml_url = ${xmlUrl},
+      nfce_error = ${error},
+      -- Primeira autorizacao manda: se ja ha carimbo, mante-lo preserva
+      -- o inicio real da janela de cancelamento.
+      nfce_authorized_at = case
+        when ${status} = 'autorizado' then coalesce(nfce_authorized_at, now())
+        else nfce_authorized_at
+      end
+    where id = ${saleId} and company_id = ${tenant.companyId}
+  `;
+  return { status, chave, numero, serie, danfeUrl, xmlUrl, error, env };
+}
 
 export const refreshNfceStatusFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { saleId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
-    const [sale] = await sql<{ nfce_ref: string | null }>`
-      select nfce_ref from sales where id = ${data.saleId} and company_id = ${tenant.companyId}
-    `;
-    if (!sale?.nfce_ref) throw new Error("Esta venda ainda não teve nota fiscal emitida.");
+    return atualizarStatusNfce(sql, tenant, data.saleId);
+  });
 
-    const res = await focusRequest(`/v2/nfce/${encodeURIComponent(sale.nfce_ref)}`, "GET");
-    const status = nullableStr(res.body.status) ?? "erro";
-    const chave = nullableStr(res.body.chave_nfe);
-    const numero = nullableStr(res.body.numero);
-    const serie = nullableStr(res.body.serie);
-    const danfeUrl = nullableStr(res.body.caminho_danfe);
-    const xmlUrl = nullableStr(res.body.caminho_xml_nota_fiscal);
-    const error = status.startsWith("erro")
-      ? (nullableStr(res.body.mensagem_sefaz) ?? nullableStr(res.body.mensagem))
-      : null;
+/** A NFC-e esta ligada e configurada nesta loja? (o PDV emite sozinho) */
+export async function nfceAutomatica(sql: TenantSql["sql"], companyId: number): Promise<boolean> {
+  if (!focusToken()) return false;
+  const [cfg] = await sql<{ nfce_enabled: boolean | null }>`
+    select nfce_enabled from company_settings where company_id = ${companyId}
+  `;
+  return cfg?.nfce_enabled === true;
+}
 
-    await sql`
-      update sales set
-        nfce_status = ${status},
-        nfce_chave = ${chave},
-        nfce_numero = ${numero},
-        nfce_serie = ${serie},
-        nfce_danfe_url = ${danfeUrl},
-        nfce_xml_url = ${xmlUrl},
-        nfce_error = ${error},
-        -- Primeira autorizacao manda: se ja ha carimbo, mante-lo preserva
-        -- o inicio real da janela de cancelamento.
-        nfce_authorized_at = case
-          when ${status} = 'autorizado' then coalesce(nfce_authorized_at, now())
-          else nfce_authorized_at
-        end
-      where id = ${data.saleId} and company_id = ${tenant.companyId}
+/**
+ * Emissao automatica do PDV, logo depois do checkout.
+ *
+ * Porta estreita de proposito: basta `pdv.sell` (o operador de caixa nao
+ * tem `sales.write`), mas so vale pra venda que ELE acabou de fazer, nos
+ * ultimos 30 minutos. Sem isso, a permissao de vender viraria permissao de
+ * emitir nota de qualquer venda antiga.
+ *
+ * Nunca derruba a venda: ela ja esta gravada. Falha volta como mensagem, a
+ * nota fica pendente e sai de novo pela tela de Vendas.
+ */
+export const emitNfceAfterCheckoutFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { saleId: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "pdv.sell");
+    if (!(await nfceAutomatica(sql, tenant.companyId))) return { skipped: true as const };
+
+    const [sale] = await sql<{ id: number }>`
+      select id from sales
+       where id = ${data.saleId} and company_id = ${tenant.companyId}
+         and user_id = ${tenant.userId} and status = 'finalizada'
+         and sold_at > now() - interval '30 minutes'
     `;
-    return { status, chave, numero, serie, danfeUrl, xmlUrl, error };
+    if (!sale) {
+      return {
+        skipped: false as const,
+        ok: false as const,
+        errors: ["Só dá pra emitir aqui a nota da venda que você acabou de fazer. Use a tela de Vendas."],
+      };
+    }
+
+    try {
+      const r = await emitirNfce(sql, tenant, data.saleId);
+      if (!r.ok) return { skipped: false as const, ...r };
+      // NFC-e e autorizada na hora: ja busca numero e DANFE pro comprovante.
+      // Se a consulta falhar, a emissao continua valendo (status do POST).
+      let detalhe: Awaited<ReturnType<typeof atualizarStatusNfce>> | null = null;
+      try {
+        detalhe = await atualizarStatusNfce(sql, tenant, data.saleId);
+      } catch {
+        detalhe = null;
+      }
+      return {
+        skipped: false as const,
+        ok: true as const,
+        env: r.env,
+        status: detalhe?.status ?? r.status,
+        numero: detalhe?.numero ?? null,
+        danfeUrl: detalhe?.danfeUrl ?? null,
+        error: detalhe?.error ?? null,
+      };
+    } catch (e) {
+      return {
+        skipped: false as const,
+        ok: false as const,
+        errors: [e instanceof Error ? e.message : "Falha ao emitir a nota fiscal."],
+      };
+    }
   });
 
 /**

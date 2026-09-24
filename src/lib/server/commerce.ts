@@ -25,7 +25,7 @@ import {
   pendenciaForReturn,
   pendenciaText,
 } from "@/lib/nfce-cancel";
-import { marcarPendenciaFiscal } from "./nfce";
+import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
 import { num } from "@/lib/utils";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument } from "@/lib/document";
@@ -677,6 +677,9 @@ export const checkoutFn = createServerFn({ method: "POST" })
       sellerName = s?.name ?? null;
     }
     const [store] = await sql<{ name: string }>`select name from stores where id = ${data.storeId}`;
+    // O PDV emite a NFC-e sozinho logo depois, se estiver ligada. A emissao
+    // fica FORA desta requisicao: rede do provedor fiscal nao segura venda.
+    const nfce = await nfceAutomatica(sql, tenant.companyId);
 
     return {
       id: saleId,
@@ -707,6 +710,7 @@ export const checkoutFn = createServerFn({ method: "POST" })
         installments: p.installments,
       })),
       commission,
+      nfce,
     };
   });
 

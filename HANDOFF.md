@@ -142,7 +142,11 @@ produto sem variantes, uma por variante quando há grade de cor/tamanho.
 Token `--space-beat` aplicado no `.kpi-card` (escopo reduzido de propósito).
 NFC-e via Focus NFe (`src/lib/nfce.ts`, `src/lib/server/nfce.ts`), homologação
 por padrão — configura em Configurações → Impostos (IE, regime tributário,
-`nfce_enabled`); emissão faz sentido a partir de `vendas.tsx`. Papel
+`nfce_enabled`). Com a NFC-e ligada (e `FOCUS_NFE_TOKEN` no servidor), o PDV
+emite sozinho logo depois de finalizar (`emitNfceAfterCheckoutFn`: só
+`pdv.sell`, só a venda do próprio operador nos últimos 30 min) e mostra o
+status no comprovante; falha não desfaz a venda e a nota sai de novo por
+`vendas.tsx` (gerente/admin, `sales.write`). Papel
 "Operador de PDV" com permissão real no servidor (ver "Papéis" acima).
 Mensagens de erro do login em pt-BR (mapeadas pelo `code` do Better Auth, não
 pela `message` em inglês — ver `src/routes/login.tsx`). Token

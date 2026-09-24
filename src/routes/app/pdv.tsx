@@ -27,6 +27,8 @@ import { runAction } from "@/lib/run-action";
 import { checkoutFn, discardHeldFn, holdSaleFn, listHeldFn, listPromotionsFn, resumeHeldFn } from "@/lib/server/commerce";
 import { simulateCommissionFn } from "@/lib/server/commission";
 import { getRegisterFn, openRegisterFn } from "@/lib/server/finance";
+import { emitNfceAfterCheckoutFn, refreshNfceStatusFn } from "@/lib/server/nfce";
+import { NfceStatus, type NfceState } from "@/components/pdv/nfce-status";
 import { listActiveSellerNamesFn } from "@/lib/server/party";
 import { getSettingsFn, getTenantFn } from "@/lib/server/session";
 
@@ -65,6 +67,10 @@ function PdvPage() {
   const preenchido = useRef<string | null>(null);
   const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [nfce, setNfce] = useState<NfceState | null>(null);
+  const [nfceConsultando, setNfceConsultando] = useState(false);
+  /** Venda dona do status de NFC-e na tela: resposta atrasada de outra nao pinta esta. */
+  const nfceDaVenda = useRef<number | null>(null);
   const [openAmt, setOpenAmt] = useState("");
   const [openingCaixa, setOpeningCaixa] = useState(false);
 
@@ -461,6 +467,13 @@ function PdvPage() {
       });
       setLastSale(res);
       setReceiptOpen(true);
+      nfceDaVenda.current = res.id;
+      if (res.nfce) {
+        setNfce({ fase: "emitindo" });
+        void emitirNota(res.id);
+      } else {
+        setNfce(null);
+      }
       const sellerMantido = sellerId;
       novaVenda();
       setSellerId(sellerMantido);
@@ -477,6 +490,52 @@ function PdvPage() {
     } finally {
       acaoEmCurso.current = false;
       setBusy(false);
+    }
+  }
+
+  function aplicarStatusNota(saleId: number, s: { status: string; numero: string | null; danfeUrl: string | null; error: string | null; env: string }) {
+    if (nfceDaVenda.current !== saleId) return;
+    if (s.status.startsWith("erro")) {
+      setNfce({ fase: "erro", mensagens: [s.error ?? "A SEFAZ recusou a nota."] });
+      toast.error(`NFC-e recusada: ${s.error ?? "veja o comprovante."}`);
+      return;
+    }
+    setNfce({ fase: "ok", status: s.status, numero: s.numero, danfeUrl: s.danfeUrl, teste: s.env === "homologacao" });
+  }
+
+  /** Fora do checkout de proposito: a venda ja esta gravada, a nota nao a segura. */
+  async function emitirNota(saleId: number) {
+    try {
+      const r = await emitNfceAfterCheckoutFn({ data: { saleId } });
+      if (nfceDaVenda.current !== saleId) return;
+      if (r.skipped) {
+        setNfce(null);
+        return;
+      }
+      if (!r.ok) {
+        setNfce({ fase: "erro", mensagens: r.errors });
+        toast.error(`NFC-e não emitida: ${r.errors[0] ?? "erro desconhecido"}`);
+        return;
+      }
+      aplicarStatusNota(saleId, r);
+    } catch (e) {
+      if (nfceDaVenda.current !== saleId) return;
+      const msg = e instanceof Error ? e.message : "Falha ao emitir a nota fiscal.";
+      setNfce({ fase: "erro", mensagens: [msg] });
+      toast.error(`NFC-e não emitida: ${msg}`);
+    }
+  }
+
+  async function consultarNota() {
+    const saleId = nfceDaVenda.current;
+    if (saleId == null || nfceConsultando) return;
+    setNfceConsultando(true);
+    try {
+      aplicarStatusNota(saleId, await refreshNfceStatusFn({ data: { saleId } }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível consultar a nota.");
+    } finally {
+      setNfceConsultando(false);
     }
   }
 
@@ -662,6 +721,7 @@ function PdvPage() {
           <DialogHeader>
             <DialogTitle>Venda nº {lastSale?.number} concluída</DialogTitle>
           </DialogHeader>
+          {nfce ? <NfceStatus state={nfce} onRefresh={() => void consultarNota()} refreshing={nfceConsultando} /> : null}
           {lastSale ? (
             <Receipt data={lastSale} company={receiptCompany(settings.data)} onClose={() => setReceiptOpen(false)} />
           ) : null}
