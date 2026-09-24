@@ -281,10 +281,13 @@ export const cashflowFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
     const inflows = await sql.query<{ method: string; total: string | number }>(
+      // p.amount (nao s.total): o que entrou de verdade por forma de
+      // pagamento no checkout -- devolucao nao desfaz o pagamento original,
+      // entao so devolvida_parcial entra no filtro, sem descontar nada.
       `select p.method, coalesce(sum(p.amount),0) as total
          from payments p
          join sales s on s.id = p.sale_id
-        where s.company_id = $1 and s.status = 'finalizada' and s.deleted_at is null
+        where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial') and s.deleted_at is null
           and s.sold_at >= $2::date and s.sold_at < ($3::date + interval '1 day')
           and ($4::int is null or s.store_id = $4)
         group by p.method`,
@@ -1028,10 +1031,20 @@ export const listTargetsFn = createServerFn({ method: "GET" })
       left join stores st on st.id = t.store_id
       left join categories c on c.id = t.category_id
       left join lateral (
-        select coalesce(sum(s.total), 0) as v
+        -- devolvida_parcial entra, liquido do que voltou (return_items) --
+        -- mesma correcao de commission.ts/insight.ts: sales.total nunca
+        -- reduz numa devolucao parcial, entao sem isto a venda inteira
+        -- sumia da meta por causa de uma peca devolvida.
+        select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)), 0) as v
           from sales s
+          left join lateral (
+            select coalesce(sum(ri.amount), 0) as returned_revenue
+              from return_items ri
+              join sale_items si on si.id = ri.sale_item_id
+             where si.sale_id = s.id
+          ) ret on true
          where s.company_id = t.company_id
-           and s.status = 'finalizada' and s.deleted_at is null
+           and s.status in ('finalizada', 'devolvida_parcial') and s.deleted_at is null
            and s.sold_at >= t.period_start
            and s.sold_at < (t.period_end + interval '1 day')
            and (t.store_id is null or s.store_id = t.store_id)
