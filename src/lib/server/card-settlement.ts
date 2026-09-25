@@ -123,6 +123,17 @@ export const settleCardBatchFn = createServerFn({ method: "POST" })
                  received_at = now()
            where id = ${p.id} and company_id = ${tenant.companyId}
         `;
+        // Mesmo `entity`/`action` do settleReceivableFn: e daqui que o fluxo
+        // de caixa (finance.ts, cashflowFn) le quanto entrou em cada dia.
+        // Sem isto, a baixa em lote do cartao gravava so um audit de
+        // "card_settlement" (entity/action diferentes) e sumia do fluxo de
+        // caixa por completo -- regressao introduzida junto com a correcao
+        // do fluxo de caixa somar por audit_logs em vez da coluna cumulativa.
+        await audit(tx, tenant, "receive", "accounts_receivable", p.id, null, {
+          amount: falta,
+          status: "pago",
+          method: "cartao",
+        });
       }
 
       await audit(tx, tenant, "settle-batch", "card_settlement", null, null, {
