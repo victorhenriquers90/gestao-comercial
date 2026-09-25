@@ -54,7 +54,14 @@ export function CommissionNetTab({
 }) {
   const [sellerId, setSellerId] = useState(sellers[0] ? String(sellers[0].id) : "");
   const seller = sellers.find((s) => String(s.id) === sellerId);
-  const [regime, setRegime] = useState<string>(seller?.tax_regime || "autonomo");
+  // "none", nao "autonomo": e o padrao que o resto do sistema usa pra
+  // vendedor sem regime configurado (party.ts grava e le "none"). Antes,
+  // a selecao INICIAL de um vendedor sem regime simulava como autonomo
+  // (retendo INSS/IRRF/ISS) e trocar de vendedor e voltar pro mesmo,
+  // via pickSeller, passava a simular como "none" (retencao zero) -- o
+  // mesmo vendedor e o mesmo valor bruto dando dois liquidos diferentes
+  // so pela ordem de cliques.
+  const [regime, setRegime] = useState<string>(seller?.tax_regime || "none");
   const [salary, setSalary] = useState(seller?.monthly_salary ? String(seller.monthly_salary) : "");
   const [dependents, setDependents] = useState(seller?.dependents ? String(seller.dependents) : "0");
   const [issRate, setIssRate] = useState(
