@@ -240,24 +240,13 @@ supplier_id/variantes quando o cliente realmente mandou algo — senão
 preserva o que já está gravado. Editar sem tocar na grade agora não toca
 em `product_variants` de jeito nenhum.
 
-**Pendente, precisa do usuário**: o produto afetado no piloto (`Camiseta
-Algodão Premium`, id 37, empresa 4/"Victor Comércio") teve categoria e
-descrição restauradas pela própria tela (Camisetas / "Produto ativo no
-mix da loja."), mas marca, fornecedor, `has_variants` e o SKU/código de
-barras da variante Preta/P (id 58) continuam corrompidos — não há UI
-nesta tela pra restaurá-los, e uma escrita direta no banco foi bloqueada
-pelo classificador de segurança do Auto Mode ("Modify Shared Resources").
-Valores corretos, deduzidos com 100% de confiança a partir de três cópias
-idênticas do mesmo produto seed noutras empresas (mesma descrição, mesmo
-padrão de nome de categoria/marca/fornecedor/SKU):
-```sql
-update products set brand_id = 13, supplier_id = 7, has_variants = true
- where id = 37 and company_id = 4;
-update product_variants set sku = 'CAM-001-PRE-P', barcode = 'CAM-001-PRE-P'
- where id = 58 and product_id = 37;
-```
-Rode isso (`psql` ou `npm run db:migrate`-style acesso direto) pra fechar
-a restauração, ou peça pra próxima IA rodar com sua autorização explícita.
+O produto afetado no piloto (`Camiseta Algodão Premium`, id 37, empresa
+4/"Victor Comércio") já está **totalmente restaurado**: categoria e
+descrição pela própria tela, marca/fornecedor/`has_variants`/SKU e
+código de barras da variante Preta/P (id 58) por SQL direto autorizado
+explicitamente pelo usuário, com transação, before/after conferido e
+commit — todos os campos batendo com as três cópias idênticas do mesmo
+produto seed noutras empresas.
 
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
