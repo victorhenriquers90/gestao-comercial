@@ -68,6 +68,21 @@ function FinanceiroPage() {
   const [formaRec, setFormaRec] = useState<ReceiptMethod | "">("");
   /** Trava o envio da despesa: dois cliques gravavam dois lancamentos iguais. */
   const [lancandoDespesa, setLancandoDespesa] = useState(false);
+  /**
+   * Mesmo problema da despesa, em mais tres lugares: "Pagar", "Confirmar"
+   * recebimento e os dois dialogos de "Salvar" so tinham `disabled={!x}`,
+   * que nao cobre o clique duplo -- o pedido em voo ainda le a condicao como
+   * satisfeita. "Pagar"/"Confirmar" duplicado grava a baixa duas vezes
+   * (settlePayableFn/settleReceivableFn somam no que ja existe, sem checar
+   * se o titulo ja foi baixado a mais); no recebimento em dinheiro tambem
+   * duplica o lancamento no caixa, inflando a gaveta com uma "sobra"
+   * fantasma no fechamento. "Salvar" duplicado cria a conta/titulo duas
+   * vezes.
+   */
+  const [pagandoId, setPagandoId] = useState<number | null>(null);
+  const [confirmandoRecebimento, setConfirmandoRecebimento] = useState(false);
+  const [salvandoConta, setSalvandoConta] = useState(false);
+  const [salvandoTitulo, setSalvandoTitulo] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState("");
@@ -182,7 +197,10 @@ function FinanceiroPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        disabled={pagandoId === num(r.id)}
                         onClick={async () => {
+                          if (pagandoId === num(r.id)) return;
+                          setPagandoId(num(r.id));
                           try {
                             await settlePayableFn({
                               data: { id: num(r.id), amount: num(r.amount) - num(r.paid_amount) },
@@ -191,10 +209,12 @@ function FinanceiroPage() {
                             void qc.invalidateQueries({ queryKey: ["ap"] });
                           } catch (e) {
                             toast.error(e instanceof Error ? e.message : "Falha");
+                          } finally {
+                            setPagandoId(null);
                           }
                         }}
                       >
-                        Pagar
+                        {pagandoId === num(r.id) ? "Pagando…" : "Pagar"}
                       </Button>
                     ) : null}
                   </Td>
@@ -276,28 +296,33 @@ function FinanceiroPage() {
                           </Select>
                           <Button
                             size="sm"
-                            disabled={!formaRec}
+                            disabled={!formaRec || confirmandoRecebimento}
                             onClick={async () => {
-                              if (!formaRec) return;
-                              const ok = await runAction(
-                                () =>
-                                  settleReceivableFn({
-                                    data: {
-                                      id: num(r.id),
-                                      amount: num(r.amount) - num(r.received_amount),
-                                      method: formaRec,
-                                      storeId: storeId ?? null,
-                                    },
-                                  }),
-                                { sucesso: "Recebimento registrado." },
-                              );
-                              if (!ok) return;
-                              setRecebendoId(null);
-                              void qc.invalidateQueries({ queryKey: ["ar"] });
-                              void qc.invalidateQueries({ queryKey: ["register"] });
+                              if (!formaRec || confirmandoRecebimento) return;
+                              setConfirmandoRecebimento(true);
+                              try {
+                                const ok = await runAction(
+                                  () =>
+                                    settleReceivableFn({
+                                      data: {
+                                        id: num(r.id),
+                                        amount: num(r.amount) - num(r.received_amount),
+                                        method: formaRec,
+                                        storeId: storeId ?? null,
+                                      },
+                                    }),
+                                  { sucesso: "Recebimento registrado." },
+                                );
+                                if (!ok) return;
+                                setRecebendoId(null);
+                                void qc.invalidateQueries({ queryKey: ["ar"] });
+                                void qc.invalidateQueries({ queryKey: ["register"] });
+                              } finally {
+                                setConfirmandoRecebimento(false);
+                              }
                             }}
                           >
-                            Confirmar
+                            {confirmandoRecebimento ? "Confirmando…" : "Confirmar"}
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => setRecebendoId(null)}>
                             Cancelar
@@ -455,7 +480,9 @@ function FinanceiroPage() {
           </Field>
           <Button
             className="mt-4"
+            disabled={salvandoConta}
             onClick={async () => {
+              if (salvandoConta) return;
               if (!desc.trim() || !due) {
                 return toast.error("Preencha descrição e vencimento.");
               }
@@ -466,26 +493,31 @@ function FinanceiroPage() {
               if (!Number.isFinite(valor) || valor <= 0) {
                 return toast.error("Informe um valor maior que zero.");
               }
-              const ok = await runAction(
-                () =>
-                  savePayableFn({
-                    data: {
-                      description: desc,
-                      dueDate: due,
-                      amount: valor,
-                      storeId,
-                      supplierId: partyId ? Number(partyId) : null,
-                      category,
-                    },
-                  }),
-                { sucesso: "Conta criada." },
-              );
-              if (!ok) return;
-              setOpenPay(false);
-              void qc.invalidateQueries({ queryKey: ["ap"] });
+              setSalvandoConta(true);
+              try {
+                const ok = await runAction(
+                  () =>
+                    savePayableFn({
+                      data: {
+                        description: desc,
+                        dueDate: due,
+                        amount: valor,
+                        storeId,
+                        supplierId: partyId ? Number(partyId) : null,
+                        category,
+                      },
+                    }),
+                  { sucesso: "Conta criada." },
+                );
+                if (!ok) return;
+                setOpenPay(false);
+                void qc.invalidateQueries({ queryKey: ["ap"] });
+              } finally {
+                setSalvandoConta(false);
+              }
             }}
           >
-            Salvar
+            {salvandoConta ? "Salvando…" : "Salvar"}
           </Button>
         </DialogContent>
       </Dialog>
@@ -515,7 +547,9 @@ function FinanceiroPage() {
           </Field>
           <Button
             className="mt-4"
+            disabled={salvandoTitulo}
             onClick={async () => {
+              if (salvandoTitulo) return;
               if (!desc.trim() || !due) {
                 return toast.error("Preencha descrição e vencimento.");
               }
@@ -523,25 +557,30 @@ function FinanceiroPage() {
               if (!Number.isFinite(valor) || valor <= 0) {
                 return toast.error("Informe um valor maior que zero.");
               }
-              const ok = await runAction(
-                () =>
-                  saveReceivableFn({
-                    data: {
-                      description: desc,
-                      dueDate: due,
-                      amount: valor,
-                      storeId,
-                      customerId: partyId ? Number(partyId) : null,
-                    },
-                  }),
-                { sucesso: "Título criado." },
-              );
-              if (!ok) return;
-              setOpenRec(false);
-              void qc.invalidateQueries({ queryKey: ["ar"] });
+              setSalvandoTitulo(true);
+              try {
+                const ok = await runAction(
+                  () =>
+                    saveReceivableFn({
+                      data: {
+                        description: desc,
+                        dueDate: due,
+                        amount: valor,
+                        storeId,
+                        customerId: partyId ? Number(partyId) : null,
+                      },
+                    }),
+                  { sucesso: "Título criado." },
+                );
+                if (!ok) return;
+                setOpenRec(false);
+                void qc.invalidateQueries({ queryKey: ["ar"] });
+              } finally {
+                setSalvandoTitulo(false);
+              }
             }}
           >
-            Salvar
+            {salvandoTitulo ? "Salvando…" : "Salvar"}
           </Button>
         </DialogContent>
       </Dialog>
