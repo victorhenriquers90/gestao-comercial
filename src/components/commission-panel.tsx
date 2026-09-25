@@ -97,6 +97,12 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
   const [form, setForm] = useState(emptyForm);
   /** Regra aguardando confirmacao de exclusao (muda quanto o vendedor recebe). */
   const [excluirId, setExcluirId] = useState<number | null>(null);
+  /** Trava sincrona: sem isto, duplo clique em "Salvar regra" cria duas
+   * regras iguais, e duas regras na mesma especificidade empatam de forma
+   * imprevisivel na hora de calcular a comissao de uma venda. */
+  const [salvando, setSalvando] = useState(false);
+  /** Mesmo risco no pacote sugerido: duplo clique insere o pacote duas vezes. */
+  const [sugerindo, setSugerindo] = useState(false);
 
   function startNew() {
     setForm(emptyForm);
@@ -152,6 +158,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
   }
 
   async function save() {
+    if (salvando) return;
+    setSalvando(true);
     try {
       await saveCommissionRuleFn({ data: payload() });
       toast.success(form.id ? "Regra atualizada." : "Regra criada.");
@@ -159,6 +167,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
       void qc.invalidateQueries({ queryKey: ["commission-rules"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar");
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -201,12 +211,16 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
   }
 
   async function suggest() {
+    if (sugerindo) return;
+    setSugerindo(true);
     try {
       const res = await suggestCommissionRulesFn();
       toast.success(`${res.inserted} regras sugeridas aplicadas.`);
       void qc.invalidateQueries({ queryKey: ["commission-rules"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha");
+    } finally {
+      setSugerindo(false);
     }
   }
 
@@ -231,8 +245,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
         </div>
       </Card>
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" onClick={() => void suggest()}>
-          Pacote sugerido
+        <Button variant="outline" disabled={sugerindo} onClick={() => void suggest()}>
+          {sugerindo ? "Aplicando…" : "Pacote sugerido"}
         </Button>
         <Button onClick={startNew}>
           <Plus className="size-4" />
@@ -244,8 +258,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
           title="Nenhuma regra ainda"
           description="Sem regras, cada venda usa só o percentual padrão do vendedor. Crie uma ou aplique o pacote sugerido (categorias, crédito, promoção, faixa mensal e valor por peça)."
           action={
-            <Button className="mt-2" onClick={() => void suggest()}>
-              Aplicar pacote sugerido
+            <Button className="mt-2" disabled={sugerindo} onClick={() => void suggest()}>
+              {sugerindo ? "Aplicando…" : "Aplicar pacote sugerido"}
             </Button>
           }
         />
@@ -573,8 +587,8 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
               Regra ativa
             </label>
           </div>
-          <Button className="mt-4" onClick={() => void save()}>
-            Salvar regra
+          <Button className="mt-4" disabled={salvando} onClick={() => void save()}>
+            {salvando ? "Salvando…" : "Salvar regra"}
           </Button>
         </DialogContent>
       </Dialog>
