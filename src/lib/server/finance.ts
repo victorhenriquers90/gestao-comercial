@@ -293,16 +293,37 @@ export const cashflowFn = createServerFn({ method: "POST" })
         group by p.method`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
     );
+    /*
+      `received_amount`/`paid_amount` sao CUMULATIVOS na linha do titulo, e
+      `received_at`/`paid_at` so gravam data quando o titulo fecha 100% (ver
+      settleReceivableFn/settlePayableFn) -- ficam NULL enquanto o status e
+      'parcial'. Um titulo pago em duas parcelas em dias diferentes (comum
+      no crediario) sumia do fluxo de caixa no dia da PRIMEIRA parcela e
+      aparecia inteiro (as duas parcelas somadas) no dia da ULTIMA, mesmo que
+      so uma fracao tivesse entrado naquele dia. Verificado com transacao
+      revertida: consulta antiga dava 0 no dia 1 e o total das duas parcelas
+      no dia 3, quando o certo e cada parcela no seu proprio dia.
+
+      audit_logs ja guarda, por evento, o valor daquela baixa especifica
+      (`after_data.amount`, nao cumulativo) com a data real do evento -- soma
+      daqui em vez da linha resumo.
+    */
     const rec = await sql.query<{ total: string | number }>(
-      `select coalesce(sum(received_amount),0) as total from accounts_receivable
-        where company_id = $1 and received_at >= $2::date and received_at < ($3::date + interval '1 day')
-          and ($4::int is null or store_id = $4)`,
+      `select coalesce(sum((al.after_data->>'amount')::numeric),0) as total
+         from audit_logs al
+         join accounts_receivable ar on ar.id = al.entity_id::int
+        where al.company_id = $1 and al.entity = 'accounts_receivable' and al.action = 'receive'
+          and al.created_at >= $2::date and al.created_at < ($3::date + interval '1 day')
+          and ($4::int is null or ar.store_id = $4)`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
     );
     const paid = await sql.query<{ total: string | number }>(
-      `select coalesce(sum(paid_amount),0) as total from accounts_payable
-        where company_id = $1 and paid_at >= $2::date and paid_at < ($3::date + interval '1 day')
-          and ($4::int is null or store_id = $4)`,
+      `select coalesce(sum((al.after_data->>'amount')::numeric),0) as total
+         from audit_logs al
+         join accounts_payable ap on ap.id = al.entity_id::int
+        where al.company_id = $1 and al.entity = 'accounts_payable' and al.action = 'pay'
+          and al.created_at >= $2::date and al.created_at < ($3::date + interval '1 day')
+          and ($4::int is null or ap.store_id = $4)`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
     );
     const expenses = await sql.query<{ total: string | number }>(
