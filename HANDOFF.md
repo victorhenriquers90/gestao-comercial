@@ -159,6 +159,26 @@ de recebimento, criação de conta a pagar e de título a receber) só tinham
 síncrona (`useState` checado antes do disparo) que já existia no
 formulário de Despesa, agora nos quatro pontos.
 
+Auditoria de duplo-clique estendida a rotas e componentes que ainda não
+tinham passado por isso: mesma trava aplicada em `produtos.tsx` (Salvar
+produto — único cadastro do sistema sem nenhuma trava), `crediario-panel.tsx`
+(Confirmar recebimento — segunda porta de entrada pro mesmo
+`settleReceivableFn` do Financeiro, em `src/components/`, fora do alcance
+do sweep de rotas), `commission-panel.tsx` (Salvar regra e as duas entradas
+de "Pacote sugerido" — regra de comissão duplicada empata de forma
+imprevisível na hora de calcular comissão) e `stock-count-panel.tsx`
+(Remover item — único botão do arquivo sem a trava `ocupado` que todo o
+resto já usa). Lição: a auditoria de rota (`src/routes/app/*.tsx`) não
+enxerga componentes compartilhados em `src/components/`, que precisam de
+uma varredura própria.
+
+Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
+gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
+uma entrada por título (`entity='accounts_receivable'`) como
+`settleReceivableFn` grava. Ficou invisível para o fluxo de caixa depois
+que ele passou a somar por `audit_logs` (ver abaixo) — regressão
+corrigida no mesmo dia em que foi introduzida.
+
 Backup do banco (`installer\lib\Backup.ps1`, `Backup-GestaoComercial.ps1`,
 `Restore-GestaoComercial.ps1`): tarefa diária do Windows às 22:30 por SYSTEM,
 dump `-Fc` verificado com `pg_restore --list` **antes** de receber o nome
