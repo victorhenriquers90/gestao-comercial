@@ -216,6 +216,21 @@ export const saveProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.write");
+    // `data.id` faltava aqui -- as outras tres chaves estrangeiras (marca,
+    // categoria, fornecedor) ja eram conferidas, mas o PROPRIO produto sendo
+    // editado nao. O update logo abaixo ja e escopado por company_id (nao
+    // altera produto de outra empresa), mas nao verificava se alterou
+    // alguma linha: `productId = data.id` seguia valendo mesmo quando o
+    // update nao encontrou nada, e a criacao de variante (mais abaixo, no
+    // caminho sem `data.variants`) usa esse `productId` como FK sem checar
+    // dono nenhum. Resultado: enviar o id de um produto de OUTRA empresa,
+    // sem variantes no payload, criava uma linha em product_variants com
+    // company_id da empresa que enviou o pedido mas product_id apontando pro
+    // produto alheio -- um join variante->produto (o mesmo que
+    // checkoutFn/searchPosFn fazem) passava a mostrar nome/preco/custo do
+    // produto de outra empresa dentro do catalogo de quem nao e dono dele.
+    // Verificado com transacao revertida antes desta correcao.
+    await assertOwned(sql, tenant.companyId, "products", data.id);
     await assertOwned(sql, tenant.companyId, "brands", data.brandId ? num(data.brandId) : null);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
