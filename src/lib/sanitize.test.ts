@@ -5,6 +5,7 @@ import {
   requireLine,
   sanitizeCode,
   sanitizeHttpUrl,
+  sanitizeImageUrl,
   sanitizeLine,
   sanitizeMultiline,
 } from "./sanitize.ts";
@@ -29,5 +30,14 @@ describe("sanitize input", () => {
     assert.ok(sanitizeHttpUrl("https://cdn.example/a.png")?.startsWith("https://"));
     assert.equal(optionalLine(""), null);
     assert.equal(sanitizeCode("  789123  "), "789123");
+  });
+
+  it("accepts an image data URL (what the crop editor always sends) but not other data:", () => {
+    const foto = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wA=";
+    assert.equal(sanitizeImageUrl(foto), foto);
+    assert.equal(sanitizeImageUrl("data:text/html,<script>x</script>"), null);
+    assert.equal(sanitizeImageUrl("javascript:alert(1)"), null);
+    assert.equal(sanitizeImageUrl("data:image/jpeg;base64," + "A".repeat(3_000_000)), null);
+    assert.ok(sanitizeImageUrl("https://cdn.example/logo.png")?.startsWith("https://"));
   });
 });

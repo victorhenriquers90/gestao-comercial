@@ -20,7 +20,7 @@ import {
   optionalLine,
   requireLine,
   sanitizeCode,
-  sanitizeHttpUrl,
+  sanitizeImageUrl,
   sanitizeMultiline,
 } from "@/lib/sanitize";
 
@@ -453,7 +453,7 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
       city: optionalLine(d.city, 80) ?? undefined,
       state: optionalLine(d.state, 2) ?? undefined,
       zip: sanitizeCode(d.zip, 16) ?? undefined,
-      logoUrl: sanitizeHttpUrl(d.logoUrl),
+      logoUrl: sanitizeImageUrl(d.logoUrl),
       printHeader: sanitizeMultiline(d.printHeader, 500) ?? undefined,
       printFooter: sanitizeMultiline(d.printFooter, 500) ?? undefined,
       receiptMessage: sanitizeMultiline(d.receiptMessage, 500) ?? undefined,

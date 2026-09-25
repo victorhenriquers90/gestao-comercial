@@ -14,7 +14,7 @@ import {
   optionalLine,
   requireLine,
   sanitizeCode,
-  sanitizeHttpUrl,
+  sanitizeImageUrl,
   sanitizeLine,
   sanitizeMultiline,
 } from "@/lib/sanitize";
@@ -197,7 +197,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
       brandName: optionalLine(d.brandName, 80) ?? undefined,
       unit: sanitizeLine(d.unit ?? "UN", 8) || "UN",
       location: optionalLine(d.location, 80) ?? undefined,
-      imageUrl: sanitizeHttpUrl(d.imageUrl),
+      imageUrl: sanitizeImageUrl(d.imageUrl),
       // parseNcm e nao sanitizeCode: o sanitize so cortava em 8 caracteres,
       // entao "abc" virava NCM valido no banco e so explodia na recusa do
       // SEFAZ, no balcao, com o cliente esperando a nota.

@@ -62,3 +62,26 @@ export function sanitizeHttpUrl(raw: unknown, max = 2000): string | null {
     return null;
   }
 }
+
+const DATA_IMAGE_URL = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+
+/**
+ * Foto de produto / logo da loja: aceita a data URL que o editor de recorte
+ * sempre gera (`canvas.toDataURL()`, em image-edit.ts) OU um link http(s)/
+ * mesmo-origem de verdade. `sanitizeHttpUrl` sozinho rejeitava TODO data:
+ * de proposito (e correto pra um campo de link generico) -- mas os dois
+ * unicos campos que guardam foto neste app (produto e logo) so recebem
+ * data: URL dessa tela, nunca um link colado. O resultado, sem isto, era a
+ * foto sumir em silencio: sanitizeHttpUrl devolvia null, o produto salvava
+ * "com sucesso" e a imagem nunca chegava no banco -- nenhum produto do
+ * piloto tinha foto gravada.
+ */
+export function sanitizeImageUrl(raw: unknown, maxLen = 3_000_000): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  if (s.startsWith("data:")) {
+    if (s.length > maxLen) return null;
+    return DATA_IMAGE_URL.test(s) ? s : null;
+  }
+  return sanitizeHttpUrl(s);
+}
