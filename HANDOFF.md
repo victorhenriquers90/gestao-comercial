@@ -172,6 +172,18 @@ resto já usa). Lição: a auditoria de rota (`src/routes/app/*.tsx`) não
 enxerga componentes compartilhados em `src/components/`, que precisam de
 uma varredura própria.
 
+Também no mesmo sweep de componentes: `commission-net.tsx` simulava
+regime tributário diferente pro MESMO vendedor sem regime configurado,
+dependendo de como a tela chegou lá (seleção inicial caía em "autonomo",
+trocar de vendedor e voltar caía em "none" via `pickSeller`) — o padrão do
+resto do sistema (`party.ts`) é "none". Corrigido para os dois caminhos
+usarem o mesmo fallback. Auditoria completa do PDV
+(`payment-dialog.tsx`, `cart-table.tsx`, `discount-dialog.tsx`,
+`sale-bar.tsx`, `held-sales-dialog.tsx`, `nfce-status.tsx` e o corpo de
+`finish()`/`holdCart()`/`resumeHeld()` em `pdv.tsx`) não achou mais nada:
+todas as travas contra duplo-clique já usam a `ref` síncrona correta, e
+`resumeHeldFn` já é atômico no servidor (`delete ... returning`).
+
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
 uma entrada por título (`entity='accounts_receivable'`) como
