@@ -10,7 +10,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { num, nullableStr, str } from "@/lib/utils";
 import {
   buildNfcePayload,
@@ -348,6 +348,16 @@ export const refreshNfceStatusFn = createServerFn({ method: "POST" })
   .validator((d: { saleId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
+    // Unica funcao de NFC-e sem checagem de papel: emitNfceFn exige
+    // sales.write, emitNfceAfterCheckoutFn exige pdv.sell,
+    // cancelNfceFn exige pdv.cancel -- esta consultava e regravava o
+    // status fiscal de QUALQUER venda da empresa pra qualquer papel
+    // autenticado (estoque, por exemplo). Mesmo par de permissoes das
+    // duas telas que chamam isto (vendas.tsx pede sales.read, pdv.tsx
+    // pede pdv.sell).
+    if (!can(tenant.role, "sales.read") && !can(tenant.role, "pdv.sell")) {
+      throw new Error("Sem permissão para esta ação.");
+    }
     return atualizarStatusNfce(sql, tenant, data.saleId);
   });
 
