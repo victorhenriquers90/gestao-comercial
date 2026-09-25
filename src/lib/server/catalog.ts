@@ -266,14 +266,48 @@ export const saveProductFn = createServerFn({ method: "POST" })
         `;
         brandId = b!.id;
       }
+      const isNew = !data.id;
       let productId = data.id;
-      const hasVariants = Boolean(data.variants && data.variants.length > 0);
+      let description = data.description ?? null;
+      let categoryId = data.categoryId ?? null;
+      let supplierId = data.supplierId ?? null;
+      let hasVariants = Boolean(data.variants && data.variants.length > 0);
+      /*
+        Editar sem tocar em categoria/descricao/marca/fornecedor/grade nao
+        pode apagar esses campos so porque chegaram undefined no payload --
+        produtos.tsx nem tem campo de marca/fornecedor no formulario (por
+        isso NUNCA manda os dois), e ate esta correcao tambem nao carregava
+        categoria/descricao ao abrir pra editar. Sem isto, editar qualquer
+        produto (so o preco, por exemplo) zerava os quatro campos e ainda
+        virava `has_variants = false`, que dispara o bloco de baixo a
+        sobrescrever UMA variante arbitraria com os dados do produto --
+        foi o que corrompeu de verdade um produto do piloto (categoria,
+        descricao, marca, fornecedor e a grade viraram null/errado num
+        `saveProductFn` que so devia ter confirmado o dialogo sem mudar
+        nada). So sobrescreve o que veio de verdade; o resto preserva o
+        que ja esta gravado.
+      */
       if (productId) {
+        const [cur] = await sql<{
+          has_variants: boolean;
+          description: string | null;
+          category_id: number | null;
+          brand_id: number | null;
+          supplier_id: number | null;
+        }>`
+          select has_variants, description, category_id, brand_id, supplier_id from products
+           where id = ${productId} and company_id = ${tenant.companyId}
+        `;
+        if (data.variants === undefined) hasVariants = Boolean(cur?.has_variants);
+        if (data.description === undefined) description = cur?.description ?? null;
+        if (data.categoryId === undefined) categoryId = cur?.category_id ?? null;
+        if (!data.brandId && !data.brandName?.trim()) brandId = cur?.brand_id ?? null;
+        if (data.supplierId === undefined) supplierId = cur?.supplier_id ?? null;
         await sql`
           update products set
             name = ${data.name}, internal_code = ${data.internalCode ?? null}, barcode = ${data.barcode ?? null},
-            sku = ${data.sku ?? null}, description = ${data.description ?? null},
-            category_id = ${data.categoryId ?? null}, brand_id = ${brandId}, supplier_id = ${data.supplierId ?? null},
+            sku = ${data.sku ?? null}, description = ${description},
+            category_id = ${categoryId}, brand_id = ${brandId}, supplier_id = ${supplierId},
             unit = ${data.unit ?? "UN"}, cost = ${data.cost}, price = ${data.price},
             promo_price = ${data.promoPrice ?? null}, min_stock = ${data.minStock ?? 0},
             location = ${data.location ?? null}, image_url = ${data.imageUrl ?? null},
@@ -289,7 +323,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
             unit, cost, price, promo_price, min_stock, location, image_url, is_active, has_variants, ncm, cfop
           ) values (
             ${tenant.companyId}, ${data.internalCode ?? null}, ${data.barcode ?? null}, ${data.sku ?? null},
-            ${data.name}, ${data.description ?? null}, ${data.categoryId ?? null}, ${brandId}, ${data.supplierId ?? null},
+            ${data.name}, ${description}, ${categoryId}, ${brandId}, ${supplierId},
             ${data.unit ?? "UN"}, ${data.cost}, ${data.price}, ${data.promoPrice ?? null}, ${data.minStock ?? 0},
             ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants},
             ${data.ncm ?? null}, ${data.cfop ?? "5102"}
@@ -297,7 +331,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
         `;
         productId = row!.id;
       }
-      if (hasVariants && data.variants) {
+      if (data.variants && data.variants.length > 0) {
         for (const v of data.variants) {
           if (v.id) {
             await sql`
@@ -313,7 +347,12 @@ export const saveProductFn = createServerFn({ method: "POST" })
             `;
           }
         }
-      } else {
+      } else if (isNew) {
+        // Produto novo sem grade no payload: garante a variante unica
+        // default. So roda na CRIACAO -- editar um produto existente sem
+        // mandar `variants` nao mexe em product_variants de jeito nenhum
+        // (ver comentario acima: era daqui que saia a variante arbitraria
+        // sobrescrita com os dados do produto).
         const existing = await sql<{ id: number }>`
           select id from product_variants where product_id = ${productId} and company_id = ${tenant.companyId} and deleted_at is null
         `;
@@ -321,11 +360,6 @@ export const saveProductFn = createServerFn({ method: "POST" })
           await sql`
             insert into product_variants (company_id, product_id, sku, barcode, cost, price)
             values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.cost}, ${data.price})
-          `;
-        } else {
-          await sql`
-            update product_variants set sku = ${data.sku ?? null}, barcode = ${data.barcode ?? null}, cost = ${data.cost}, price = ${data.price}
-            where id = ${existing[0]!.id}
           `;
         }
       }

@@ -100,58 +100,57 @@ function ProdutosPage() {
     }));
   })();
 
+  /**
+   * Sempre busca o produto INTEIRO (getProductFn) antes de abrir pra editar
+   * -- nunca so os campos resumidos da listagem.
+   *
+   * A listagem (`listProductsFn`) nem devolve categoria/descricao (so o
+   * NOME da categoria, pra mostrar na tabela) nem marca/fornecedor -- so o
+   * detalhe completo tem isso. Abrir o dialogo com esses campos vazios e
+   * salvar mandava `null` pro servidor, que sobrescrevia o que já estava
+   * gravado (a defesa do lado do servidor em catalog.ts cobre marca e
+   * fornecedor, que nem tem campo neste formulario, mas categoria e
+   * descricao o formulario tem -- e sem carregar o valor de verdade aqui,
+   * "editar" qualquer coisa apagava os dois). Foi assim que um produto do
+   * piloto perdeu categoria, descricao, marca, fornecedor e a grade de
+   * variantes com um simples Salvar sem mudar nada.
+   */
+  async function openForEdit(id: number) {
+    openedFor.current = id;
+    try {
+      const d = await getProductFn({ data: { id, storeId: storeId ?? undefined } });
+      const pr = d.product as Record<string, unknown>;
+      setEditId(id);
+      setForm({
+        ...empty,
+        name: String(pr.name ?? ""),
+        sku: pr.sku ? String(pr.sku) : "",
+        barcode: pr.barcode ? String(pr.barcode) : "",
+        internalCode: pr.internal_code ? String(pr.internal_code) : "",
+        description: pr.description ? String(pr.description) : "",
+        unit: String(pr.unit ?? "UN"),
+        cost: Number(pr.cost ?? 0),
+        price: Number(pr.price ?? 0),
+        promoPrice: pr.promo_price == null ? "" : Number(pr.promo_price),
+        minStock: Number(pr.min_stock ?? 0),
+        location: pr.location ? String(pr.location) : "",
+        imageUrl: pr.image_url ? String(pr.image_url) : "",
+        isActive: Boolean(pr.is_active),
+        categoryId: pr.category_id == null ? "" : Number(pr.category_id),
+        ncm: pr.ncm ? String(pr.ncm) : "",
+        cfop: pr.cfop ? String(pr.cfop) : "5102",
+      });
+      setOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Produto não encontrado.");
+    }
+  }
+
   useEffect(() => {
     if (!searchId || openedFor.current === searchId) return;
-    const openFrom = (id: number, fields: Partial<typeof empty>) => {
-      openedFor.current = id;
-      setEditId(id);
-      setForm({ ...empty, ...fields });
-      setOpen(true);
-    };
-    const p = list.data?.find((x) => x.id === searchId);
-    if (p) {
-      openFrom(p.id, {
-        name: p.name,
-        sku: p.sku ?? "",
-        barcode: p.barcode ?? "",
-        internalCode: p.internalCode ?? "",
-        unit: p.unit,
-        cost: p.cost,
-        price: p.price,
-        promoPrice: p.promoPrice ?? "",
-        minStock: p.minStock,
-        location: p.location ?? "",
-        imageUrl: p.imageUrl ?? "",
-        isActive: p.isActive,
-        ncm: p.ncm ?? "",
-        cfop: p.cfop ?? "5102",
-      });
-      return;
-    }
-    if (list.isPending) return;
-    void getProductFn({ data: { id: searchId, storeId: storeId ?? undefined } })
-      .then((d) => {
-        const pr = d.product as Record<string, unknown>;
-        openFrom(searchId, {
-          name: String(pr.name ?? ""),
-          sku: pr.sku ? String(pr.sku) : "",
-          barcode: pr.barcode ? String(pr.barcode) : "",
-          internalCode: pr.internal_code ? String(pr.internal_code) : "",
-          unit: String(pr.unit ?? "UN"),
-          cost: Number(pr.cost ?? 0),
-          price: Number(pr.price ?? 0),
-          promoPrice: pr.promo_price == null ? "" : Number(pr.promo_price),
-          minStock: Number(pr.min_stock ?? 0),
-          location: pr.location ? String(pr.location) : "",
-          imageUrl: pr.image_url ? String(pr.image_url) : "",
-          isActive: Boolean(pr.is_active),
-          categoryId: pr.category_id == null ? "" : Number(pr.category_id),
-          ncm: pr.ncm ? String(pr.ncm) : "",
-          cfop: pr.cfop ? String(pr.cfop) : "5102",
-        });
-      })
-      .catch(() => toast.error("Produto não encontrado."));
-  }, [searchId, list.data, list.isPending, storeId]);
+    void openForEdit(searchId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchId]);
 
   if (list.isPending) return <PageSkeleton />;
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar produtos." />;
@@ -251,27 +250,7 @@ function ProdutosPage() {
             <tr
               key={p.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => {
-                setEditId(p.id);
-                setForm({
-                  ...empty,
-                  name: p.name,
-                  sku: p.sku ?? "",
-                  barcode: p.barcode ?? "",
-                  internalCode: p.internalCode ?? "",
-                  unit: p.unit,
-                  cost: p.cost,
-                  price: p.price,
-                  promoPrice: p.promoPrice ?? "",
-                  minStock: p.minStock,
-                  location: p.location ?? "",
-                  imageUrl: p.imageUrl ?? "",
-                  isActive: p.isActive,
-                  ncm: p.ncm ?? "",
-                  cfop: p.cfop ?? "5102",
-                });
-                setOpen(true);
-              }}
+              onClick={() => void openForEdit(p.id)}
             >
               <Td>
                 <div className="flex items-center gap-3">
