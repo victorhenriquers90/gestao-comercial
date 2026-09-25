@@ -140,6 +140,25 @@ forma no checkout), não `sales.total` — devolução
 não desfaz o pagamento original, só alargou o filtro de status, sem
 descontar nada.
 
+Fluxo de caixa também atribuía recebimento/pagamento de título ao dia
+errado quando o título era pago em mais de uma parcela em dias diferentes
+(crediário, carnê): `received_amount`/`paid_amount` são cumulativos na
+linha do título e `received_at`/`paid_at` só gravam data quando o título
+fecha 100%, então uma parcela intermediária ficava com data `null` (sumia
+do relatório naquele dia) e a parcela final "herdava" a soma de todas as
+parcelas anteriores no dia dela. Corrigido em `cashflowFn` (`finance.ts`):
+soma agora vem de `audit_logs.after_data.amount` (gravado por evento, não
+cumulativo) em vez da linha resumo do título — sem migração, a tabela já
+existia. Não afeta o fechamento de caixa (esse usa `cash_movements`, que
+já ganha uma linha nova por baixa em dinheiro).
+
+Trava de duplo-clique em Pagar/Confirmar/Salvar do Financeiro
+(`financeiro.tsx`): os quatro botões (baixa de conta a pagar, confirmação
+de recebimento, criação de conta a pagar e de título a receber) só tinham
+`disabled={!condição}`, que não cobre o pedido já em voo. Mesma trava
+síncrona (`useState` checado antes do disparo) que já existia no
+formulário de Despesa, agora nos quatro pontos.
+
 Backup do banco (`installer\lib\Backup.ps1`, `Backup-GestaoComercial.ps1`,
 `Restore-GestaoComercial.ps1`): tarefa diária do Windows às 22:30 por SYSTEM,
 dump `-Fc` verificado com `pg_restore --list` **antes** de receber o nome
@@ -210,6 +229,16 @@ texto no tema do app.
    — **corrigido por completo** em `commission.ts`, `insight.ts`,
    `reports.ts`, `party.ts` e `purchase-suggestion.ts`. Ver "O que já está
    feito" para o padrão usado.
+
+3. **Pendente, precisa do usuário**: criar `migrations/0029_drop_nfce_foundation.sql`
+   (conteúdo já combinado numa sessão anterior — remove a migration
+   0022_nfce_foundation registrada sem arquivo) e rodar `npm run db:migrate`.
+   A IA não conseguiu criar esse arquivo diretamente (bloqueado por
+   classificador de segurança nas duas tentativas). Até lá, `npm run build`
+   imprime o aviso inofensivo "migration(s) registrada(s) sem arquivo".
+
+4. **Pendente, decisão do usuário**: apagar ou não os dados de demonstração
+   do piloto antes de ir para produção de verdade.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
