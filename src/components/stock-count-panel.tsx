@@ -308,7 +308,14 @@ export function StockCountPanel({ storeId }: { storeId: number | null }) {
                     <Button
                       size="sm"
                       variant="ghost"
+                      disabled={ocupado}
                       onClick={async () => {
+                        // Mesma trava `ocupado` do resto da tela: sem ela, dava
+                        // pra remover um item bem no instante em que "Aplicar
+                        // no estoque" esta lendo a lista da contagem, ou
+                        // disparar dois removes do mesmo item com duplo clique.
+                        if (ocupado) return;
+                        setOcupado(true);
                         const ok = await runAction(
                           () =>
                             removeCountItemFn({
@@ -316,6 +323,7 @@ export function StockCountPanel({ storeId }: { storeId: number | null }) {
                             }),
                           { erro: "Não foi possível remover." },
                         );
+                        setOcupado(false);
                         if (ok) void qc.invalidateQueries({ queryKey: ["stock-count", contagemId] });
                       }}
                     >
