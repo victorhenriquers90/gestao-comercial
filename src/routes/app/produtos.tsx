@@ -57,6 +57,9 @@ function ProdutosPage() {
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<number | undefined>();
   const openedFor = useRef<number | null>(null);
+  /** Trava o Salvar: sem isto, duplo clique num produto sem codigo de barras
+   * (a unica checagem de duplicidade do servidor) cria dois produtos iguais. */
+  const [salvando, setSalvando] = useState(false);
 
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
   const ncmPend = useQuery({
@@ -154,6 +157,8 @@ function ProdutosPage() {
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar produtos." />;
 
   async function save() {
+    if (salvando) return;
+    setSalvando(true);
     try {
       const variants = form.variantsText
         .split("\n")
@@ -193,6 +198,8 @@ function ProdutosPage() {
       void qc.invalidateQueries({ queryKey: ["products"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar");
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -396,8 +403,8 @@ function ProdutosPage() {
               Ativo
             </label>
           </div>
-          <Button className="mt-4 w-full" onClick={() => void save()}>
-            Salvar
+          <Button className="mt-4 w-full" disabled={salvando} onClick={() => void save()}>
+            {salvando ? "Salvando…" : "Salvar"}
           </Button>
         </DialogContent>
       </Dialog>
