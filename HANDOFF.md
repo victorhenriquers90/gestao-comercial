@@ -184,6 +184,31 @@ usarem o mesmo fallback. Auditoria completa do PDV
 todas as travas contra duplo-clique já usam a `ref` síncrona correta, e
 `resumeHeldFn` já é atômico no servidor (`delete ... returning`).
 
+**Segurança**: auditoria dedicada não achou SQL injection em nenhum
+`.query()` do backend (todo valor externo vai por parâmetro, nunca colado
+no texto). Achou e corrigiu uma vulnerabilidade real de isolamento entre
+empresas: `saveProductFn` conferia dono de marca/categoria/fornecedor mas
+não do PRÓPRIO produto sendo editado — enviar o id de um produto de outra
+empresa, sem variantes no payload, criava uma variante com `company_id`
+certo mas `product_id` apontando pro produto alheio, e um join
+variante→produto (o mesmo que checkout/busca fazem) passava a mostrar
+nome/preço/custo de outra empresa. Corrigido com `assertOwned(sql,
+companyId, "products", data.id)`. Varredura nos outros pontos de
+`assertOwned` (comissão, cliente, vendedor, compra) não achou mais nenhuma
+instância do mesmo padrão — `savePurchaseFn` já tinha a proteção certa
+(select + checagem de "não encontrado" antes de reescrever itens), e os
+demais não fazem cascata em tabela filha.
+
+**Foto de produto e logo da loja nunca eram salvas** (bug funcional, não
+de segurança): `sanitizeHttpUrl` rejeita `data:` de proposito, mas o único
+jeito de definir essas duas fotos (upload ou geração por IA) sempre passa
+pelo editor de recorte, que só devolve `canvas.toDataURL()` — uma data
+URL. O campo salvava como NULL, em silêncio, sem erro nenhum. Confirmado
+no banco do piloto antes da correção: 0 de 48 produtos e nenhuma das 4
+empresas tinham foto gravada. Corrigido com uma sanitização própria
+(`sanitizeImageUrl`, em `sanitize.ts`) que aceita `data:image/...` válido
+OU delega pra `sanitizeHttpUrl` pra um link http(s) de verdade.
+
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
 uma entrada por título (`entity='accounts_receivable'`) como
