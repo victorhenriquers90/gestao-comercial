@@ -29,6 +29,13 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
   const [aberto, setAberto] = useState<number | null>(null);
   const [recebendo, setRecebendo] = useState<number | null>(null);
   const [valor, setValor] = useState("");
+  /**
+   * Mesmo bug do "Confirmar" de financeiro.tsx, aqui numa segunda porta de
+   * entrada pro mesmo settleReceivableFn: sem trava sincrona, duplo clique
+   * soma a baixa duas vezes e, em dinheiro (a forma padrao aqui), duplica
+   * o lancamento em cash_movements -- gaveta com "sobra" fantasma.
+   */
+  const [confirmando, setConfirmando] = useState(false);
   // Dinheiro por padrao: e o caso do balcao. Em dinheiro a parcela entra no
   // caixa aberto da loja (e sem caixa aberto o servidor recusa).
   const [forma, setForma] = useState<ReceiptMethod>("dinheiro");
@@ -200,27 +207,34 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                             </Select>
                             <Button
                               size="sm"
+                              disabled={confirmando}
                               onClick={async () => {
+                                if (confirmando) return;
                                 // Vazio significa "recebi tudo": e o caso
                                 // comum, e obrigar a redigitar o valor que ja
                                 // esta na tela so cria chance de errar.
                                 const v = valor.trim() ? parseMoneyInput(valor) : p.open;
                                 if (!Number.isFinite(v) || v <= 0) return;
-                                const ok = await runAction(
-                                  () =>
-                                    settleReceivableFn({ data: { id: p.id, amount: v, method: forma, storeId } }),
-                                  { sucesso: "Recebimento registrado." },
-                                );
-                                if (!ok) return;
-                                setRecebendo(null);
-                                setValor("");
-                                void qc.invalidateQueries({ queryKey: ["crediario"] });
-                                void qc.invalidateQueries({ queryKey: ["ar"] });
-                                void qc.invalidateQueries({ queryKey: ["customers"] });
-                                void qc.invalidateQueries({ queryKey: ["register"] });
+                                setConfirmando(true);
+                                try {
+                                  const ok = await runAction(
+                                    () =>
+                                      settleReceivableFn({ data: { id: p.id, amount: v, method: forma, storeId } }),
+                                    { sucesso: "Recebimento registrado." },
+                                  );
+                                  if (!ok) return;
+                                  setRecebendo(null);
+                                  setValor("");
+                                  void qc.invalidateQueries({ queryKey: ["crediario"] });
+                                  void qc.invalidateQueries({ queryKey: ["ar"] });
+                                  void qc.invalidateQueries({ queryKey: ["customers"] });
+                                  void qc.invalidateQueries({ queryKey: ["register"] });
+                                } finally {
+                                  setConfirmando(false);
+                                }
                               }}
                             >
-                              Confirmar
+                              {confirmando ? "Confirmando…" : "Confirmar"}
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => setRecebendo(null)}>
                               Cancelar
