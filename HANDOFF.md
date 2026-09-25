@@ -209,6 +209,17 @@ empresas tinham foto gravada. Corrigido com uma sanitização própria
 (`sanitizeImageUrl`, em `sanitize.ts`) que aceita `data:image/...` válido
 OU delega pra `sanitizeHttpUrl` pra um link http(s) de verdade.
 
+**Checagem de papel ausente em `refreshNfceStatusFn`** (nfce.ts): das
+quatro funções de NFC-e, era a única sem `assertCan`/`can` nenhum —
+qualquer papel autenticado da empresa podia consultar/regravar o status
+fiscal de qualquer venda com um `saleId` arbitrário. Corrigido com o mesmo
+par de permissões das duas telas que chamam de verdade (`sales.read` +
+`pdv.sell`, padrão OR já usado em `simulateCommissionFn`). Uma varredura
+das ~150 server functions do backend não achou mais nenhuma instância —
+confirmou que as três correções anteriores desta sessão e de sessões
+passadas (`saveProductFn`, `toggleCrmTaskFn`, `simulateCommissionFn`,
+`globalSearchFn`) seguem corretas.
+
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
 uma entrada por título (`entity='accounts_receivable'`) como
