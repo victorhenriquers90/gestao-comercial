@@ -220,6 +220,45 @@ confirmou que as três correções anteriores desta sessão e de sessões
 passadas (`saveProductFn`, `toggleCrmTaskFn`, `simulateCommissionFn`,
 `globalSearchFn`) seguem corretas.
 
+**Editar qualquer produto apagava categoria, descrição, marca, fornecedor
+e corrompia a grade de variantes** (`produtos.tsx` + `catalog.ts`,
+`saveProductFn`) — o bug mais sério achado nesta sessão em termos de dado
+real destruído. O dialogo de editar abria com dados incompletos (o clique
+na linha usava o RESUMO da listagem, que nem tem `category_id`/
+`description`; a busca global esquecia `description`), e o servidor
+sobrescrevia com NULL tudo que não veio no payload — inclusive marca e
+fornecedor, que **nunca** têm campo neste formulário, logo sempre viravam
+null em qualquer edição. Como a grade de variantes também nunca vem
+preenchida ao editar, `has_variants` virava `false` a cada save, disparando
+um bloco que sobrescrevia UMA variante arbitrária com os dados do produto.
+Um "Salvar" sem mudar nada apagava tudo isso, silenciosamente, com
+"Produto salvo." na tela — aconteceu de verdade com um produto do piloto
+durante a verificação de outro fix nesta mesma sessão. Fix: `openForEdit`
+único no cliente (sempre busca o produto inteiro via `getProductFn` antes
+de abrir), e no servidor só sobrescreve description/category_id/brand_id/
+supplier_id/variantes quando o cliente realmente mandou algo — senão
+preserva o que já está gravado. Editar sem tocar na grade agora não toca
+em `product_variants` de jeito nenhum.
+
+**Pendente, precisa do usuário**: o produto afetado no piloto (`Camiseta
+Algodão Premium`, id 37, empresa 4/"Victor Comércio") teve categoria e
+descrição restauradas pela própria tela (Camisetas / "Produto ativo no
+mix da loja."), mas marca, fornecedor, `has_variants` e o SKU/código de
+barras da variante Preta/P (id 58) continuam corrompidos — não há UI
+nesta tela pra restaurá-los, e uma escrita direta no banco foi bloqueada
+pelo classificador de segurança do Auto Mode ("Modify Shared Resources").
+Valores corretos, deduzidos com 100% de confiança a partir de três cópias
+idênticas do mesmo produto seed noutras empresas (mesma descrição, mesmo
+padrão de nome de categoria/marca/fornecedor/SKU):
+```sql
+update products set brand_id = 13, supplier_id = 7, has_variants = true
+ where id = 37 and company_id = 4;
+update product_variants set sku = 'CAM-001-PRE-P', barcode = 'CAM-001-PRE-P'
+ where id = 58 and product_id = 37;
+```
+Rode isso (`psql` ou `npm run db:migrate`-style acesso direto) pra fechar
+a restauração, ou peça pra próxima IA rodar com sua autorização explícita.
+
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
 uma entrada por título (`entity='accounts_receivable'`) como
