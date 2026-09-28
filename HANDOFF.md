@@ -363,6 +363,18 @@ varrendo em vez de pulse, `EmptyState` com ícone em círculo, `Tabs` com
 hover/foco/fade, `Card` com `shadow-soft`, e barra de rolagem + seleção de
 texto no tema do app.
 
+"Contas a receber"/"Contas a pagar" ignoravam o seletor de loja do topo
+(`app-shell.tsx`, escopa a tela inteira via `useSelection`). `accounts_
+receivable`/`accounts_payable` têm `store_id` desde o schema original, mas
+as somas no `dashboardFn` (`insight.ts`) e em "resumo"/"pagar"/"receber"/
+"aging" (`reports.ts`) nunca filtravam por ele — somavam a empresa inteira
+mesmo com uma loja específica selecionada. Confirmado com as duas lojas
+reais do piloto: selecionar "Loja Shopping" mostrava o dinheiro inteiro da
+"Loja Centro" (R$1.139,90 a receber, R$6.715,00 a pagar) nos dois lugares.
+Corrigido com o mesmo padrão `andEq`/`($n::int is null or store_id = $n)`
+já usado no resto dessas funções; verificado ao vivo no Dashboard e em
+Relatórios antes/depois, batendo com consulta direta ao Postgres.
+
 ## Próximos (se o usuário disser “continuar”)
 
 1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
