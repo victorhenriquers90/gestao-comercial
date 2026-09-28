@@ -1453,11 +1453,28 @@ export const savePromotionFn = createServerFn({ method: "POST" })
     assertCan(tenant.role, "promotions.write");
     await assertOwned(sql, tenant.companyId, "products", data.productId);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
+    // Mesma classe de bug ja corrigida em saveProductFn: NaN/Infinity do JS
+    // atravessam o driver intactos, o Postgres aceita num numeric, e
+    // computePromo (src/lib/promo.ts) trata qualquer coisa nao-finita como
+    // "sem valor" -- a promocao salvava "Ativa" e nunca dava desconto
+    // nenhum, sem erro nenhum avisando. Validacao de tela (promocoes.tsx)
+    // nao vale pra quem chama o servidor direto.
+    const finite = (value: number | null | undefined, label: string): number | null => {
+      if (value == null) return null;
+      if (!Number.isFinite(value)) throw new Error(`Valor de ${label} inválido.`);
+      return value;
+    };
+    const percent = finite(data.percent, "percentual");
+    const amount = finite(data.amount, "desconto");
+    const promoPrice = finite(data.promoPrice, "preço promocional");
+    const buyQty = finite(data.buyQty, "quantidade (compre)");
+    const payQty = finite(data.payQty, "quantidade (pague)");
+    const minQty = finite(data.minQty, "quantidade mínima");
     if (data.id) {
       await sql`
-        update promotions set name = ${data.name}, kind = ${data.kind}, percent = ${data.percent ?? null},
-          amount = ${data.amount ?? null}, promo_price = ${data.promoPrice ?? null},
-          buy_qty = ${data.buyQty ?? null}, pay_qty = ${data.payQty ?? null}, min_qty = ${data.minQty ?? null},
+        update promotions set name = ${data.name}, kind = ${data.kind}, percent = ${percent},
+          amount = ${amount}, promo_price = ${promoPrice},
+          buy_qty = ${buyQty}, pay_qty = ${payQty}, min_qty = ${minQty},
           product_id = ${data.productId ?? null}, category_id = ${data.categoryId ?? null},
           starts_at = ${data.startsAt}, ends_at = ${data.endsAt}, is_active = ${data.isActive ?? true}
         where id = ${data.id} and company_id = ${tenant.companyId}
@@ -1469,8 +1486,8 @@ export const savePromotionFn = createServerFn({ method: "POST" })
         company_id, name, kind, percent, amount, promo_price, buy_qty, pay_qty, min_qty,
         product_id, category_id, starts_at, ends_at, is_active
       ) values (
-        ${tenant.companyId}, ${data.name}, ${data.kind}, ${data.percent ?? null}, ${data.amount ?? null},
-        ${data.promoPrice ?? null}, ${data.buyQty ?? null}, ${data.payQty ?? null}, ${data.minQty ?? null},
+        ${tenant.companyId}, ${data.name}, ${data.kind}, ${percent}, ${amount},
+        ${promoPrice}, ${buyQty}, ${payQty}, ${minQty},
         ${data.productId ?? null}, ${data.categoryId ?? null}, ${data.startsAt}, ${data.endsAt}, ${data.isActive ?? true}
       ) returning id
     `;

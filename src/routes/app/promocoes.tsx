@@ -22,6 +22,10 @@ function PromocoesPage() {
     kind: "percent",
     percent: "10",
     minQty: "3",
+    amount: "",
+    promoPrice: "",
+    buyQty: "3",
+    payQty: "2",
     startsAt: "",
     endsAt: "",
   });
@@ -76,12 +80,76 @@ function PromocoesPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Percentual" className="mt-block">
-            <Input value={form.percent} onChange={(e) => setForm({ ...form, percent: e.target.value })} />
-          </Field>
-          <Field label="Quantidade mínima" className="mt-block">
-            <Input value={form.minQty} onChange={(e) => setForm({ ...form, minQty: e.target.value })} />
-          </Field>
+          {/* Cada tipo usa um numero diferente -- "Fixo"/"Preco promocional"/
+              "Leve X pague Y" nao usam percentual nenhum, e antes desta
+              correcao o formulario so tinha campo pra percentual/quantidade
+              minima: escolher qualquer um dos outros tres tipos salvava uma
+              promocao "Ativa" que nunca dava desconto nenhum no PDV, porque
+              o valor que ela precisa (amount/promoPrice/buyQty+payQty)
+              nunca chegava a ser perguntado. */}
+          {form.kind === "percent" || form.kind === "qty" ? (
+            <Field label="Percentual" className="mt-block">
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                value={form.percent}
+                onChange={(e) => setForm({ ...form, percent: e.target.value })}
+              />
+            </Field>
+          ) : null}
+          {form.kind === "qty" ? (
+            <Field label="Quantidade mínima" className="mt-block">
+              <Input
+                type="number"
+                min="1"
+                value={form.minQty}
+                onChange={(e) => setForm({ ...form, minQty: e.target.value })}
+              />
+            </Field>
+          ) : null}
+          {form.kind === "fixed" ? (
+            <Field label="Valor do desconto (R$)" className="mt-block">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              />
+            </Field>
+          ) : null}
+          {form.kind === "promo_price" ? (
+            <Field label="Preço promocional (R$)" className="mt-block">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.promoPrice}
+                onChange={(e) => setForm({ ...form, promoPrice: e.target.value })}
+              />
+            </Field>
+          ) : null}
+          {form.kind === "bxgy" ? (
+            <div className="mt-block grid grid-cols-2 gap-2">
+              <Field label="Compre (quantidade)">
+                <Input
+                  type="number"
+                  min="1"
+                  value={form.buyQty}
+                  onChange={(e) => setForm({ ...form, buyQty: e.target.value })}
+                />
+              </Field>
+              <Field label="Pague (quantidade)">
+                <Input
+                  type="number"
+                  min="1"
+                  value={form.payQty}
+                  onChange={(e) => setForm({ ...form, payQty: e.target.value })}
+                />
+              </Field>
+            </div>
+          ) : null}
           <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
               <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
@@ -104,14 +172,64 @@ function PromocoesPage() {
                 toast.error("Dê um nome à promoção.");
                 return;
               }
+              // Cada tipo exige o numero que ele realmente usa em
+              // computePromo (src/lib/promo.ts) -- sem isto o servidor
+              // aceitava o campo vazio/de outro tipo como null e a
+              // promocao salvava "Ativa" sem nunca aplicar desconto.
+              let percent: number | undefined;
+              let minQty: number | undefined;
+              let amount: number | undefined;
+              let promoPrice: number | undefined;
+              let buyQty: number | undefined;
+              let payQty: number | undefined;
+              if (form.kind === "percent" || form.kind === "qty") {
+                percent = Number(form.percent);
+                if (!Number.isFinite(percent) || percent <= 0) {
+                  toast.error("Informe um percentual maior que zero.");
+                  return;
+                }
+              }
+              if (form.kind === "qty") {
+                minQty = Number(form.minQty);
+                if (!Number.isFinite(minQty) || minQty < 1) {
+                  toast.error("Informe uma quantidade mínima de 1 ou mais.");
+                  return;
+                }
+              }
+              if (form.kind === "fixed") {
+                amount = Number(form.amount);
+                if (!Number.isFinite(amount) || amount <= 0) {
+                  toast.error("Informe o valor do desconto.");
+                  return;
+                }
+              }
+              if (form.kind === "promo_price") {
+                promoPrice = Number(form.promoPrice);
+                if (!Number.isFinite(promoPrice) || promoPrice <= 0) {
+                  toast.error("Informe o preço promocional.");
+                  return;
+                }
+              }
+              if (form.kind === "bxgy") {
+                buyQty = Number(form.buyQty);
+                payQty = Number(form.payQty);
+                if (!Number.isFinite(buyQty) || !Number.isFinite(payQty) || buyQty < 2 || payQty < 1 || payQty >= buyQty) {
+                  toast.error("Informe quantidades válidas: pague menos do que compre.");
+                  return;
+                }
+              }
               setSalvando(true);
               try {
                 await savePromotionFn({
                   data: {
                     name: form.name,
                     kind: form.kind,
-                    percent: Number(form.percent),
-                    minQty: Number(form.minQty),
+                    percent,
+                    minQty,
+                    amount,
+                    promoPrice,
+                    buyQty,
+                    payQty,
                     startsAt: form.startsAt,
                     endsAt: form.endsAt,
                   },
