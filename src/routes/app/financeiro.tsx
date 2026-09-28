@@ -101,7 +101,10 @@ function FinanceiroPage() {
     queryKey: ["flow", storeId, range.from, range.to],
     queryFn: () => cashflowFn({ data: { from: range.from, to: range.to, storeId: storeId ?? undefined } }),
   });
-  const expenses = useQuery({ queryKey: ["expenses"], queryFn: () => listExpensesFn() });
+  const expenses = useQuery({
+    queryKey: ["expenses", storeId],
+    queryFn: () => listExpensesFn({ data: { storeId: storeId ?? undefined } }),
+  });
   const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
   const customers = useQuery({ queryKey: ["customers"], queryFn: () => listCustomersFn({ data: {} }) });
 

@@ -997,16 +997,23 @@ export const cashMoveFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listExpensesFn = createServerFn({ method: "GET" })
+export const listExpensesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator((d: { storeId?: number | null }) => d)
+  .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
+    // Mesmo store_id que "Saidas" no fluxo de caixa (cashflowFn) ja usa --
+    // sem isto, trocar de loja no seletor do topo mudava o card "Saidas" mas
+    // a lista de despesas embaixo continuava mostrando as DUAS lojas juntas,
+    // sem coluna nenhuma indicando de qual loja era cada uma.
     return dump(
-      await sql<Row>`
-        select * from expenses where company_id = ${tenant.companyId} and deleted_at is null
-        order by spent_at desc limit 100
-      `,
+      await sql.query<Row>(
+        `select * from expenses where company_id = $1 and deleted_at is null
+           and ($2::int is null or store_id = $2)
+         order by spent_at desc limit 100`,
+        [tenant.companyId, data.storeId ?? null],
+      ),
     );
   });
 
