@@ -854,6 +854,17 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
       `;
       if (!sale) throw new Error("Venda não encontrada.");
       if (sale.status === "cancelada") throw new Error("Venda já cancelada.");
+      // So a tela ja barrava isto (botao so aparece com status 'finalizada'),
+      // e validacao de tela nao vale pra quem chama o servidor direto -- mesmo
+      // principio do cashMoveFn. Sem a checagem aqui, cancelar uma venda que ja
+      // teve devolucao parcial devolvia ao estoque a quantidade ORIGINAL de
+      // cada item (abaixo, direto de sale_items), sem descontar o que o
+      // return_items ja tinha creditado de volta: a peca ja devolvida voltava
+      // a contar DUAS vezes, estoque fantasma. Confirmado com transacao
+      // revertida antes deste fix.
+      if (sale.status !== "finalizada") {
+        throw new Error("Venda com devolução não pode ser cancelada. Use Devoluções para o restante.");
+      }
 
       const items = await tx<{ variant_id: number; quantity: string | number }>`
         select variant_id, quantity from sale_items where sale_id = ${sale.id}
