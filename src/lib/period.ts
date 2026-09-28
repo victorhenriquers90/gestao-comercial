@@ -1,4 +1,5 @@
 import {
+  differenceInCalendarDays,
   endOfDay,
   endOfMonth,
   format,
@@ -69,7 +70,15 @@ export function resolvePeriod(
     start = startOfMonth(now);
     end = endOfDay(now);
   }
-  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  // `end` é fim de dia (23:59:59.999), não meia-noite -- dividir a diferença
+  // por 86400000 e arredondar já dava a contagem certa de dias, e o "+1"
+  // pensado pra fronteiras meia-noite-a-meia-noite somava um dia a mais.
+  // "Ontem" (1 dia de verdade) calculava 2, e o período anterior usado no
+  // "vs período anterior" do Dashboard saía sempre um dia mais largo do que
+  // devia -- inflando o comparativo e mostrando um crescimento menor (ou
+  // queda maior) do que o real. `differenceInCalendarDays` compara datas de
+  // calendário, não timestamps exatos, então não sofre desse desalinhamento.
+  const days = Math.max(1, differenceInCalendarDays(end, start) + 1);
   const prevEnd = endOfDay(subDays(start, 1));
   const prevStart = startOfDay(subDays(start, days));
   return {
