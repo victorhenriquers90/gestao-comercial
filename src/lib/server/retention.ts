@@ -174,6 +174,16 @@ export const retentionGuideFn = createServerFn({ method: "POST" })
   .validator((d: { from: string; to: string; sellerId?: number | null }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
-    assertCan(tenant.role, "sellers.read");
+    /*
+      sellers.read (nao sellers.write) e o mesmo furo ja fechado em
+      listSellersFn -- so que aqui nao da pra so redigir campo: a guia
+      INTEIRA e CPF + liquido + INSS/IRRF/ISS de cada vendedor numa tabela
+      imprimivel, pra fechar folha com o contador. Nao ha versao "reduzida"
+      que faca sentido pra quem so vende; quem precisa disso de outro papel
+      (financeiro) ja chega pela mesma consulta via Relatorios > Retencoes,
+      que exige reports.read -- essa porta so sobrava aberta pro "vendedor",
+      unico papel com sellers.read sem sellers.write.
+    */
+    assertCan(tenant.role, "sellers.write");
     return dump(await loadRetentionGuide(sql, tenant.companyId, data.from, data.to, data.sellerId));
   });
