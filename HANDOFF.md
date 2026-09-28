@@ -411,6 +411,21 @@ quando quem pede nao tem `sellers.write`, deixando so o que ja aparece pro
 Dashboard (nome, faturamento, comissao, pendente). Confirmado ao vivo que
 admin continua vendo tudo normalmente.
 
+Mesmo furo de sellers.read x sellers.write, achado em mais DUAS portas
+depois de fechar a de listSellersFn: `retentionGuideFn` (retention.ts --
+guia de retencoes: CPF, bruto, INSS/IRRF/ISS, liquido e custo patronal de
+CADA vendedor numa tabela imprimivel) e `listCommissionsFn` (finance.ts --
+aba "Pagamentos", filtro "Todos os vendedores" + liquido e detalhamento de
+imposto por comissao, historico inteiro sem limite de data). Nenhuma das
+duas tem versao "reduzida" que faca sentido pra quem so vende, entao os
+dois foram trocados pra exigir `sellers.write` (so admin/gerente) em vez de
+redigir campo por campo. Confirmado programaticamente que `sellers.write`
+pertence so a admin/gerente entre os 7 papeis, e testado ao vivo que admin
+continua vendo as duas abas completas. Varredura final por todo `sellers.read`
+no codigo confirma que so sobra a excecao ja documentada em
+`simulateCommissionFn` (simulacao de UMA venda, sem listar dado de outros
+vendedores -- correta).
+
 `resolvePeriod` (period.ts) calculava o periodo anterior sempre um dia mais
 largo que o atual -- `days` somava `round((end-start)/86400000) + 1`, certo
 pra fronteiras meia-noite-a-meia-noite, mas `end` aqui e fim de dia
