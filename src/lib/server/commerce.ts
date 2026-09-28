@@ -18,7 +18,7 @@ import {
 import { checkCreditLimit, parseCrediarioInstallments, splitCrediario } from "@/lib/crediario";
 import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { bestPromo, type Promo } from "@/lib/promo";
 import {
   cancelWindow,
@@ -770,6 +770,14 @@ export const getSaleFn = createServerFn({ method: "POST" })
       [data.id, tenant.companyId],
     );
     if (!sale) throw new Error("Venda não encontrada.");
+    // Mesmo corte de listSellersFn/retentionGuideFn/listCommissionsFn: quem
+    // so tem sales.read (vendedor, caixa, financeiro) pode abrir QUALQUER
+    // venda da empresa, nao so a propria -- e o detalhamento de IRRF/ISS/
+    // liquido e o mesmo dado de folha que essas correcoes ja escondem. O
+    // valor bruto da comissao (amount/percent) continua visivel: e a mesma
+    // informacao de performance que o ranking do Dashboard ja mostra pra
+    // qualquer um com dashboard.read.
+    const podeVerFolha = can(tenant.role, "sellers.write");
     const items = await sql<Row>`select * from sale_items where sale_id = ${data.id}`;
     const payments = await sql<Row>`select * from payments where sale_id = ${data.id}`;
     const returned = await sql<{ sale_item_id: number; qty: string | number }>`
@@ -812,12 +820,12 @@ export const getSaleFn = createServerFn({ method: "POST" })
             note: comm.note == null ? null : String(comm.note),
             ruleName: comm.rule_name == null ? null : String(comm.rule_name),
             lines: parseBreakdown(comm.breakdown),
-            net: comm.net_amount == null ? num(comm.amount) : num(comm.net_amount),
-            taxInss: num(comm.tax_inss),
-            taxIrrf: num(comm.tax_irrf),
-            taxIss: num(comm.tax_iss),
-            taxOther: num(comm.tax_other),
-            taxBreakdown: comm.tax_breakdown ?? null,
+            net: podeVerFolha ? (comm.net_amount == null ? num(comm.amount) : num(comm.net_amount)) : null,
+            taxInss: podeVerFolha ? num(comm.tax_inss) : 0,
+            taxIrrf: podeVerFolha ? num(comm.tax_irrf) : 0,
+            taxIss: podeVerFolha ? num(comm.tax_iss) : 0,
+            taxOther: podeVerFolha ? num(comm.tax_other) : 0,
+            taxBreakdown: podeVerFolha ? (comm.tax_breakdown ?? null) : null,
           }
         : null,
     });
