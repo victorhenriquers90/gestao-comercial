@@ -397,6 +397,20 @@ estoque. Confirmado com transacao revertida (cenario sintetico: venda de 2
 unidades, 1 ja devolvida, cancelSaleFn devolveria 2 ao estoque). Corrigido
 bloqueando o cancelamento fora de `'finalizada'`, igual a tela ja fazia.
 
+Vazamento de dado de folha pro papel "vendedor" (party.ts, `listSellersFn`):
+"vendedor" e o UNICO papel com `sellers.read` mas sem `sellers.write`
+(confirmado programaticamente pros 7 papeis). A tela /app/vendedores mostra
+CPF na lista e salario mensal no dialogo de Editar sem checagem de papel
+nenhuma -- so a escrita (`saveSellerFn`) exigia `sellers.write`; a leitura
+so pedia `sellers.read`. Ou seja, convidar alguem com o papel normal de
+"vendedor" deixava essa pessoa ver CPF, regime tributario e salario de
+TODOS os colegas vendedores -- mesma classe de vazamento que
+`listActiveSellerNamesFn` ja existe pra evitar do lado do papel "pdv".
+Corrigido redigindo document/monthly_salary/dependents/iss_rate/tax_regime
+quando quem pede nao tem `sellers.write`, deixando so o que ja aparece pro
+Dashboard (nome, faturamento, comissao, pendente). Confirmado ao vivo que
+admin continua vendo tudo normalmente.
+
 ## Próximos (se o usuário disser “continuar”)
 
 1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
