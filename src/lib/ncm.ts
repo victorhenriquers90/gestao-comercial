@@ -53,6 +53,34 @@ export function formatNcm(ncm: string | null | undefined): string {
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
 
+/** Quatro digitos, do jeito que a NF-e exige. */
+const CFOP_DIGITS = 4;
+
+/**
+ * Mesmo bug do NCM, no CFOP: o campo entrava por `sanitizeCode(cfop, 4)`,
+ * que so CORTA em 4 caracteres -- "5.102" (o jeito que a tabela oficial e o
+ * contador escrevem) virava "5.10", com ponto e faltando o ultimo digito. O
+ * fallback pro padrao ("5102" -- ver saveProductFn) so cobre campo vazio;
+ * "5.10" e uma string nao-vazia, entao passava direto e so ia dar erro na
+ * RECUSA do SEFAZ no balcao.
+ *
+ * Aceita "5.102", "5 102" e "5102" (as formas que chegam por planilha/
+ * digitacao); o que vai pro banco e sempre so digito.
+ */
+export function parseCfop(raw: unknown): string | null {
+  if (raw == null) return null;
+  const texto = String(raw).trim();
+  if (!texto) return null;
+  const digitos = texto.replace(/[.\s-]/g, "");
+  if (!/^\d+$/.test(digitos)) {
+    throw new Error("CFOP deve ter só números (ex.: 5.102).");
+  }
+  if (digitos.length !== CFOP_DIGITS) {
+    throw new Error(`CFOP tem ${CFOP_DIGITS} dígitos; recebi ${digitos.length}.`);
+  }
+  return digitos;
+}
+
 /**
  * A MESMA regra de `hasNcm`, em SQL -- e mora aqui colada nela de proposito.
  *

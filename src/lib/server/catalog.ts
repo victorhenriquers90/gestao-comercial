@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
-import { ncmValidSql, parseNcm } from "@/lib/ncm";
+import { ncmValidSql, parseCfop, parseNcm } from "@/lib/ncm";
 import { num } from "@/lib/utils";
 import { assertOwned, assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
@@ -198,11 +198,13 @@ export const saveProductFn = createServerFn({ method: "POST" })
       unit: sanitizeLine(d.unit ?? "UN", 8) || "UN",
       location: optionalLine(d.location, 80) ?? undefined,
       imageUrl: sanitizeImageUrl(d.imageUrl),
-      // parseNcm e nao sanitizeCode: o sanitize so cortava em 8 caracteres,
-      // entao "abc" virava NCM valido no banco e so explodia na recusa do
-      // SEFAZ, no balcao, com o cliente esperando a nota.
+      // parseNcm/parseCfop e nao sanitizeCode: o sanitize so CORTA em
+      // 8/4 caracteres -- "abc" virava NCM valido, e "5.102" (do jeito que
+      // a tabela oficial escreve) virava CFOP "5.10", com ponto e faltando
+      // um digito. Os dois so explodiam na recusa do SEFAZ, no balcao, com
+      // o cliente esperando a nota.
       ncm: parseNcm(d.ncm) ?? undefined,
-      cfop: sanitizeCode(d.cfop, 4) ?? undefined,
+      cfop: parseCfop(d.cfop) ?? undefined,
       variants: d.variants?.map((v) => ({
         ...v,
         sku: sanitizeCode(v.sku) ?? undefined,

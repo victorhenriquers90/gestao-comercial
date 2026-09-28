@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatNcm, hasNcm, ncmValidSql, parseNcm } from "./ncm.ts";
+import { formatNcm, hasNcm, ncmValidSql, parseCfop, parseNcm } from "./ncm.ts";
 
 describe("parseNcm", () => {
   it("aceita as três formas que chegam do contador", () => {
@@ -64,6 +64,39 @@ describe("hasNcm", () => {
     assert.equal(hasNcm("abc"), false);
     assert.equal(hasNcm("610910"), false);
     assert.equal(hasNcm("00000000"), false);
+  });
+});
+
+describe("parseCfop", () => {
+  it("aceita as formas que chegam do contador/planilha", () => {
+    assert.equal(parseCfop("5.102"), "5102");
+    assert.equal(parseCfop("5 102"), "5102");
+    assert.equal(parseCfop("5102"), "5102");
+    assert.equal(parseCfop("5-102"), "5102");
+  });
+
+  it("campo vazio é null, não erro", () => {
+    assert.equal(parseCfop(""), null);
+    assert.equal(parseCfop("   "), null);
+    assert.equal(parseCfop(null), null);
+    assert.equal(parseCfop(undefined), null);
+  });
+
+  it("recusa o que passava antes por sanitizeCode(cfop, 4)", () => {
+    // "5.102" cortado em 4 caracteres virava "5.10" -- com ponto e faltando
+    // o ultimo digito -- e so explodia na recusa do SEFAZ, no balcao.
+    assert.throws(() => parseCfop("abc"), /só números/);
+    assert.throws(() => parseCfop("51a2"), /só números/);
+  });
+
+  it("recusa contagem de dígitos errada, dizendo quantos veio", () => {
+    assert.throws(() => parseCfop("510"), /4 dígitos; recebi 3/);
+    assert.throws(() => parseCfop("51020"), /recebi 5/);
+  });
+
+  it("não inventa nada: número válido entra como veio", () => {
+    assert.equal(parseCfop("6102"), "6102");
+    assert.equal(parseCfop("1102"), "1102");
   });
 });
 
