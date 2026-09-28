@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { assertFreeDocument, assertOwned, audit, requireTenant } from "./context";
 import { dump, type Row } from "@/lib/json";
@@ -609,6 +609,18 @@ export const listSellersFn = createServerFn({ method: "GET" })
       where sl.company_id = ${tenant.companyId} and sl.deleted_at is null
       order by sl.name
     `;
+    /*
+      "vendedor" (e "caixa") tem sellers.read so pra ver o ranking de
+      faturamento/comissao dos colegas -- mesmo dado que o Dashboard ja
+      mostra pra qualquer um com dashboard.read. Mas so quem tambem tem
+      sellers.write (admin/gerente) edita cadastro de vendedor, e so esse
+      cadastro tem CPF e salario. Sem este corte, QUALQUER vendedor
+      convidado via inviteMemberFn via essa tela via CPF e salario mensal
+      de todos os colegas -- o mesmo vazamento que listActiveSellerNamesFn
+      (usado no seletor do PDV) existe pra evitar do lado do "pdv", só que
+      aqui do lado do "vendedor".
+    */
+    const podeVerFolha = can(tenant.role, "sellers.write");
     return rows.map((r) => ({
       id: num(r.id),
       name: String(r.name ?? ""),
@@ -621,11 +633,11 @@ export const listSellersFn = createServerFn({ method: "GET" })
       month_commission: num(r.month_commission),
       pending_commission: num(r.pending_commission),
       pending_net: num(r.pending_net),
-      tax_regime: String(r.tax_regime ?? "none"),
-      monthly_salary: num(r.monthly_salary),
-      dependents: num(r.dependents),
-      iss_rate: r.iss_rate == null ? null : num(r.iss_rate),
-      document: r.document == null ? null : String(r.document),
+      tax_regime: podeVerFolha ? String(r.tax_regime ?? "none") : "none",
+      monthly_salary: podeVerFolha ? num(r.monthly_salary) : 0,
+      dependents: podeVerFolha ? num(r.dependents) : 0,
+      iss_rate: podeVerFolha ? (r.iss_rate == null ? null : num(r.iss_rate)) : null,
+      document: podeVerFolha ? (r.document == null ? null : String(r.document)) : null,
     }));
   });
 
