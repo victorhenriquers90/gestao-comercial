@@ -359,7 +359,18 @@ function ProdutosPage() {
               <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} />
             </Field>
             <Field label="Preço promocional">
-              <Input value={form.promoPrice} onChange={(e) => setForm({ ...form, promoPrice: e.target.value })} />
+              {/* type="number", igual Custo/Preço ao lado: sem isto era o
+                  unico campo de dinheiro do dialogo em texto livre --
+                  "19,90" (formato brasileiro normal) virava NaN no
+                  Number() do save, o banco aceita NaN num numeric, e na
+                  leitura num() zera de volta pra 0 -- a promocao nunca
+                  aplicava em lugar nenhum, sem erro nenhum avisando. */}
+              <Input
+                type="number"
+                step="0.01"
+                value={form.promoPrice}
+                onChange={(e) => setForm({ ...form, promoPrice: e.target.value })}
+              />
             </Field>
             <Field label="Estoque mínimo">
               <Input type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: Number(e.target.value) })} />

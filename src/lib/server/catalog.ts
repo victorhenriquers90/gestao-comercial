@@ -234,6 +234,17 @@ export const saveProductFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "brands", data.brandId ? num(data.brandId) : null);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
+    // Mesma classe de bug ja documentada em stock-input.ts: NaN/Infinity do
+    // JS atravessam o driver intactos e o Postgres aceita 'NaN'::numeric --
+    // sem checagem aqui, um custo/preco invalido (vindo de um campo sem
+    // type="number" no cliente, ou de uma chamada direta ao servidor) ficava
+    // gravado como NaN, e toda leitura via num() ZERA de volta em silencio.
+    // Foi exatamente assim que o preco promocional parava de aplicar: NaN
+    // gravado, lido como 0, `productPromo > 0 ? productPromo : list` caia
+    // pro preco cheio sem erro nenhum avisando ninguem.
+    const cost = parseUnitCost(data.cost, "custo");
+    const price = parseUnitCost(data.price, "preço");
+    const promoPrice = data.promoPrice == null ? null : parseUnitCost(data.promoPrice, "preço promocional");
 
     /*
       Produto, marca, variantes e auditoria numa transacao so.
@@ -308,8 +319,8 @@ export const saveProductFn = createServerFn({ method: "POST" })
             name = ${data.name}, internal_code = ${data.internalCode ?? null}, barcode = ${data.barcode ?? null},
             sku = ${data.sku ?? null}, description = ${description},
             category_id = ${categoryId}, brand_id = ${brandId}, supplier_id = ${supplierId},
-            unit = ${data.unit ?? "UN"}, cost = ${data.cost}, price = ${data.price},
-            promo_price = ${data.promoPrice ?? null}, min_stock = ${data.minStock ?? 0},
+            unit = ${data.unit ?? "UN"}, cost = ${cost}, price = ${price},
+            promo_price = ${promoPrice}, min_stock = ${data.minStock ?? 0},
             location = ${data.location ?? null}, image_url = ${data.imageUrl ?? null},
             is_active = ${data.isActive ?? true},
             ncm = ${data.ncm ?? null}, cfop = ${data.cfop ?? "5102"},
@@ -324,7 +335,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
           ) values (
             ${tenant.companyId}, ${data.internalCode ?? null}, ${data.barcode ?? null}, ${data.sku ?? null},
             ${data.name}, ${description}, ${categoryId}, ${brandId}, ${supplierId},
-            ${data.unit ?? "UN"}, ${data.cost}, ${data.price}, ${data.promoPrice ?? null}, ${data.minStock ?? 0},
+            ${data.unit ?? "UN"}, ${cost}, ${price}, ${promoPrice}, ${data.minStock ?? 0},
             ${data.location ?? null}, ${data.imageUrl ?? null}, ${data.isActive ?? true}, ${hasVariants},
             ${data.ncm ?? null}, ${data.cfop ?? "5102"}
           ) returning id
@@ -337,13 +348,13 @@ export const saveProductFn = createServerFn({ method: "POST" })
             await sql`
               update product_variants set sku = ${v.sku ?? null}, barcode = ${v.barcode ?? null},
                 color = ${v.color ?? null}, size = ${v.size ?? null}, model = ${v.model ?? null},
-                cost = ${v.cost ?? data.cost}, price = ${v.price ?? data.price}
+                cost = ${v.cost ?? cost}, price = ${v.price ?? price}
               where id = ${v.id} and company_id = ${tenant.companyId}
             `;
           } else {
             await sql`
               insert into product_variants (company_id, product_id, sku, barcode, color, size, model, cost, price)
-              values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${v.cost ?? data.cost}, ${v.price ?? data.price})
+              values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${v.cost ?? cost}, ${v.price ?? price})
             `;
           }
         }
@@ -359,7 +370,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
         if (!existing.length) {
           await sql`
             insert into product_variants (company_id, product_id, sku, barcode, cost, price)
-            values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.cost}, ${data.price})
+            values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${cost}, ${price})
           `;
         }
       }
