@@ -1210,7 +1210,16 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
   .validator((d: { sellerId?: number; status?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
-    assertCan(tenant.role, "sellers.read");
+    /*
+      Mesmo furo de sellers.read x sellers.write ja fechado em listSellersFn
+      e retentionGuideFn. Aqui a lista inclui net_amount e o detalhamento de
+      INSS/IRRF/ISS por comissao (a aba "Pagamentos" abre isso no clique do
+      Liquido), e o filtro de vendedor da tela aceita "Todos" ou qualquer
+      colega -- "vendedor" (unico papel com sellers.read sem sellers.write)
+      conseguia ver o liquido e o imposto retido de qualquer outro vendedor,
+      venda a venda, historico inteiro.
+    */
+    assertCan(tenant.role, "sellers.write");
     const rows = await sql.query<Row>(
       `select c.id, c.seller_id, c.sale_id, c.amount, c.percent, c.status, c.created_at, c.paid_at, c.note,
               c.net_amount, c.tax_inss, c.tax_irrf, c.tax_iss, c.tax_other, c.tax_breakdown,
