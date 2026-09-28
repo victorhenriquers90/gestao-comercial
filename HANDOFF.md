@@ -426,6 +426,26 @@ no codigo confirma que so sobra a excecao ja documentada em
 `simulateCommissionFn` (simulacao de UMA venda, sem listar dado de outros
 vendedores -- correta).
 
+Quarta porta do mesmo furo: `getSaleFn` (commerce.ts) so exige `sales.read`
+("vendedor"/"caixa"/"financeiro" tem sem `sellers.write`), e a tela de
+Vendas deixa abrir QUALQUER venda da empresa -- o dialogo de detalhe sempre
+mostrava liquido e INSS/IRRF/ISS da comissao daquele vendedor, venda por
+venda. Diferente das outras tres, aqui `sales.read` precisa continuar
+aberto pras tres funcoes (cancelar, historico, comprovante), entao so os
+campos de folha (net/taxInss/taxIrrf/taxIss/taxOther/taxBreakdown) foram
+redigidos quando quem pede nao tem `sellers.write` -- `amount`/`percent`
+(quanto a venda gerou de comissao bruta) continuam visiveis, mesmo nivel de
+`commission_pct`/`month_revenue` que o ranking do Dashboard ja mostra.
+Testado ao vivo: venda com comissao de Joao Martins (autonomo) continua
+mostrando o detalhamento completo pra quem tem `sellers.write`.
+
+Varredura sistematica por TODOS os pares leitura/escrita do sistema
+(products, customers, suppliers, cash, targets, users) nao achou mais
+nenhum caso do mesmo padrao -- as outras exposicoes (custo do produto pra
+vendedor/caixa, CPF do cliente pra caixa/pdv, etc.) sao necessidade real do
+trabalho de cada papel, nao vazamento: diferente de CPF/salario de
+FUNCIONARIO, que e categoria protegida por lei, nao decisao de produto.
+
 `resolvePeriod` (period.ts) calculava o periodo anterior sempre um dia mais
 largo que o atual -- `days` somava `round((end-start)/86400000) + 1`, certo
 pra fronteiras meia-noite-a-meia-noite, mas `end` aqui e fim de dia
