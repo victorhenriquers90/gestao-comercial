@@ -419,6 +419,24 @@ export const getSettingsFn = createServerFn({ method: "GET" })
     });
   });
 
+/**
+ * UF da empresa: 2 letras, maiusculas.
+ *
+ * `optionalLine(d.state, 2)` so CORTA em 2 caracteres, sem validar --
+ * "São Paulo" digitado por engano no lugar da sigla virava "Sã" (com
+ * acento, sem sentido nenhum), e "sp" gravava em minusculo. Aparece no
+ * cabecalho de recibo e no guia de retencao impresso, sem erro nenhum
+ * avisando que o campo esta errado.
+ */
+function parseUf(raw: unknown): string | undefined {
+  const s = optionalLine(raw, 10)?.toUpperCase();
+  if (!s) return undefined;
+  if (!/^[A-Z]{2}$/.test(s)) {
+    throw new Error("UF deve ter 2 letras (ex.: SP).");
+  }
+  return s;
+}
+
 export const saveCompanyFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -451,7 +469,7 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
       phone: sanitizeCode(d.phone, 32) ?? undefined,
       address: optionalLine(d.address, 200) ?? undefined,
       city: optionalLine(d.city, 80) ?? undefined,
-      state: optionalLine(d.state, 2) ?? undefined,
+      state: parseUf(d.state),
       zip: sanitizeCode(d.zip, 16) ?? undefined,
       logoUrl: sanitizeImageUrl(d.logoUrl),
       printHeader: sanitizeMultiline(d.printHeader, 500) ?? undefined,
@@ -464,6 +482,15 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "settings.write");
+    // `ie` grava DIRETO, como todo campo de texto abaixo -- nao mais
+    // coalesce(novo, ie). O formulario (configuracoes.tsx) sempre manda
+    // "ie" (campo controlado), entao "" so vira undefined quando o usuario
+    // limpa o campo de proposito. Com o coalesce antigo essa limpeza nunca
+    // gravava: o valor velho voltava sempre, e a IE so podia ser TROCADA,
+    // nunca apagada -- uma empresa que vira isenta ficava presa com a
+    // inscricao antiga pra sempre. `tax_regime` mantem o coalesce: vem de
+    // um <select> fechado, "undefined" ali significa "algo inesperado",
+    // nao "usuario limpou de proposito".
     await sql`
       update companies set
         name = ${data.name},
@@ -476,7 +503,7 @@ export const saveCompanyFn = createServerFn({ method: "POST" })
         state = ${data.state ?? null},
         zip = ${data.zip ?? null},
         logo_url = ${data.logoUrl ?? null},
-        ie = coalesce(${data.ie ?? null}, ie),
+        ie = ${data.ie ?? null},
         tax_regime = coalesce(${data.taxRegime ?? null}, tax_regime),
         updated_at = now()
       where id = ${tenant.companyId}
