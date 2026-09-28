@@ -186,7 +186,19 @@ function MetasPage() {
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Valor" className="mt-block">
-            <Input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            {/* type="number", igual o campo de bonus logo abaixo: em texto
+                livre, "15.000" (quinze mil, sem centavos) virava 15 no
+                Number() do save -- passava pela checagem de "maior que
+                zero" (15 e positivo) e criava uma meta mil vezes menor,
+                silenciosamente. Com bonus de valor fixo configurado, isso
+                paga o bonus na primeira venda que passar de R$ 15. */}
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            />
           </Field>
           <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
