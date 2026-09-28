@@ -72,16 +72,26 @@ export const dashboardFn = createServerFn({ method: "POST" })
     const today = ymdLocal();
     const monthStart = `${today.slice(0, 7)}-01`;
 
+    // As quatro linhas abaixo (hoje, mes, tendencia de 12 meses, produtos)
+    // so filtravam por loja -- o filtro "Vendedor" do painel (mesmo seletor
+    // que ja escopa corretamente o KPI "Faturamento do periodo" e o
+    // grafico "Vendas do periodo" logo ao lado) ficava mudo pra elas.
+    // Selecionar um vendedor mostrava "Faturamento hoje"/"do mes" da LOJA
+    // INTEIRA lado a lado com um "Faturamento do periodo" ja filtrado --
+    // dois numeros de escopos diferentes na mesma tela, sem nada indicando
+    // a diferenca. `topSellers` continua sem filtro de proposito: e um
+    // ranking pra comparar vendedores entre si, nao teria sentido reduzido
+    // a um so.
     const todayParams: unknown[] = [tenant.companyId];
-    const todayScope = andEq(todayParams, "s.store_id", storeId);
+    const todayScope = `${andEq(todayParams, "s.store_id", storeId)}${andEq(todayParams, "s.seller_id", sellerId)}`;
     const monthParams: unknown[] = [tenant.companyId, monthStart];
-    const monthScope = andEq(monthParams, "s.store_id", storeId);
+    const monthScope = `${andEq(monthParams, "s.store_id", storeId)}${andEq(monthParams, "s.seller_id", sellerId)}`;
     const seriesParams: unknown[] = [tenant.companyId, range.from, range.to];
     const seriesScope = `${andEq(seriesParams, "s.store_id", storeId)}${andEq(seriesParams, "s.seller_id", sellerId)}`;
     const monthlyParams: unknown[] = [tenant.companyId];
-    const monthlyScope = andEq(monthlyParams, "s.store_id", storeId);
+    const monthlyScope = `${andEq(monthlyParams, "s.store_id", storeId)}${andEq(monthlyParams, "s.seller_id", sellerId)}`;
     const mixParams: unknown[] = [tenant.companyId, range.from, range.to];
-    const mixScope = andEq(mixParams, "s.store_id", storeId);
+    const mixScope = `${andEq(mixParams, "s.store_id", storeId)}${andEq(mixParams, "s.seller_id", sellerId)}`;
     const sellerParams: unknown[] = [tenant.companyId, range.from, range.to];
     const sellerScope = andEq(sellerParams, "s.store_id", storeId);
     const lowParams: unknown[] = [tenant.companyId];
