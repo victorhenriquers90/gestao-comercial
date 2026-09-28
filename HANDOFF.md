@@ -265,6 +265,21 @@ que passasse de R$15 em vez de R$15.000). `saveProductFn` e
 `parseUnitCost`/checagem de finitude já usados em `savePurchaseFn`) —
 "validação de tela não vale pra quem chama o servidor direto".
 
+**Filtro de vendedor do painel não afetava hoje/mês/tendência/produtos**
+(`insight.ts`, `dashboardFn`): o painel tem um único seletor "Vendedor" no
+topo, controlando visualmente a tela inteira, mas só "Faturamento do
+período" (`kpiScope`) e o gráfico "Vendas do período" (`seriesScope`) de
+fato o respeitavam. "Faturamento hoje", "Faturamento do mês", a tendência
+de 12 meses e "Produtos mais vendidos" só filtravam por loja, ignorando o
+vendedor selecionado — dois números de escopos diferentes lado a lado
+(ex.: "do mês" mostrando a loja inteira enquanto "do período" já mostrava
+só o vendedor). Corrigido adicionando `s.seller_id` aos quatro escopos que
+faltavam; `sellerScope` (ranking "Vendedores") continua sem o filtro de
+propósito — é comparação entre vendedores, não faria sentido reduzida a
+um só. Confirmado ao vivo contra o piloto: com "João Martins" selecionado,
+"do mês" e "do período" passaram a bater, e "Produtos mais vendidos"
+passou a mostrar só o item que ele vendeu.
+
 **Três dos cinco tipos de promoção nunca davam desconto nenhum**
 (`promocoes.tsx`): o diálogo só perguntava Percentual/Quantidade mínima,
 mas o seletor de Tipo oferece Fixo/Preço promocional/Leve X pague Y — os
