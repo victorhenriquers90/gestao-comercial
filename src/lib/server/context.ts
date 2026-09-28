@@ -2,7 +2,7 @@ import { dbSource, getSql, type Sql } from "@/lib/db";
 import { demoSeedEnabled } from "@/lib/demo-seed";
 import { INVITE_COOKIE, NO_ACCESS_MESSAGE } from "@/lib/invite-constants";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
-import { num, str } from "@/lib/utils";
+import { num } from "@/lib/utils";
 import { seedCompany } from "./seed";
 
 export type StoreRef = { id: number; name: string; city: string | null };
@@ -329,9 +329,4 @@ export async function ensureTenant(
   const tenant = await loadTenant(sql, userId);
   if (!tenant) throw new Error("Falha ao inicializar a empresa.");
   return tenant;
-}
-
-export function storeClause(storeId?: number | null): { sql: string; params: unknown[] } {
-  if (storeId == null || storeId <= 0) return { sql: "", params: [] };
-  return { sql: " and store_id = $SID ", params: [storeId] };
 }
