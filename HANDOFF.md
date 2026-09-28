@@ -375,6 +375,17 @@ Corrigido com o mesmo padrão `andEq`/`($n::int is null or store_id = $n)`
 já usado no resto dessas funções; verificado ao vivo no Dashboard e em
 Relatórios antes/depois, batendo com consulta direta ao Postgres.
 
+Mesma família de bug, achada em seguida em `financeiro.tsx`: `listExpensesFn`
+não recebia `storeId` nenhum (só `listPayablesFn`/`listReceivablesFn`/
+`cashflowFn` recebiam), então o card "Saídas" (escopado por loja) e a aba
+"Despesas" logo abaixo — sem coluna nenhuma indicando de onde vinha cada
+lançamento — podiam mostrar números que não batiam. Confirmado no piloto:
+as duas despesas reais (Energia R$640, Marketing R$320) são da Loja Centro;
+selecionar Loja Shopping zerava o card mas a tabela continuava as listando.
+Corrigido dando `storeId` pra `listExpensesFn` (GET virou POST com
+validator, mesmo padrão das funções irmãs) e passando o seletor atual do
+`useSelection` na chamada.
+
 ## Próximos (se o usuário disser “continuar”)
 
 1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
