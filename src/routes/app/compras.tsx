@@ -172,7 +172,12 @@ function ComprasPage() {
             </Select>
           </Field>
           <Field label="Frete" className="mt-block">
-            <Input value={freight} onChange={(e) => setFreight(e.target.value)} />
+            {/* type="number": em texto livre, "1.500" (mil e quinhentos,
+                sem centavos) virava 1.5 no Number() do save -- silencioso,
+                nao e NaN, entao nao cai no erro que o servidor ja pega
+                (parsePurchaseExtra so rejeita nao-finito/negativo, e o
+                dano acontece ANTES, no Number() do cliente). */}
+            <Input type="number" step="0.01" min="0" value={freight} onChange={(e) => setFreight(e.target.value)} />
           </Field>
           <Field label="Adicionar produto" className="mt-block">
             <Input
@@ -214,8 +219,15 @@ function ComprasPage() {
                 />
                 <Input
                   className="h-8 w-24"
+                  type="number"
+                  step="0.01"
+                  min="0"
                   value={i.unitCost}
                   onChange={(e) => {
+                    // type="number", igual a Quantidade ao lado: sem isto,
+                    // "1.500" (custo unitario de mil e quinhentos reais)
+                    // virava 1.5 -- corrompe o total do pedido E o custo do
+                    // produto quando o pedido e recebido, sem erro nenhum.
                     const unitCost = Number(e.target.value) || 0;
                     setItems((prev) => prev.map((x, j) => (j === idx ? { ...x, unitCost } : x)));
                   }}
