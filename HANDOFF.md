@@ -248,6 +248,42 @@ explicitamente pelo usuário, com transação, before/after conferido e
 commit — todos os campos batendo com as três cópias idênticas do mesmo
 produto seed noutras empresas.
 
+**Classe de bug "Number() em campo de dinheiro sem `type=\"number\"`"**:
+uma varredura dedicada achou o mesmo padrão em oito lugares — texto livre
+convertido com `Number()` puro aceita formato brasileiro ("1.200" = mil e
+duzentos) e devolve um numero ERRADO mas VALIDO (1.2), não `NaN`, então
+não cai em nenhuma checagem de "valor inválido" existente. Todos
+corrigidos com `type="number"` (bloqueia o formato ambíguo no próprio
+input do navegador) ou `parseMoneyInput` onde o campo já tinha esse
+padrão: sangria/suprimento do caixa (`caixa.tsx`), preço promocional do
+produto (`produtos.tsx` — promoção nunca aplicava, ficava presa em NaN→0),
+frete e custo unitário do pedido de compra (`compras.tsx` — o custo
+unitário errado ainda contamina o custo do produto ao receber), valor da
+meta (`metas.tsx` — com bônus fixo configurado, pagava na primeira venda
+que passasse de R$15 em vez de R$15.000). `saveProductFn` e
+`savePromotionFn` também ganharam validação server-side (mesmos
+`parseUnitCost`/checagem de finitude já usados em `savePurchaseFn`) —
+"validação de tela não vale pra quem chama o servidor direto".
+
+**Três dos cinco tipos de promoção nunca davam desconto nenhum**
+(`promocoes.tsx`): o diálogo só perguntava Percentual/Quantidade mínima,
+mas o seletor de Tipo oferece Fixo/Preço promocional/Leve X pague Y — os
+três precisam de um valor que o formulário nunca perguntava. Uma promoção
+desses tipos salvava "Ativa" e nunca aplicava desconto, silenciosamente,
+desde sempre. Corrigido com campos condicionais por tipo + validação.
+
+**Inscrição Estadual não podia ser apagada, e UF sem validação**
+(`session.ts`, `saveCompanyFn`): `ie` usava `coalesce(novo, ie)` — único
+campo de texto do formulário de empresa com esse comportamento — então
+limpar o campo nunca gravava, silenciosamente. UF só cortava em 2
+caracteres sem validar maiúscula/formato ("São Paulo" → "Sã"). Ambos
+corrigidos.
+
+**CFOP cortado em 4 caracteres em vez de validado**: mesmo bug já
+corrigido no NCM (ver "O que já está feito" — busca por `parseNcm` acima),
+no campo vizinho. `parseCfop` agora aceita "5.102"/"5 102"/"5102" e exige
+4 dígitos, com o mesmo padrão de `parseNcm` (`src/lib/ncm.ts`).
+
 Liquidação em lote de cartão (`card-settlement.ts`, `settleCardBatchFn`):
 gravava auditoria só a nível de LOTE (`entity='card_settlement'`), sem
 uma entrada por título (`entity='accounts_receivable'`) como
