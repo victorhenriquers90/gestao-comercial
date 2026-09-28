@@ -386,6 +386,17 @@ Corrigido dando `storeId` pra `listExpensesFn` (GET virou POST com
 validator, mesmo padrão das funções irmãs) e passando o seletor atual do
 `useSelection` na chamada.
 
+`cancelSaleFn` (commerce.ts) so recusava status `'cancelada'` -- uma venda
+`devolvida`/`devolvida_parcial` passava direto. A tela so mostra "Cancelar
+venda" com status `'finalizada'`, mas isso e checagem de tela, nao vale pra
+quem chama a funcao do servidor direto (mesmo principio do `cashMoveFn`).
+O estorno de estoque le a quantidade ORIGINAL de `sale_items` sem descontar
+o que `return_items` ja tinha creditado numa devolucao parcial anterior --
+cancelar depois de uma devolucao parcial duplicava a peca ja devolvida no
+estoque. Confirmado com transacao revertida (cenario sintetico: venda de 2
+unidades, 1 ja devolvida, cancelSaleFn devolveria 2 ao estoque). Corrigido
+bloqueando o cancelamento fora de `'finalizada'`, igual a tela ja fazia.
+
 ## Próximos (se o usuário disser “continuar”)
 
 1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
