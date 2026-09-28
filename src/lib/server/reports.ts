@@ -182,15 +182,20 @@ export const reportFn = createServerFn({ method: "POST" })
           group by 1, s.sold_at::date order by s.sold_at::date`,
         params,
       );
+      // Mesmo store_id do resto do relatorio -- sem isso, uma empresa com
+      // duas lojas via o "A receber"/"A pagar" da OUTRA loja somado aqui,
+      // mesmo com uma loja especifica selecionada no filtro do topo.
       const [rec] = await sql.query<{ v: string | number }>(
         `select coalesce(sum(amount - received_amount),0) as v from accounts_receivable
-          where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')`,
-        [cid],
+          where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')
+            and ($2::int is null or store_id = $2)`,
+        [cid, storeId],
       );
       const [pay] = await sql.query<{ v: string | number }>(
         `select coalesce(sum(amount - paid_amount),0) as v from accounts_payable
-          where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')`,
-        [cid],
+          where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')
+            and ($2::int is null or store_id = $2)`,
+        [cid, storeId],
       );
       const rows = series.map((s) => [s.d, num(s.n), num(s.total)]);
       return pack({
@@ -630,8 +635,9 @@ export const reportFn = createServerFn({ method: "POST" })
           `select description, due_date, amount, ${openExpr} as open_amt, status from ${table}
             where company_id = $1 and deleted_at is null
               and due_date >= $2::date and due_date <= $3::date
+              and ($4::int is null or store_id = $4)
             order by due_date`,
-          [cid, data.from, data.to],
+          [cid, data.from, data.to, storeId],
         )
       ).map((r) => [
         String(r.description),
@@ -653,15 +659,17 @@ export const reportFn = createServerFn({ method: "POST" })
         `select description, due_date, amount - received_amount as open_amt
            from accounts_receivable
           where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')
-            and amount - received_amount > 0.009`,
-        [cid],
+            and amount - received_amount > 0.009
+            and ($2::int is null or store_id = $2)`,
+        [cid, storeId],
       );
       const pay = await sql.query<Row>(
         `select description, due_date, amount - paid_amount as open_amt
            from accounts_payable
           where company_id = $1 and deleted_at is null and status in ('pendente','parcial','vencido')
-            and amount - paid_amount > 0.009`,
-        [cid],
+            and amount - paid_amount > 0.009
+            and ($2::int is null or store_id = $2)`,
+        [cid, storeId],
       );
       const bucket = (due: string) => {
         const d = new Date(`${String(due).slice(0, 10)}T12:00:00`);

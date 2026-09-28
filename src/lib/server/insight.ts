@@ -98,6 +98,15 @@ export const dashboardFn = createServerFn({ method: "POST" })
     const lowScope = andEq(lowParams, "i.store_id", storeId);
     const commParams: unknown[] = [tenant.companyId];
     const commScope = andEq(commParams, "seller_id", sellerId);
+    // "A receber"/"A pagar" tambem ficavam mudos pro seletor "Loja" -- mesma
+    // falha das quatro linhas acima, so que na outra dimensao (loja, nao
+    // vendedor). accounts_receivable/accounts_payable tem store_id pra isso;
+    // sem o filtro, uma empresa com duas lojas via o total das DUAS somado
+    // no card, mesmo com uma loja especifica selecionada no topo.
+    const recParams: unknown[] = [tenant.companyId];
+    const recScope = andEq(recParams, "store_id", storeId);
+    const payParams: unknown[] = [tenant.companyId];
+    const payScope = andEq(payParams, "store_id", storeId);
 
     const [
       [cur],
@@ -142,13 +151,15 @@ export const dashboardFn = createServerFn({ method: "POST" })
       ),
       sql.query<{ v: string | number }>(
         `select coalesce(sum(amount - received_amount),0) as v from accounts_receivable
-          where company_id = $1 and deleted_at is null and status in ('pendente','parcial')`,
-        [tenant.companyId],
+          where company_id = $1 and deleted_at is null and status in ('pendente','parcial')
+            ${recScope}`,
+        recParams,
       ),
       sql.query<{ v: string | number }>(
         `select coalesce(sum(amount - paid_amount),0) as v from accounts_payable
-          where company_id = $1 and deleted_at is null and status in ('pendente','parcial')`,
-        [tenant.companyId],
+          where company_id = $1 and deleted_at is null and status in ('pendente','parcial')
+            ${payScope}`,
+        payParams,
       ),
       sql.query<{ d: string; total: string | number; n: number }>(
         `select to_char(s.sold_at::date, 'YYYY-MM-DD') as d,
