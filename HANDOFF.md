@@ -411,6 +411,24 @@ quando quem pede nao tem `sellers.write`, deixando so o que ja aparece pro
 Dashboard (nome, faturamento, comissao, pendente). Confirmado ao vivo que
 admin continua vendo tudo normalmente.
 
+`resolvePeriod` (period.ts) calculava o periodo anterior sempre um dia mais
+largo que o atual -- `days` somava `round((end-start)/86400000) + 1`, certo
+pra fronteiras meia-noite-a-meia-noite, mas `end` aqui e fim de dia
+(23:59:59.999), entao o "+1" ja era demais. "Ontem" (1 dia) comparava contra
+um periodo anterior de 2 dias; "Ultimos 7 dias" contra 8; um mes de 31 dias
+contra 32 -- em todo PeriodKey. So afeta o Dashboard (`insight.ts` e o unico
+que le `range.prevFrom/prevTo`; `reports.ts` tem seu proprio `prevWindow()`,
+sem o bug). Confirmado com dado real do piloto: no filtro "Ultimos 7 dias",
+o dia incluido a mais tinha 3 vendas somando R$289,70, inflando a base do
+"vs periodo anterior" e mostrando crescimento menor (ou queda maior) do que
+o real. Corrigido trocando o calculo manual por `differenceInCalendarDays`
+(date-fns); testes novos em `period.test.ts`.
+
+Removida `storeClause` (context.ts): nunca era chamada em lugar nenhum, e o
+placeholder que montava (`$SID`) nao e um parametro valido do Postgres --
+quebraria se algum dia fosse usada. Codigo morto e incorreto ao mesmo tempo,
+sem impacto hoje.
+
 ## Próximos (se o usuário disser “continuar”)
 
 1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
