@@ -83,10 +83,16 @@ function CaixaPage() {
    * fisico: uma falha do servidor nao dizia NADA (o operador assumia que deu
    * certo), dois cliques lancavam duas retiradas, e o campo vazio virava
    * Number("") = 0, registrando uma movimentacao de R$ 0,00.
+   *
+   * parseMoneyInput e nao Number(): "1.200" (mil e duzentos, do jeito que se
+   * digita sem centavos) virava 1.2 no Number() -- passava direto pela
+   * checagem de "maior que zero" e registrava uma sangria/suprimento mil
+   * vezes menor que o real, sem erro nenhum. Mesma classe ja corrigida na
+   * abertura e no fechamento deste mesmo caixa (ver comentarios abaixo).
    */
   async function registrarMovimento(type: "sangria" | "suprimento") {
     if (movendo) return;
-    const valor = Number(moveAmt);
+    const valor = parseMoneyInput(moveAmt);
     if (!Number.isFinite(valor) || valor <= 0) {
       toast.error("Informe um valor maior que zero.");
       return;
