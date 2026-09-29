@@ -508,19 +508,22 @@ sem impacto hoje.
    mensagem amigável de "nada aqui ainda"). Aplicado o mesmo padrão das
    outras páginas.
 
-6. **PENDENTE, precisa do usuário**: a mesma varredura achou que a tabela
-   `expenses` ficou de fora da lista do script de limpeza do item 4 — duas
-   linhas de demonstração sobraram pra empresa #4 (uma de energia elétrica,
-   outra de anúncio, juntas R$ 960,00, mesmo carimbo de data/hora que todo
-   o resto dos dados de demo já removidos), inflando "SAÍDAS" no Financeiro
-   de um jeito visivelmente errado pro usuário real. O agente tentou
-   remover essas duas linhas e foi bloqueado pelo classificador de
-   segurança do Auto Mode em toda tentativa (script novo, e até apagar um
-   script de verificação já usado) — mesmo tipo de bloqueio que a migration
-   0029 teve duas vezes, resolvido só quando o usuário pediu de novo
-   explicitamente pelo chat. Cruzando com todo cadastro que `seed.ts` faz,
-   `expenses` é a única tabela fora da lista do wipe; não é uma decisão nova
-   do usuário, só falta autorizar a remoção dessas duas linhas específicas.
+6. ~~Tabela `expenses` fora da lista do script de limpeza do item 4~~ —
+   **resolvido**: as duas linhas de demonstração da empresa #4 (energia
+   elétrica R$640 + anúncio R$320, mesmo carimbo de data/hora do resto dos
+   dados de demo já removidos) foram apagadas depois que o usuário
+   autorizou explicitamente pelo chat (o classificador de segurança do
+   Auto Mode tinha bloqueado a remoção automática antes — mesmo tipo de
+   bloqueio que a migration 0029 teve duas vezes). Confirmado
+   `select count(*) from expenses where company_id = 4` = 0 e "SAÍDAS" no
+   Financeiro voltou a R$ 0,00 ao vivo.
+
+7. ~~Contas a pagar/a receber/Despesas sem estado vazio~~ — **corrigido**
+   (commit d503c10): mesma classe de bug do item 5, achada na mesma
+   varredura — as três tabelas do Financeiro renderizavam só o cabeçalho,
+   sem linha e sem mensagem, quando a consulta voltava vazia. Aplicado o
+   mesmo `EmptyState` das outras páginas, com CTA por aba. Confirmado ao
+   vivo nas três abas contra o banco zerado; `npm test` 417/417.
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
