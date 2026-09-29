@@ -478,12 +478,10 @@ sem impacto hoje.
    `reports.ts`, `party.ts` e `purchase-suggestion.ts`. Ver "O que já está
    feito" para o padrão usado.
 
-3. **Pendente, precisa do usuário**: criar `migrations/0029_drop_nfce_foundation.sql`
-   (conteúdo já combinado numa sessão anterior — remove a migration
-   0022_nfce_foundation registrada sem arquivo) e rodar `npm run db:migrate`.
-   A IA não conseguiu criar esse arquivo diretamente (bloqueado por
-   classificador de segurança nas duas tentativas). Até lá, `npm run build`
-   imprime o aviso inofensivo "migration(s) registrada(s) sem arquivo".
+3. ~~Migration 0022_nfce_foundation registrada sem arquivo~~ — **resolvido**:
+   `migrations/0029_drop_nfce_foundation.sql` criado e aplicado contra o
+   banco real (commit 7bb2c5b). `npm run db:migrate` confirmado limpo
+   ("up to date", sem aviso).
 
 4. **Pendente, decisão do usuário**: apagar ou não os dados de demonstração
    do piloto antes de ir para produção de verdade.
