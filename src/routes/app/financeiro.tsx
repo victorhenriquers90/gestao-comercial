@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import {
   ACCOUNT_STATUS_LABELS,
@@ -164,6 +164,17 @@ function FinanceiroPage() {
           >
             Nova conta
           </Button>
+          {!pay.data?.length ? (
+            <EmptyState
+              title="Nenhuma conta a pagar cadastrada."
+              description="Lance a primeira conta ou receba um pedido de compra para gerar automaticamente."
+              action={
+                <Button size="sm" onClick={() => setOpenPay(true)}>
+                  Nova conta
+                </Button>
+              }
+            />
+          ) : (
           <DataTable
             headers={
               <tr>
@@ -176,7 +187,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {(pay.data ?? []).map((r: Record<string, unknown>) => {
+            {pay.data.map((r: Record<string, unknown>) => {
               const late = String(r.status) === "vencido";
               return (
                 <tr
@@ -225,6 +236,7 @@ function FinanceiroPage() {
               );
             })}
           </DataTable>
+          )}
         </TabsContent>
         <TabsContent value="cartoes">
           <CardSettlementPanel storeId={storeId ?? null} />
@@ -246,6 +258,17 @@ function FinanceiroPage() {
           >
             Novo título
           </Button>
+          {!rec.data?.length ? (
+            <EmptyState
+              title="Nenhuma conta a receber cadastrada."
+              description="Lance o primeiro título ou venda a prazo para gerar automaticamente."
+              action={
+                <Button size="sm" onClick={() => setOpenRec(true)}>
+                  Novo título
+                </Button>
+              }
+            />
+          ) : (
           <DataTable
             headers={
               <tr>
@@ -258,7 +281,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {(rec.data ?? []).map((r: Record<string, unknown>) => {
+            {rec.data.map((r: Record<string, unknown>) => {
               const late = String(r.status) === "vencido";
               return (
                 <tr
@@ -349,6 +372,7 @@ function FinanceiroPage() {
               );
             })}
           </DataTable>
+          )}
         </TabsContent>
         <TabsContent value="fluxo">
           <div className="space-y-2 text-sm">
@@ -425,6 +449,12 @@ function FinanceiroPage() {
               {lancandoDespesa ? "Lançando…" : "Lançar"}
             </Button>
           </form>
+          {!expenses.data?.length ? (
+            <EmptyState
+              title="Nenhuma despesa lançada."
+              description="Use o formulário acima para lançar a primeira despesa (aluguel, energia, marketing…)."
+            />
+          ) : (
           <DataTable
             headers={
               <tr>
@@ -435,7 +465,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {(expenses.data as Record<string, unknown>[] | undefined)?.map((e) => (
+            {(expenses.data as Record<string, unknown>[]).map((e) => (
               <tr key={String(e.id)} className="border-b border-border last:border-0">
                 <Td>{formatDate(String(e.spent_at))}</Td>
                 <Td>{String(e.description)}</Td>
@@ -444,6 +474,7 @@ function FinanceiroPage() {
               </tr>
             ))}
           </DataTable>
+          )}
         </TabsContent>
       </Tabs>
 
