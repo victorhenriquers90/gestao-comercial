@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { listPromotionsFn, savePromotionFn } from "@/lib/server/commerce";
@@ -32,6 +32,7 @@ function PromocoesPage() {
   const [salvando, setSalvando] = useState(false);
   const list = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
   if (list.isPending) return <PageSkeleton />;
+  if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar promoções." />;
 
   return (
     <div>
@@ -40,29 +41,37 @@ function PromocoesPage() {
         description="Percentual, valor, preço promocional, leve X pague Y e desconto por quantidade."
         actions={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
       />
-      <DataTable
-        headers={
-          <tr>
-            <Th>Nome</Th>
-            <Th>Tipo</Th>
-            <Th>Período</Th>
-            <Th>Status</Th>
-          </tr>
-        }
-      >
-        {(list.data ?? []).map((p) => (
-          <tr key={p.id} className="border-b border-border last:border-0">
-            <Td className="font-medium">{p.name}</Td>
-            <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
-            <Td>
-              {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
-            </Td>
-            <Td>
-              <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativa" : "Inativa"}</Badge>
-            </Td>
-          </tr>
-        ))}
-      </DataTable>
+      {!list.data?.length ? (
+        <EmptyState
+          title="Você ainda não possui promoções cadastradas."
+          description="Crie a primeira promoção para aplicar desconto automático no PDV."
+          action={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
+        />
+      ) : (
+        <DataTable
+          headers={
+            <tr>
+              <Th>Nome</Th>
+              <Th>Tipo</Th>
+              <Th>Período</Th>
+              <Th>Status</Th>
+            </tr>
+          }
+        >
+          {list.data.map((p) => (
+            <tr key={p.id} className="border-b border-border last:border-0">
+              <Td className="font-medium">{p.name}</Td>
+              <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
+              <Td>
+                {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
+              </Td>
+              <Td>
+                <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativa" : "Inativa"}</Badge>
+              </Td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
