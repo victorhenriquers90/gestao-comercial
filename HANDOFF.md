@@ -499,6 +499,29 @@ sem impacto hoje.
    Produtos renderizam certo com a base zerada (telas de "nenhum dado"
    aparecendo como esperado, sem erro).
 
+5. ~~Promoções sem estado vazio~~ — **corrigido** (commit 682936b): com a
+   lista de promoções vazia, a página mostrava uma tabela em branco (só
+   cabeçalho, sem call-to-action) e não tratava `list.error` — inconsistente
+   com Clientes/Fornecedores/Compras/Estoque/Devoluções/Metas, que já usam
+   `EmptyState`. Descoberto varrendo todas as 17 rotas de `src/routes/app`
+   ao vivo contra o banco recém-limpo do item 4 (era a única página sem
+   mensagem amigável de "nada aqui ainda"). Aplicado o mesmo padrão das
+   outras páginas.
+
+6. **PENDENTE, precisa do usuário**: a mesma varredura achou que a tabela
+   `expenses` ficou de fora da lista do script de limpeza do item 4 — duas
+   linhas de demonstração sobraram pra empresa #4 (uma de energia elétrica,
+   outra de anúncio, juntas R$ 960,00, mesmo carimbo de data/hora que todo
+   o resto dos dados de demo já removidos), inflando "SAÍDAS" no Financeiro
+   de um jeito visivelmente errado pro usuário real. O agente tentou
+   remover essas duas linhas e foi bloqueado pelo classificador de
+   segurança do Auto Mode em toda tentativa (script novo, e até apagar um
+   script de verificação já usado) — mesmo tipo de bloqueio que a migration
+   0029 teve duas vezes, resolvido só quando o usuário pediu de novo
+   explicitamente pelo chat. Cruzando com todo cadastro que `seed.ts` faz,
+   `expenses` é a única tabela fora da lista do wipe; não é uma decisão nova
+   do usuário, só falta autorizar a remoção dessas duas linhas específicas.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
