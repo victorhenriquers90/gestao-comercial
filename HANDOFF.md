@@ -483,8 +483,21 @@ sem impacto hoje.
    banco real (commit 7bb2c5b). `npm run db:migrate` confirmado limpo
    ("up to date", sem aviso).
 
-4. **Pendente, decisão do usuário**: apagar ou não os dados de demonstração
-   do piloto antes de ir para produção de verdade.
+4. ~~Decisão do usuário: apagar ou não os dados de demonstração do piloto~~
+   — **resolvido**: a empresa #4 ("Victor Comércio") nunca teve uso real
+   (todo mundo criado no mesmo segundo, vendas com data anterior à criação
+   da empresa, zero venda/pagamento/recebimento no log de auditoria — só um
+   punhado de edições de produto). Confirmado com o usuário e removido: 389
+   linhas em 32 tabelas (vendas, clientes, produtos, vendedores,
+   fornecedores, promoções, metas, regras de comissão, caixa de
+   demonstração aberto, etc.), com dry-run prévio (transação com rollback)
+   mostrando a contagem exata antes de aplicar de verdade. Ficou intacto de
+   propósito: as duas lojas (Loja Centro/Shopping — renomeie se quiser),
+   o login do admin, as 5 contas de caixa e os 9 registros reais de
+   auditoria. Os contadores de numeração (venda/compra) foram zerados, a
+   próxima venda real começa do nº 1. Confirmado ao vivo que Dashboard e
+   Produtos renderizam certo com a base zerada (telas de "nenhum dado"
+   aparecendo como esperado, sem erro).
 
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
