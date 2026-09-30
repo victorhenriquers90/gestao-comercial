@@ -618,6 +618,23 @@ sem impacto hoje.
     parcelas foram canceladas e nenhum movimento de caixa de devolução
     foi criado. `npm test` 423/423, dados de teste removidos por completo.
 
+13. ~~Devolução após recebimento parcial deixava recebível inconsistente~~
+    — **corrigido** (commit ac71667), mesma auditoria do item 12: se uma
+    parcela de crediário/cartão já tinha sido PARCIALMENTE recebida pela
+    Cobrança antes da devolução, o abatimento zerava `amount` pelo valor
+    cheio sem tocar `received_amount` — título ficava com "recebido maior
+    que o valor", escondendo dinheiro que a loja ficou devendo pro
+    cliente. Fix: só perdoa o que ainda não foi pago
+    (`amount - received`), nunca o valor cheio. **Limitação que
+    continua**: se o já recebido veio de PIX/cartão lançado na própria
+    Cobrança (não dinheiro), o sistema não tem como saber e não estorna
+    sozinho — não existe coluna amarrando `received_amount` ao método de
+    cada recebimento parcial. Fica manual com a loja nesse caso
+    específico; documentado no código. Reproduzido ao vivo (parcela de
+    R$25, R$10 recebidos, devolução total): título foi para
+    amount=10/received=10/pago (consistente), não mais
+    amount=0/received=10/cancelado. `npm test` 423/423.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
