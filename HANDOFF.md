@@ -759,6 +759,14 @@ sem impacto hoje.
     deveria, sem passar nem faltar um. Confirmado no banco
     (`sale_items.discount` = 10.00). Nenhum bug.
 
+21. **Transferência de estoque entre lojas testada ao vivo — confirmada
+    correta**: 8 unidades de um produto descartável saindo da Loja Centro
+    (20→12) e chegando na Loja Shopping (0→8) pela tela de Estoque >
+    Ajustar > "Transferir para loja". Os dois `stock_movements`
+    (`-8`/`+8`) gravados atomicamente, saldos batendo exatamente dos dois
+    lados. Nenhum bug — `transferStockFn` (`src/lib/server/catalog.ts`)
+    correto na prática.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
