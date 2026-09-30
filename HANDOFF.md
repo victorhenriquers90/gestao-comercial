@@ -536,6 +536,21 @@ sem impacto hoje.
    `EmptyState`) — conferido um por um. Com isso a classe "tabela em
    branco sem mensagem" está fechada em toda a base, não só nas 17 rotas.
 
+9. ~~Promoção mal cadastrada podia gerar linha de venda negativa~~ —
+   **corrigido** (commit a8f9ec5): `computePromo` (`src/lib/promo.ts`) não
+   tinha teto — um percentual digitado errado (ex.: 500 no lugar de
+   50,0%) ou preço promocional negativo geravam desconto MAIOR que a
+   própria linha, e `checkoutFn` aplica `unitPrice*qty - desconto` sem
+   clamp. O `if (total < 0)` de lá só olha a venda inteira, não cada
+   linha — com mais de um item a soma podia fechar positiva mesmo com uma
+   linha corrompida, finalizando a venda de verdade com subtotal errado.
+   Provado com teste puro antes do fix (percent=500 numa linha de 2x
+   R$100 → linha de -R$800). Fix em duas camadas: teto em `computePromo`
+   (protege qualquer promoção já salva) + validação em `savePromotionFn`
+   (erro claro no cadastro: "Percentual deve estar entre 0 e 100.",
+   testado ao vivo). Novo `src/lib/promo.test.ts`, 6 casos. `npm test`
+   423/423.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
