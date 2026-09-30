@@ -1197,7 +1197,19 @@ export const createReturnFn = createServerFn({ method: "POST" })
         `;
       }
 
-      const cashRefund = Math.min(await dinheiroAindaNaVenda(sql, sale.id), total);
+      /*
+        `restanteDevolucao`, nao `total`: o mesmo valor devolvido nao pode
+        sair da loja duas vezes. Antes, o abatimento em cascata (acima)
+        perdoava ate `total` em parcelas de crediario/cartao, e o reembolso
+        em dinheiro TAMBEM usava `total` inteiro, sem descontar o que ja
+        tinha sido perdoado -- uma venda de R$150 (R$100 dinheiro + R$50 em
+        2x no crediario) com devolucao do item de R$50 perdoava as duas
+        parcelas E devolvia R$50 em especie, entregando R$100 de valor por
+        uma devolucao de R$50. `restanteDevolucao` e o que sobrou do valor
+        devolvido depois de abater as parcelas -- zero aqui significa que o
+        crediario/cartao ja cobriu tudo, e nao deve sair mais nada da gaveta.
+      */
+      const cashRefund = Math.min(await dinheiroAindaNaVenda(sql, sale.id), restanteDevolucao);
       if (cashRefund > 0.009) {
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
