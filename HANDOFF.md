@@ -738,6 +738,17 @@ sem impacto hoje.
     `isCardMethod`) e o guard em `moveCrmFn`. Testado ao vivo: mover o
     card pelo select do quadro continua funcionando normalmente.
 
+19. **"Leve X pague Y" testado ao vivo pelo checkout real — confirmado
+    correto**: fechando o ciclo do fix do item 9 (que corrigiu o teto de
+    desconto pra todo tipo de promoção, mas só tinha sido testado ao vivo
+    com percentual). Promoção "leve 3 pague 2", 5 peças de R$20 no
+    carrinho: subtotal R$100, desconto R$20 (exatamente 1 peça grátis —
+    um grupo completo de 3, as 2 sobrando não formam outro grupo), total
+    R$80. Confirmado no banco (`sale_items.discount` = 20.00,
+    `sales.total` = 80.00). Nenhum bug — `computePromo`'s branch `bxgy`
+    (`src/lib/promo.ts`) está correto na prática, não só no teste
+    unitário.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
