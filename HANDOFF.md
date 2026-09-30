@@ -685,6 +685,18 @@ sem impacto hoje.
       específico do gestão comercial — não auditado a fundo por já ser
       superfície de terceiro, presumivelmente já revisada em outro nível.
 
+16. **Bônus de meta (crossing) testado ao vivo — confirmado correto,
+    nenhum bug**: meta de R$150 com bônus fixo de R$20 ao cruzar
+    (`extra_fixed`), 3 vendas de R$100 de um vendedor descartável. Era o
+    ponto mais propenso a bug (condição de fronteira, igual ao off-item
+    do período e ao tolerance do caixa que já renderam bug real nesta
+    sessão): venda 1 (R$0→R$100, não cruza) comissão R$10; venda 2
+    (R$100→R$200, cruza os R$150) comissão R$30 (R$10 + bônus R$20);
+    venda 3 (R$200→R$300, já cruzou) comissão R$10 de novo, sem repetir o
+    bônus. Todas as três batidas exatamente com o esperado, confirmado no
+    banco (`commissions.amount`/`note`). `applyTargetBonuses`
+    (`src/lib/commission.ts`) está correto.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
