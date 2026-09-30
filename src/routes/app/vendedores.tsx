@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
@@ -229,6 +229,13 @@ function VendedoresPage() {
               hint={pendingTotal !== pendingNet ? `bruto ${formatBRL(pendingTotal)}` : undefined}
             />
           </div>
+          {ranked.length === 0 ? (
+            <EmptyState
+              title="Nenhum vendedor cadastrado."
+              description="Cadastre o primeiro vendedor para simular comissão, receber e pagar."
+              action={<Button onClick={() => startSeller()}>Novo vendedor</Button>}
+            />
+          ) : (
           <DataTable
             headers={
               <tr>
@@ -277,6 +284,7 @@ function VendedoresPage() {
               </tr>
             ))}
           </DataTable>
+          )}
         </TabsContent>
         <TabsContent value="pagamentos">
           <div className="mb-3 flex flex-wrap gap-2">
@@ -300,6 +308,12 @@ function VendedoresPage() {
               </Button>
             ) : null}
           </div>
+          {!commissions.data?.length ? (
+            <EmptyState
+              title="Nenhuma comissão neste filtro."
+              description="Comissões aparecem aqui automaticamente quando uma venda é finalizada no PDV."
+            />
+          ) : (
           <DataTable
             headers={
               <tr>
@@ -314,7 +328,7 @@ function VendedoresPage() {
               </tr>
             }
           >
-            {(commissions.data ?? []).map((c) => (
+            {commissions.data.map((c) => (
               <tr key={c.id} className="border-b border-border last:border-0">
                 <Td>{c.sellerName}</Td>
                 <Td>{c.saleNumber != null ? `nº ${c.saleNumber}` : "—"}</Td>
@@ -352,6 +366,7 @@ function VendedoresPage() {
               </tr>
             ))}
           </DataTable>
+          )}
         </TabsContent>
         <TabsContent value="retencoes">
           {guide.data ? (
