@@ -551,6 +551,36 @@ sem impacto hoje.
    testado ao vivo). Novo `src/lib/promo.test.ts`, 6 casos. `npm test`
    423/423.
 
+10. **Validação ponta a ponta do PDV, ao vivo, contra a empresa #4 real**:
+    depois de tanta leitura de código, testei o caminho de dinheiro de
+    verdade — não com dados falsos permanentes, com dados descartáveis
+    criados, exercitados pelo PDV de verdade e apagados por completo
+    depois (autorizado pelo usuário nos dois pontos: criar e depois
+    apagar). Criei 1 produto + variante, 1 vendedor e 1 promoção de 20%
+    "TESTE E2E (apagar)", abri o caixa da Loja Centro, e vendi 1 peça
+    pelo PDV com pagamento dividido (R$50 dinheiro + R$30 débito Visa).
+    Conferido linha por linha contra o banco: venda total R$80,00 (100 −
+    20% de promoção, a MESMA conta que o item 9 corrigiu), comissão
+    R$8,00 (10% do pós-promoção, correto), estoque 10→9 com
+    `stock_movements` registrado, os dois pagamentos lançados em
+    `cash_movements`, e o débito virou `accounts_receivable` pendente
+    pro dia seguinte. Tudo bateu exatamente com o esperado — nenhum bug
+    novo neste caminho. Limpeza depois: sale, itens, pagamentos,
+    comissão, recebível, movimento de caixa, produto/variante/vendedor/
+    promoção de teste, o caixa aberto pro teste e as entradas de
+    `audit_logs` do teste — tudo apagado, `company_counters` da venda
+    devolvido pra 0 (a próxima venda real volta a ser nº 1). Confirmado
+    ao vivo depois: Vendas/PDV/Produtos/Vendedores voltaram a "nenhum
+    dado", igual antes do teste.
+
+    Nota à parte, não é bug do produto: o servidor de dev (`npm run dev`)
+    caiu sozinho uma vez no meio do teste (código de saída
+    `3221226505` = `0xC0000409`, um crash de processo do Windows/Node,
+    não um erro da aplicação) bem no primeiro request de busca do PDV
+    depois de reiniciar o preview. Reiniciou limpo e o resto do teste
+    rodou sem repetir. Parece falha do ambiente de preview local, não do
+    `gestao-comercial` — mas se voltar a acontecer, vale investigar.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
