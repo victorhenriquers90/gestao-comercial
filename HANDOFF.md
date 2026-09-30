@@ -697,6 +697,24 @@ sem impacto hoje.
     banco (`commissions.amount`/`note`). `applyTargetBonuses`
     (`src/lib/commission.ts`) está correto.
 
+17. **Compras testado ao vivo — recebimento correto, mas achado um gap de
+    metodologia de custo (não é bug, é decisão do usuário)**: criei um
+    pedido de 10 unidades a R$50 + R$100 de frete (total R$600), recebi.
+    Confirmado no banco: estoque 5→15, `accounts_payable` R$600,00
+    vencendo em +14 dias — tudo certo. Mas o CUSTO gravado no produto
+    ficou em R$50,00 (só o `unit_cost` digitado), sem ratear o frete —
+    o custo real de aterrissagem era R$60/unidade (500+100)/10. O frete
+    entra corretamente no que a loja DEVE ao fornecedor, mas nunca entra
+    no CMV/margem que Dashboard e DRE calculam depois: toda venda futura
+    deste produto vai superestimar o lucro em R$10/unidade até a próxima
+    compra atualizar o custo. Não é um cálculo errado isolado — é uma
+    escolha de metodologia contábil (ratear frete no custo do estoque vs.
+    tratar como despesa do período) que só o usuário/contador deve
+    decidir, por isso não mexi. Se decidir ratear, o lugar é
+    `receivePurchaseFn` (`src/lib/server/catalog.ts`), que hoje faz
+    `update products set cost = unit_cost` direto, ignorando
+    `purchases.freight`/`tax`/`discount`.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
