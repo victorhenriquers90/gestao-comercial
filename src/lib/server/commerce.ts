@@ -1179,10 +1179,25 @@ export const createReturnFn = createServerFn({ method: "POST" })
       for (const parcela of arsAbertas) {
         if (restanteDevolucao <= 0.009) break;
         const amt = num(parcela.amount);
-        const abate = Math.min(amt, restanteDevolucao);
+        const received = num(parcela.received_amount);
+        /*
+          So abate o que ainda NAO foi pago (amt - received), nao o valor
+          cheio da parcela. Cliente que ja tinha pago parte dela em dinheiro
+          na Cobranca (settleReceivableFn) e depois devolve a peca: abater
+          o valor cheio zerava a parcela (amount=0) mas deixava
+          received_amount intacto -- um registro sem sentido (recebeu mais
+          do que a parcela vale) que escondia o fato de a loja ter ficado
+          com um dinheiro que já não corresponde a peca nenhuma. Aqui o
+          restante nao abatido volta pro `restanteDevolucao` e ainda pode
+          virar reembolso em dinheiro no passo seguinte (se a venda tambem
+          teve pagamento em especie) -- mas se o valor ja recebido veio de
+          um PIX ou cartao na propria Cobranca, este sistema nao tem como
+          saber e o estorno dessa parte fica manual, com a loja.
+        */
+        const aindaDevido = Math.max(0, amt - received);
+        const abate = Math.min(aindaDevido, restanteDevolucao);
         const nextAmt = Number((amt - abate).toFixed(2));
         restanteDevolucao = Number((restanteDevolucao - abate).toFixed(2));
-        const received = num(parcela.received_amount);
         const status =
           nextAmt <= 0.009
             ? "cancelado"
