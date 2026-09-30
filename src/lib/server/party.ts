@@ -275,14 +275,27 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     await assertFreeDocument(sql, "customers", tenant.companyId, data.document, data.id, "um cliente");
     if (data.id) {
+      /*
+        crm_stage = coalesce(novo, o que ja tinha), nunca um valor fixo.
+        `crmStage` e opcional no validador (so o painel do CRM manda, com o
+        estagio atual do proprio cliente) -- quem edita telefone/endereco
+        pela tela de Clientes nao manda nada. Um default fixo aqui
+        ("venda") teleportava QUALQUER edicao de cadastro pro estagio
+        "Venda" do funil, apagando o progresso real (novo, interessado,
+        negociacao...) sem ninguem pedir isso. Hoje as duas telas que
+        chamam esta funcao ja mandam o estagio certo ou nao precisam dele,
+        mas o proprio contrato da funcao (`crmStage?: string`) permite
+        omitir -- e a proxima tela que editar cliente sem mexer no CRM ia
+        cair nesta mesma armadilha.
+      */
       await sql`
         update customers set kind = ${data.kind}, name = ${data.name}, trade_name = ${data.tradeName ?? null},
           document = ${data.document ?? null}, ie = ${data.ie ?? null}, rg = ${data.rg ?? null},
           birth_date = ${data.birthDate ?? null}, email = ${data.email ?? null}, phone = ${data.phone ?? null},
           whatsapp = ${data.whatsapp ?? null}, address = ${data.address ?? null}, city = ${data.city ?? null},
           state = ${data.state ?? null}, zip = ${data.zip ?? null}, credit_limit = ${data.creditLimit ?? 0},
-          notes = ${data.notes ?? null}, crm_stage = ${data.crmStage ?? "venda"}, seller_id = ${data.sellerId ?? null},
-          updated_at = now()
+          notes = ${data.notes ?? null}, crm_stage = coalesce(${data.crmStage ?? null}, crm_stage),
+          seller_id = ${data.sellerId ?? null}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
       return { id: data.id };
