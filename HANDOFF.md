@@ -599,6 +599,25 @@ sem impacto hoje.
     o produto/variante/estoque descartável, `audit_logs` do teste,
     `company_counters` devolvido pra 0), confirmada ao vivo.
 
+12. ~~Devolução parcial em venda mista dava reembolso em dobro~~ —
+    **corrigido** (commit 3a9dffe): achado auditando `createReturnFn` a
+    pedido do usuário (fluxo de devolução). Numa venda paga por mais de um
+    meio (dinheiro + crediário, ou dinheiro + cartão parcelado), o
+    abatimento em cascata das parcelas em aberto e o reembolso em
+    dinheiro usavam a MESMA variável `total` (valor devolvido)
+    independentemente um do outro — a devolução perdoava o valor inteiro
+    nas parcelas E devolvia o mesmo valor em espécie. Provado com teste
+    puro antes do fix: venda de R$150 (R$100 dinheiro + R$50 em crediário
+    2x) devolvendo o item de R$50 perdoava as duas parcelas E devolvia
+    R$50 em dinheiro — R$100 de valor por uma devolução de R$50. Fix: o
+    reembolso em dinheiro agora usa `restanteDevolucao` (o que sobra
+    depois do abatimento das parcelas), não `total` — em venda 100% à
+    vista não muda nada, só corrige o caso misto. Reproduzido ao vivo com
+    dados descartáveis (venda real de R$75, R$50 dinheiro + R$25 em
+    crediário 2x, devolvendo o item de R$25): confirmado no banco que as
+    parcelas foram canceladas e nenhum movimento de caixa de devolução
+    foi criado. `npm test` 423/423, dados de teste removidos por completo.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
