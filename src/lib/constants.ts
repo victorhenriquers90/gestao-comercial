@@ -99,6 +99,9 @@ export const CRM_STAGES = [
   "perdido",
 ] as const;
 export type CrmStage = (typeof CRM_STAGES)[number];
+export function isCrmStage(value: string): value is CrmStage {
+  return (CRM_STAGES as readonly string[]).includes(value);
+}
 export const CRM_STAGE_LABELS: Record<CrmStage, string> = {
   novo: "Novo contato",
   interessado: "Interessado",

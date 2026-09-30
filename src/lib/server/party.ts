@@ -14,6 +14,7 @@ import {
   sanitizeCode,
   sanitizeMultiline,
 } from "@/lib/sanitize";
+import { isCrmStage } from "@/lib/constants";
 
 /**
  * Liquido de devolucao, por venda (usa `sales.id` sem alias -- so serve
@@ -406,6 +407,10 @@ export const moveCrmFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "crm.write");
+    // Quem chama o servidor direto (fora do drag-and-drop do quadro) podia
+    // mandar qualquer string: o cliente sumia de toda coluna do funil, sem
+    // erro nenhum avisando.
+    if (!isCrmStage(data.stage)) throw new Error("Estágio inválido.");
     await sql`
       update customers set crm_stage = ${data.stage}, updated_at = now()
       where id = ${data.customerId} and company_id = ${tenant.companyId}

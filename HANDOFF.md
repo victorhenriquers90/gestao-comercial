@@ -715,6 +715,29 @@ sem impacto hoje.
     `update products set cost = unit_cost` direto, ignorando
     `purchases.freight`/`tax`/`discount`.
 
+18. ~~saveCustomerFn resetava o estágio do CRM pra "Venda" ao omitir
+    crmStage~~ — **corrigido** (commit 9656789), achado testando o CRM.
+    `crm_stage = data.crmStage ?? "venda"` na atualização: qualquer edição
+    de cliente sem informar o estágio (campo opcional no validador)
+    teleportava o cliente pro estágio "Venda", apagando o progresso real
+    do funil. Não explorável pelas duas telas atuais (`clientes.tsx` só
+    cria; `customer-panel.tsx` já manda o estágio certo), mas o contrato
+    da função permitia omitir — a próxima tela que editasse cadastro sem
+    mexer no CRM caía na armadilha. Fix:
+    `crm_stage = coalesce(crmStage, crm_stage)`. Verificado com a chamada
+    exata (crmStage nulo) contra cliente descartável em "negociação":
+    telefone mudou, estágio ficou intacto. Regressão checada ao vivo no
+    painel real do CRM. `npm test` 423/423.
+
+    Enquanto estava ali, corrigido também `moveCrmFn` (mesmo arquivo): não
+    validava `data.stage` contra `CRM_STAGES` — um valor arbitrário
+    gravaria direto e o cliente sumiria de todas as colunas do funil.
+    Baixo risco (só a própria empresa é afetada, a tela sempre manda um
+    valor válido), mas mesma fragilidade do achado acima. Adicionado
+    `isCrmStage` (`src/lib/constants.ts`, mesmo padrão de `isRole`/
+    `isCardMethod`) e o guard em `moveCrmFn`. Testado ao vivo: mover o
+    card pelo select do quadro continua funcionando normalmente.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
