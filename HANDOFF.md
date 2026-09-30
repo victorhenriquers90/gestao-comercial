@@ -749,6 +749,16 @@ sem impacto hoje.
     (`src/lib/promo.ts`) está correto na prática, não só no teste
     unitário.
 
+20. **"Desconto por quantidade" testado ao vivo — confirmado correto,
+    inclusive no limiar exato**: fecha o ciclo dos três tipos de promoção
+    (percentual, leve-X-pague-Y, quantidade) todos validados pelo
+    checkout real depois do fix do item 9. Promoção "5 ou mais, 10% off",
+    produto de R$20: com 4 peças no carrinho, sem desconto (R$80,
+    correto — abaixo do mínimo); com 5 peças, desconto de R$10 (10% de
+    R$100), total R$90. O limiar `qty >= minQty` bate exatamente onde
+    deveria, sem passar nem faltar um. Confirmado no banco
+    (`sale_items.discount` = 10.00). Nenhum bug.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
