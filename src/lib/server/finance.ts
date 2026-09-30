@@ -341,7 +341,23 @@ export const cashflowFn = createServerFn({ method: "POST" })
         group by type`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
     );
-    const salesIn = inflows.reduce((a, r) => a + num(r.total), 0);
+    /*
+      Cartao (debito/credito) e crediario nao viram dinheiro no dia da venda
+      -- viram um recebivel que so chega de verdade na liquidacao (cartao)
+      ou na cobranca (crediario), e É POR ISSO que `extraIn`, logo abaixo,
+      soma esses eventos separadamente. Somar o valor da VENDA aqui (em
+      `salesIn`) e o valor da LIQUIDACAO/COBRANCA depois (em `extraIn`)
+      contava o mesmo dinheiro duas vezes -- uma venda de R$100 no cartao
+      inflava "Entradas" pra R$197 assim que a parcela caia, e numa venda
+      parcelada em varios meses o mesmo furo se repete a cada parcela
+      cobrada. `inflows` (a lista por forma de pagamento, exibida na aba
+      Fluxo de caixa) continua com todos os metodos -- ali o interesse e
+      "quanto se vendeu por forma", nao "quanto dinheiro entrou de verdade".
+    */
+    const NAO_E_DINHEIRO_NO_DIA = new Set(["debito", "credito", "crediario"]);
+    const salesIn = inflows
+      .filter((r) => !NAO_E_DINHEIRO_NO_DIA.has(String(r.method)))
+      .reduce((a, r) => a + num(r.total), 0);
     const extraIn = num(rec[0]?.total);
     const out = num(paid[0]?.total) + num(expenses[0]?.total);
     const sangria = num(cashMoves.find((m) => m.type === "sangria")?.total);
