@@ -782,6 +782,37 @@ sem impacto hoje.
     órfão lá além do de Loja Centro. Os dois foram limpos; confirmado ao
     vivo que ambas as lojas voltaram a "Nenhum caixa aberto".
 
+23. **Guardar/Recuperar (venda em espera) testado ao vivo — correto —
+    mas achado um risco real de venda em dobro no checkout, sem
+    idempotência**: o hold/resume em si funciona perfeitamente
+    (`holdSaleFn`/`resumeHeldFn`, `src/lib/server/commerce.ts`) —
+    guardei uma venda, recuperei, o carrinho voltou exato e a linha de
+    `held_sales` foi consumida uma única vez, confirmado no banco.
+
+    O achado sério veio DEPOIS: ao finalizar a venda recuperada, a aba
+    do navegador travou sem mostrar confirmação logo após um erro de
+    rede transitório ("Failed to fetch" no `checkoutFn`). Achando que
+    tinha falhado, abri uma aba nova e refiz a venda inteira. Resultado
+    no banco: **duas vendas de verdade** para o mesmo item (nº 1 e nº 2,
+    R$50 cada, mesma variante), estoque baixado duas vezes (10→8). A
+    primeira tentativa TINHA dado certo no servidor — só a tela não
+    confirmou. Reproduzido sem querer, não é hipotético.
+
+    Isto expõe uma lacuna real e séria: **`checkoutFn` não tem proteção
+    contra reenvio** (nenhuma chave de idempotência). Se a resposta de
+    rede falhar bem na hora em que a venda já foi gravada, o operador não
+    tem como saber que deu certo — e a reação natural (recarregar a tela,
+    tentar de novo) vende a mesma coisa duas vezes pro cliente de
+    verdade, com pagamento cobrado em dobro.
+
+    **PENDENTE, decisão do usuário**: não implementei a correção porque
+    mexe no contrato da API de checkout (`checkoutFn` seria a peça a
+    mudar, junto com uma coluna nova pra guardar a chave de idempotência
+    do lado do cliente, ex. um UUID gerado no início de cada venda) e
+    provavelmente precisa de migração — é uma mudança de arquitetura, não
+    um ajuste pontual. Dados de teste (2 vendas, estoque, produto,
+    caixas) completamente revertidos depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
