@@ -767,6 +767,21 @@ sem impacto hoje.
     lados. Nenhum bug — `transferStockFn` (`src/lib/server/catalog.ts`)
     correto na prática.
 
+22. **Regra de comissão por categoria testada ao vivo — confirmada
+    correta**: vendedor descartável com padrão 10%, regra específica de
+    3% pra categoria "Eletrônicos". Venda de R$100 num produto dessa
+    categoria gerou comissão de R$3,00 (a regra de categoria venceu o
+    padrão do vendedor, como `ruleSpecificity` prevê). Confirmado no
+    banco (`commissions.amount` = 3.00, `percent` = 3.00). Nenhum bug —
+    `pickRule`/`ruleMatches`/`ruleSpecificity` (`src/lib/commission.ts`)
+    corretos na prática, não só no design.
+
+    Nota de processo: o primeiro teste testou sem querer contra a Loja
+    Shopping (o seletor de loja tinha ficado nela de uma rodada anterior
+    — não reiniciei a seleção, não é bug do produto), gerando um caixa
+    órfão lá além do de Loja Centro. Os dois foram limpos; confirmado ao
+    vivo que ambas as lojas voltaram a "Nenhum caixa aberto".
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
