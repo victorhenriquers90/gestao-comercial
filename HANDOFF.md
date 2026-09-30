@@ -581,6 +581,24 @@ sem impacto hoje.
     rodou sem repetir. Parece falha do ambiente de preview local, não do
     `gestao-comercial` — mas se voltar a acontecer, vale investigar.
 
+11. **Validação ponta a ponta do fechamento de caixa, ao vivo**: mesma
+    lógica do item 10, agora no fluxo diário mais crítico da loja. Com 1
+    produto descartável, abri o caixa (fundo R$100), vendi 1 peça de
+    R$50 em dinheiro, lancei um suprimento de R$20 ("reforço de troco")
+    e uma sangria de R$30 ("depósito no banco"), depois fechei contando
+    R$145,00 de propósito (R$5 a mais do que bateria). O sistema calculou
+    esperado = 100 + 50 + 20 − 30 = **R$140,00** — exatamente certo — e
+    sinalizou a diferença de R$5,00 como "precisa de explicação" (acima
+    da tolerância de R$2 em `CASH_DIFFERENCE_TOLERANCE`). Registrei a
+    explicação e confirmei no banco: `difference_reason` e
+    `difference_explained_at` gravados corretamente, os três
+    `cash_movements` (venda/suprimento/sangria) certos. Nenhum bug módulo
+    de caixa — abertura, sangria/suprimento, fechamento cego e explicação
+    de diferença todos corretos. Limpeza completa depois (venda, seus
+    itens/pagamentos, os movimentos de caixa, o caixa fechado de teste,
+    o produto/variante/estoque descartável, `audit_logs` do teste,
+    `company_counters` devolvido pra 0), confirmada ao vivo.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
