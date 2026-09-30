@@ -651,6 +651,40 @@ sem impacto hoje.
     "quanto se vendeu por forma"). Confirmado ao vivo que "Entradas"
     voltou a R$97,00 depois do fix. `npm test` 423/423.
 
+15. **Auditoria de prontidão operacional (backup e segurança), a pedido do
+    usuário** — sem código mudado, mas com evidência real, não só leitura:
+    - **Backup: PROVADO que restaura.** Esta própria máquina é a instalação
+      piloto de verdade (`C:\ProgramData\GestaoComercial` existe aqui) —
+      rodei `Restore-GestaoComercial.ps1 -Ensaio` contra o backup real mais
+      recente (`gestao_comercial_20260929_223019.dump`). Restaurou 47
+      tabelas, 145 índices e 183 constraints num schema descartável dentro
+      de uma transação com ROLLBACK (nada foi alterado). As duas únicas
+      divergências de contagem (`company_counters`, `notifications`) são
+      esperadas — atividade real depois do backup, não corrupção. A tarefa
+      agendada (`GestaoComercial-Backup`, 22:30 diário) está rodando de
+      verdade: histórico de dumps de 19/09 até 29/09 em
+      `C:\ProgramData\GestaoComercial\backups`.
+    - **PENDENTE, decisão do usuário: sem cópia fora da máquina.**
+      `last-backup.json` não tem campo `secondary` — nenhum
+      `SecondaryDir` foi configurado (`Set-BackupSecondaryDir.ps1`
+      existe pronto pra isso). Hoje, se o disco desta máquina falhar,
+      banco E backups somem juntos. Falta o usuário decidir ONDE (HD
+      externo, pendrive, pasta de rede, OneDrive local) — isso não dá
+      pra escolher por ele.
+    - **Segurança de convite/sessão: auditado, nada de novo encontrado.**
+      `ensureTenant` (`src/lib/server/context.ts`) só deixa criar empresa
+      nova quando o banco está genuinamente vazio (comentário no código
+      já documenta um bug de escalação de privilégio consertado antes:
+      "qualquer conta sem convite ganhava empresa própria"); todo o resto
+      exige convite com token hasheado e validade. `acceptInvite` pega o
+      papel (role) SÓ do convite gravado pelo admin, nunca de entrada do
+      cliente. `updateMemberFn` bloqueia auto-desativação e bloqueia
+      remover o último admin. Não achei brecha nova. A maior parte de
+      `src/lib/auth/*` (bearer token, CSRF, isolamento same-site) é
+      andaime de plataforma compartilhado entre apps, não código
+      específico do gestão comercial — não auditado a fundo por já ser
+      superfície de terceiro, presumivelmente já revisada em outro nível.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
