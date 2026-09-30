@@ -525,6 +525,17 @@ sem impacto hoje.
    mesmo `EmptyState` das outras páginas, com CTA por aba. Confirmado ao
    vivo nas três abas contra o banco zerado; `npm test` 417/417.
 
+8. ~~Equipe/Pagamentos (Vendedores) sem estado vazio~~ — **corrigido**
+   (commit 2e1e58b), fechando a varredura da mesma classe: depois de achar
+   a falha em Promoções e Financeiro, procurei TODO uso de `<DataTable`
+   no projeto (`grep -rln "<DataTable" src`, 15 arquivos) atrás do mesmo
+   padrão. As abas Equipe e Pagamentos de Vendedores tinham o mesmo furo;
+   os outros 4 arquivos (`retention-guide.tsx`,
+   `purchase-suggestion-panel.tsx`, `stock-count-panel.tsx`,
+   `commission-panel.tsx`) já tratavam a lista vazia (mensagem própria ou
+   `EmptyState`) — conferido um por um. Com isso a classe "tabela em
+   branco sem mensagem" está fechada em toda a base, não só nas 17 rotas.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
