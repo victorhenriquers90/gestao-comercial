@@ -635,6 +635,22 @@ sem impacto hoje.
     amount=10/received=10/pago (consistente), não mais
     amount=0/received=10/cancelado. `npm test` 423/423.
 
+14. ~~Entradas do fluxo de caixa contava venda no cartão/crediário em
+    dobro~~ — **corrigido** (commit 405159a), achado testando ao vivo a
+    conciliação de cartão (aba Cartões, nunca exercida antes nesta
+    sessão): `cashflowFn` somava toda venda por forma de pagamento
+    (`salesIn`) E, separadamente, cada liquidação/cobrança recebida
+    (`extraIn`) — sem excluir do primeiro o que o segundo ia contar
+    depois. Cartão e crediário não viram dinheiro no dia da venda, só na
+    liquidação/cobrança. Reproduzido ao vivo: venda de R$100 no crédito
+    (taxa 3%, líquido R$97) mostrava "Entradas R$100,00"; ao confirmar a
+    liquidação na aba Cartões, pulou pra R$197,00 (deveria ficar em
+    R$97,00). Fix: `salesIn` agora exclui débito/crédito/crediário — a
+    quebra por forma de pagamento da aba Fluxo de caixa continua
+    mostrando todos os métodos normalmente (ali o interesse é outro:
+    "quanto se vendeu por forma"). Confirmado ao vivo que "Entradas"
+    voltou a R$97,00 depois do fix. `npm test` 423/423.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
