@@ -1489,6 +1489,25 @@ export const savePromotionFn = createServerFn({ method: "POST" })
     const buyQty = finite(data.buyQty, "quantidade (compre)");
     const payQty = finite(data.payQty, "quantidade (pague)");
     const minQty = finite(data.minQty, "quantidade mínima");
+    /*
+      finite() barra NaN/Infinity, mas um numero fora da faixa (ex.: 500 no
+      campo percentual, digitado no lugar de 50,0) passava direto: computePromo
+      calculava um desconto MAIOR que a propria linha, e checkoutFn fechava a
+      venda com total de linha negativo (visto ao vivo: 2x R$100 com promo de
+      500% -> linha de -R$800). Corrigido na raiz em promo.ts (teto no calculo,
+      pra qualquer promocao ja existente), e aqui pra avisar quem cadastra.
+    */
+    if (percent != null && (percent < 0 || percent > 100)) {
+      throw new Error("Percentual deve estar entre 0 e 100.");
+    }
+    if (amount != null && amount < 0) throw new Error("Desconto não pode ser negativo.");
+    if (promoPrice != null && promoPrice <= 0) throw new Error("Preço promocional deve ser maior que zero.");
+    if (buyQty != null && buyQty <= 0) throw new Error("Quantidade (compre) deve ser maior que zero.");
+    if (payQty != null && payQty <= 0) throw new Error("Quantidade (pague) deve ser maior que zero.");
+    if (minQty != null && minQty <= 0) throw new Error("Quantidade mínima deve ser maior que zero.");
+    if (data.kind === "bxgy" && buyQty != null && payQty != null && payQty >= buyQty) {
+      throw new Error("Em \"leve X pague Y\", pague deve ser menor que leve.");
+    }
     if (data.id) {
       await sql`
         update promotions set name = ${data.name}, kind = ${data.kind}, percent = ${percent},

@@ -43,22 +43,34 @@ export function promoApplies(
 }
 
 export function computePromo(p: Promo, qty: number, unitPrice: number): { discount: number; unitPrice: number } {
+  /*
+    checkoutFn (src/lib/server/commerce.ts) faz
+    `unitPrice*qty - disc` sem nenhum teto pra baixo -- um percentual
+    cadastrado errado (ex.: 500 no lugar de 50,0) virava desconto MAIOR
+    que a propria linha, e a venda fechava com total de linha NEGATIVO. O
+    `if (total < 0)` la so olha a venda inteira, nao cada linha: com mais
+    de um item a conta podia fechar positiva mesmo com uma linha
+    corrompida. Mesma logica pro preco promocional negativo: virava o
+    unitPrice da linha, vendendo o produto por valor negativo.
+    lineTotal aqui e o teto de qualquer desconto, em todo kind.
+  */
+  const lineTotal = unitPrice * qty;
   if (p.kind === "percent") {
-    const pct = p.percent ?? 0;
-    return { unitPrice, discount: Number(((unitPrice * qty * pct) / 100).toFixed(2)) };
+    const pct = Math.min(Math.max(p.percent ?? 0, 0), 100);
+    return { unitPrice, discount: Number(((lineTotal * pct) / 100).toFixed(2)) };
   }
   if (p.kind === "fixed") {
-    return { unitPrice, discount: Math.min(unitPrice * qty, p.amount ?? 0) };
+    return { unitPrice, discount: Math.min(lineTotal, Math.max(p.amount ?? 0, 0)) };
   }
-  if (p.kind === "promo_price" && p.promoPrice != null && p.promoPrice < unitPrice) {
+  if (p.kind === "promo_price" && p.promoPrice != null && p.promoPrice > 0 && p.promoPrice < unitPrice) {
     return {
       unitPrice: p.promoPrice,
       discount: Number(((unitPrice - p.promoPrice) * qty).toFixed(2)),
     };
   }
   if (p.kind === "qty" && p.minQty && qty >= p.minQty) {
-    const pct = p.percent ?? 0;
-    return { unitPrice, discount: Number(((unitPrice * qty * pct) / 100).toFixed(2)) };
+    const pct = Math.min(Math.max(p.percent ?? 0, 0), 100);
+    return { unitPrice, discount: Number(((lineTotal * pct) / 100).toFixed(2)) };
   }
   if (p.kind === "bxgy" && p.buyQty && p.payQty && p.buyQty > p.payQty) {
     const sets = Math.floor(qty / p.buyQty);
