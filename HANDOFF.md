@@ -845,6 +845,33 @@ sem impacto hoje.
     nem duas vendas nº 2). `npm run typecheck`, `npm run lint` e `npm test`
     (423 testes) limpos. Dados de teste revertidos depois.
 
+25. **Cancelamento de venda testado ao vivo pelo fluxo real — confirmado
+    correto, nenhum bug**: até agora `cancelSaleFn` só tinha sido verificado
+    por leitura de código e uma transação sintética revertida (ver item,
+    acima, sobre o bug de devolução parcial + cancelamento já corrigido em
+    sessão anterior) — faltava o caminho feliz de ponta a ponta pela tela de
+    verdade. Fiz uma venda mista pelo PDV real (R$60 dinheiro + R$40
+    crediário, com vendedor e cliente atribuídos, comissão de 10%) e
+    cancelei pela tela de Vendas.
+
+    Tudo bateu no banco: estoque voltou exatamente 9→10 (um
+    `stock_movements` tipo `venda` e um `devolucao`, sem duplicar — a
+    correção anterior de "cancelar depois de devolução parcial" continua
+    válida); o título de crediário (`accounts_receivable`) foi para
+    `cancelado`; a comissão foi para `cancelado` sem apagar o valor
+    histórico; e o estorno de caixa (`dinheiroAindaNaVenda`) lançou um
+    `cash_movements` do tipo `cancelamento` de **R$60,00 só em dinheiro** —
+    não os R$100 cheios, excluindo corretamente a parcela de crediário que
+    nunca tinha entrado na gaveta. Notificação e `audit_logs` (`create` +
+    `cancel`) também corretos. Dados de teste (1 venda, 1 produto, 1
+    vendedor, 1 cliente, 1 caixa) revertidos por completo depois.
+
+    Nota de processo: a janela do navegador usada nesta rodada renderizou
+    com um viewport bem menor que o normal (490×261) e o `resize_window`
+    não conseguiu corrigir — contornado operando por `read_page`/JS direto
+    em vez de depender de screenshot/coordenadas. Sem relação com o
+    produto, só com a ferramenta de automação do navegador nesta sessão.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
