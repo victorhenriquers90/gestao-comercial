@@ -927,6 +927,24 @@ sem impacto hoje.
     esquecida). Sem impacto (notificação é só informativo, nada calcula em
     cima dela), e a tabela ficou vazia para a empresa #4 depois.
 
+28. **Faixa de comissão por volume MENSAL testada ao vivo — confirmado
+    correto, inclusive no limiar exato, nenhum bug**: dos três jeitos de
+    regra de comissão (específica por categoria, bônus de meta, faixa por
+    volume), só os dois primeiros tinham sido testados ao vivo (itens 16 e
+    22). Faixa por volume (`tierBasis: "month"`, `pickTier`/`volumeFor` em
+    `src/lib/commission.ts`) só tinha teste unitário.
+
+    Regra de teste: 5% até R$200 de faturamento do vendedor no mês, 15% a
+    partir daí. Duas vendas reais de R$100 pelo PDV, mesmo vendedor: a 1ª
+    rendeu R$5,00 (volume do mês 0→100, faixa de 5%) e a 2ª rendeu R$15,00
+    (volume 100→**200**, exatamente no limiar — a faixa de 15% começa em
+    200, e bateu nela, não na de 5%). Esse é o caso mais fácil de errar por
+    off-by-one (`>` vs `>=` no limite); confirmado correto nos dois sentidos
+    pela própria tela, que já mostrou o aviso certo antes de finalizar
+    ("esta venda leva a R$ 200,00 → faixa 15%") e confirmado no banco
+    (`commissions.percent` 5.00 e 15.00). Dados de teste (1 vendedor, 1
+    produto, 1 regra, 2 vendas, 1 caixa) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
