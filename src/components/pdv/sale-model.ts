@@ -1,8 +1,10 @@
+import type { ReceiptCompany } from "@/components/receipt";
 import type { PaymentMethod } from "@/lib/constants";
 import { MAX_CREDIARIO_INSTALLMENTS, splitCrediario } from "@/lib/crediario";
 import { formatBRL } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
 import type { searchPosFn } from "@/lib/server/catalog";
+import type { getSettingsFn } from "@/lib/server/session";
 
 /** A acao principal da tela: mesma peca no cupom e no pagamento. */
 export const PDV_FINISH_CLASS =
@@ -55,4 +57,19 @@ export function resumoCrediario(p: PayRow): string | null {
     : `${parcelas.length} parcelas`;
   const primeiraDiferente = primeira.amount !== parcelas[1]!.amount;
   return `${corpo}${primeiraDiferente ? ` (a 1ª de ${formatBRL(primeira.amount)})` : ""} · 1ª em ${quando}`;
+}
+
+/** Monta os dados da empresa do recibo a partir das configuracoes — mesma funcao pro PDV desktop e tablet. */
+export function receiptCompany(
+  settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined,
+): ReceiptCompany {
+  const company = (settings?.company ?? {}) as ReceiptCompany;
+  const extra = (settings?.settings ?? {}) as Record<string, unknown>;
+  return {
+    ...company,
+    print_header: extra.print_header != null ? String(extra.print_header) : company.print_header,
+    print_footer: extra.print_footer != null ? String(extra.print_footer) : company.print_footer,
+    receipt_message:
+      extra.receipt_message != null ? String(extra.receipt_message) : company.receipt_message,
+  };
 }
