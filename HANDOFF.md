@@ -1091,6 +1091,16 @@ sem impacto hoje.
     limpos. Dados de teste (1 venda incorreta da reprodução, 2 produtos, 2
     caixas) revertidos por completo depois.
 
+35. **Campo Observação do PDV testado — salva certo, nenhum bug**: nunca
+    tinha sido confirmado se o texto digitado em "Observação" realmente
+    persiste. Digitei um texto, finalizei a venda, conferido no banco:
+    `sales.notes` saiu exatamente como digitado, sem sanitização estranha.
+    Fecha a rodada de testes desta sessão no PDV (4 confirmações sem bug —
+    limite de desconto, CPF na nota, quantidade fracionada, Observação — e
+    1 bug real achado e corrigido — troca de loja com venda em andamento,
+    item 34). Dados de teste (1 venda, 1 produto, 1 caixa) revertidos por
+    completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
