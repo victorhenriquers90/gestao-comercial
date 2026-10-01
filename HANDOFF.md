@@ -1120,6 +1120,23 @@ sem impacto hoje.
     verdade. Dados de teste (1 venda, 1 produto, 1 caixa) revertidos por
     completo depois.
 
+37. **Divergência de caixa acima da tolerância, exigindo explicação escrita,
+    testada ao vivo — nenhum bug**: `CASH_DIFFERENCE_TOLERANCE` = R$2;
+    acima disso o fechamento fica "pendente" até alguém escrever o que
+    aconteceu (`explainCashDifferenceFn`). Nunca tinha sido exercitado ao
+    vivo — só os fechamentos "bateu certo" (itens 11, 30, 36).
+
+    Fechei contando R$90 contra R$100 esperado (falta de R$10, bem acima
+    da tolerância): a tela acusou "Falta R$10,00" e "Acima de R$2,00 a
+    diferença precisa de explicação escrita." Escrevi uma explicação na
+    lista "Fechamentos recentes" — salvou (`difference_reason`,
+    `difference_explained_at`, `difference_explained_by`), o aviso de
+    pendência sumiu e a explicação passou a aparecer no card. Testei
+    também a trava de "só uma vez": chamar `explainCashDifferenceFn` de
+    novo pro mesmo fechamento foi recusado direto no servidor com "Esta
+    diferença já foi explicada." Dados de teste (1 venda, 1 produto, 1
+    caixa) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
