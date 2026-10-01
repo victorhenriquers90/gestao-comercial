@@ -1006,6 +1006,26 @@ sem impacto hoje.
     `npm run typecheck`, `npm run lint` e `npm test` (423) limpos. Dados de
     teste (3 caixas, 1 venda, 1 produto) revertidos por completo depois.
 
+31. **Limite de desconto do operador testado direto contra o servidor — a
+    trava é real, não só da tela, nenhum bug**: `DiscountDialog` (PDV)
+    desabilita o botão acima do limite do perfil, mas isso é só a tela — o
+    que importa é se `checkoutFn` recusa de verdade quando alguém pula a
+    tela e chama o servidor direto (mesmo princípio de `cashMoveFn`,
+    `cancelSaleFn` etc. já confirmados nesta sessão). Nunca tinha sido
+    testado ao vivo, só lido no código.
+
+    Baixei temporariamente o limite do admin pra 5% (`memberships.
+    discount_limit`, só nesta sessão de teste), confirmei que o `DiscountDialog`
+    mostra "Limite do seu perfil: 5%." e bloqueia 20% na tela — e depois
+    pulei a tela: chamei `checkoutFn` direto pelo console com 20% de
+    desconto. Resultado: recusado com "Desconto acima do limite (5%).
+    Solicite autorização." — a mesma mensagem do código, vinda do servidor,
+    não da tela. Com exatamente 5% (o limite), a venda passou normal
+    (`sales.discount` = 5.00). A trava é real nos dois sentidos — dentro do
+    limite passa, acima é barrado — mesmo sem a tela no meio. Limite restaurado
+    ao padrão (`null` → 100% do admin) e dados de teste (1 venda, 1 produto,
+    1 caixa) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
