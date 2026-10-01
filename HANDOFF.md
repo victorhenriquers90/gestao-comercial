@@ -964,6 +964,48 @@ sem impacto hoje.
     R$200,00" no dia da liquidação, batendo exato com o lote. Dados de
     teste (2 vendas, 1 produto, 1 caixa) revertidos por completo depois.
 
+30. **Troca de turno testada ao vivo — achado e corrigido um vazamento real
+    que derrubava o propósito inteiro da contagem cega**: `openRegisterFn`/
+    `closeRegisterFn` (`src/lib/server/finance.ts`) e a migration 0026
+    implementam um desenho cuidadoso — quem fecha declara quanto deixa na
+    gaveta, quem abre conta a gaveta recebida ANTES de ver o que foi
+    declarado, e só depois o sistema revela a diferença (`checkHandover`).
+    Nunca tinha sido testado ao vivo.
+
+    Fechei um turno declarando R$40 na gaveta, depois abri o próximo
+    contando errado de propósito (R$35): o sistema só revelou "Falta na
+    troca R$5,00" DEPOIS da minha contagem, nunca antes — a aritmética e a
+    sequência estão corretas. Mas achei o problema: a lista **"Fechamentos
+    recentes"**, na MESMA tela `/app/caixa`, logo abaixo do formulário de
+    contagem cega, já mostrava "Deixou R$40,00 na gaveta" sem nenhuma
+    condição — `listCashClosuresFn` devolvia `handover_amount` sempre que
+    não fosse nulo, sem checar se o turno seguinte já tinha "consumido" essa
+    troca. Quem está prestes a contar a gaveta só precisa rolar a tela pra
+    ver o número antes — exatamente o que a contagem cega existe pra
+    impedir. Afeta todo papel que usa o caixa, inclusive o papel `pdv` (o
+    mais restrito, que já tem `cash.read` + `cash.write`).
+
+    **Corrigido** (autorizado pelo usuário): a query agora calcula
+    `handover_consumed` (mesma condição de `loadPendingHandover` —
+    `not exists` outro registro com `previous_register_id` apontando pra
+    este), e `ficaNaGaveta`/`vaiProCofre` só saem preenchidos quando o
+    troco já foi consumido (ou é zero, nada a esconder); enquanto pendente,
+    a tela mostra só "Deixou troco na gaveta — valor some daqui até o
+    próximo turno abrir e contar" (`cash-closures-panel.tsx`). O lado
+    retrospectivo (`recebido`, "Recebeu contando X contra Y declarados") não
+    muda — só aparece depois que quem recebeu já contou, então nunca foi um
+    vazamento.
+
+    **Provado ao vivo nos dois sentidos**: fechei dois turnos reais (R$40 e
+    depois R$20 de troco); com o segundo pendente, a lista mostrou a frase
+    neutra sem o valor; abri o turno seguinte contando certo (R$20,
+    "Confere"), e só ENTÃO a lista passou a mostrar "Deixou R$20,00 na
+    gaveta · R$15,00 pro cofre" — e o registro mais antigo (R$40, já
+    consumido desde antes) continuou revelado o tempo todo, confirmando que
+    a correção não escondeu informação que já deveria estar visível.
+    `npm run typecheck`, `npm run lint` e `npm test` (423) limpos. Dados de
+    teste (3 caixas, 1 venda, 1 produto) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.

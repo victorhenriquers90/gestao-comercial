@@ -887,7 +887,10 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
               r.expected_revealed_at, r.count_breakdown,
               r.handover_amount, r.opening_verified, p.handover_amount as recebido_esperado,
               ua.name as opened_by_name, uf.name as closed_by_name,
-              ue.name as explained_by_name
+              ue.name as explained_by_name,
+              exists(
+                select 1 from cash_registers n where n.previous_register_id = r.id
+              ) as handover_consumed
          from cash_registers r
          left join "user" ua on ua.id = r.user_id
          left join "user" uf on uf.id = r.closed_by
@@ -923,13 +926,26 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
           openedBy: r.opened_by_name == null ? null : String(r.opened_by_name),
           closedBy: r.closed_by_name == null ? null : String(r.closed_by_name),
           breakdown: (r.count_breakdown ?? null) as Record<string, number> | null,
-          // Lado do turno que a lista nao mostrava: quanto ficou na gaveta
-          // pro proximo e se quem abriu CONFERIU o que recebeu. Sem isso,
-          // turno aberto no olho e turno conferido ficam identicos no
-          // relatorio e a diferenca dos dois se le com a mesma confianca.
-          ficaNaGaveta: r.handover_amount == null ? null : num(r.handover_amount),
-          vaiProCofre:
-            r.handover_amount == null ? null : safeAmount(num(r.closing_amount), num(r.handover_amount)),
+          /*
+            Lado do turno que a lista nao mostrava: quanto ficou na gaveta pro
+            proximo e se quem abriu CONFERIU o que recebeu. Sem isso, turno
+            aberto no olho e turno conferido ficam identicos no relatorio e a
+            diferenca dos dois se le com a mesma confianca.
+
+            Mas so revela o VALOR depois que o proximo turno ja abriu (ja fez
+            a propria contagem cega) -- `handover_consumed`, mesma condicao de
+            `loadPendingHandover`. Antes disso, esta MESMA tela (Caixa) e que
+            mostra o formulario de abertura cega pro operador seguinte: listar
+            o valor aqui, logo abaixo do formulario, entregava de bandeja
+            exatamente o numero que a contagem cega existe pra nao revelar
+            antes de contar -- o "Fechamentos recentes" nao e tela separada, e
+            a secao seguinte da mesma pagina.
+          */
+          handoverPendente: r.handover_amount != null && num(r.handover_amount) > 0 && !r.handover_consumed,
+          ficaNaGaveta: podeRevelarHandover(r) ? num(r.handover_amount) : null,
+          vaiProCofre: podeRevelarHandover(r)
+            ? safeAmount(num(r.closing_amount), num(r.handover_amount))
+            : null,
           aberturaConferida: r.opening_verified === true,
           recebido:
             r.recebido_esperado == null
@@ -939,6 +955,11 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
       }),
     );
   });
+
+/** So revela o troco de turno depois que o proximo ja abriu (ja contou as cegas). */
+function podeRevelarHandover(r: Row): boolean {
+  return r.handover_amount != null && (r.handover_consumed === true || num(r.handover_amount) === 0);
+}
 
 /**
  * Explicar a diferenca de um fechamento.

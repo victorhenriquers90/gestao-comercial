@@ -116,6 +116,10 @@ export function CashClosuresPanel({ storeId }: { storeId: number | null }) {
                   Deixou {formatBRL(f.ficaNaGaveta)} na gaveta · {formatBRL(f.vaiProCofre ?? 0)} pro
                   cofre
                 </span>
+              ) : f.handoverPendente ? (
+                <span>
+                  Deixou troco na gaveta — valor some daqui até o próximo turno abrir e contar
+                </span>
               ) : null}
             </div>
           ) : null}
