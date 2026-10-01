@@ -20,7 +20,7 @@ import { PDV_FINISH_CLASS, type PayRow } from "./sale-model";
 
 type Seller = { id: number; name: string };
 
-type Props = {
+export type SalePanelProps = {
   summary: SaleSummary;
   customerName: string | null;
   customerDoc: string;
@@ -59,7 +59,7 @@ type Props = {
  * Finalizar e a unica acao solida. Secoes separadas por filete, nao por
  * caixas -- caixa dentro de caixa era o que dava cara de rascunho.
  */
-export function SalePanel(p: Props) {
+export function SalePanel(p: SalePanelProps) {
   const vazio = p.summary.lines === 0;
   const [notasAbertas, setNotasAbertas] = useState(false);
   const [confirmarCancelar, setConfirmarCancelar] = useState(false);

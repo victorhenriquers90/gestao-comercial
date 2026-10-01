@@ -1,0 +1,290 @@
+/*
+  PDV touch (tablet) — classes `pdvt-*`, importado só por `pdv-tablet.tsx`.
+
+  Alvo e tablet em PAISAGEM (1024-1366px), montado em suporte de balcão —
+  por isso duas colunas sempre, sem fallback de coluna unica: uma coluna so
+  faria o Finalizar sair da vista, pior que o desktop, nao melhor. Retrato
+  fica de fora desta rodada de proposito.
+
+  Nao reusa nem sobrescreve `.pdv-*` (ver styles.css) -- selectors proprios,
+  zero risco de uma regra nova vazar pro PDV desktop.
+*/
+
+.pdvt-stage {
+  display: grid;
+  height: 100dvh;
+  overflow: hidden;
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 30vw, 28rem);
+}
+
+.pdvt-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.pdvt-side {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-card);
+  padding: 1.25rem 1.5rem;
+}
+
+/*
+  `ProductSearch` e reusado sem nenhuma mudanca (mesma logica de busca) --
+  so o input dele fica maior aqui. `.pdv-search-input` (em styles.css) vive
+  dentro de `@layer components`; este arquivo inteiro fica DE FORA de
+  qualquer `@layer` de proposito, entao estas regras ganham de qualquer
+  coisa em `components` automaticamente, sem depender de especificidade --
+  diferente do risco de tentar sobrescrever um `size-8` gerado pelo
+  Tailwind (utilitario sempre ganha de `components`, nunca perde).
+*/
+.pdvt-main .pdv-search-input {
+  height: 4rem;
+  padding-left: 3.5rem;
+  border-radius: 0.75rem;
+  font-size: 1.25rem;
+}
+
+/* Itens da venda. */
+.pdvt-cart {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-card);
+}
+
+.pdvt-cart-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pdvt-cart table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 1rem;
+}
+
+.pdvt-cart th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 2.75rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-card);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-muted-foreground);
+  text-align: left;
+}
+
+.pdvt-cart th.text-right {
+  text-align: right;
+}
+.pdvt-cart th.text-center {
+  text-align: center;
+}
+
+.pdvt-cart td {
+  height: 4.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  vertical-align: middle;
+}
+
+.pdvt-cart tbody tr[data-selected] td {
+  background: color-mix(in oklab, var(--color-primary) 9%, transparent);
+}
+
+.pdvt-cart tbody tr[data-selected] td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.pdvt-cart .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pdvt-cart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1.5rem;
+  text-align: center;
+}
+
+.pdvt-col-idx {
+  width: 3rem;
+}
+.pdvt-col-qty {
+  width: 11rem;
+}
+.pdvt-col-unit {
+  width: 7.5rem;
+}
+.pdvt-col-total {
+  width: 8rem;
+}
+.pdvt-col-rm {
+  width: 4.5rem;
+}
+
+@keyframes pdvt-flash-a {
+  from {
+    background-color: color-mix(in oklab, var(--color-primary) 24%, transparent);
+  }
+}
+@keyframes pdvt-flash-b {
+  from {
+    background-color: color-mix(in oklab, var(--color-primary) 24%, transparent);
+  }
+}
+.pdvt-row-flash {
+  animation-duration: 900ms;
+  animation-timing-function: ease-out;
+}
+
+/* −/+ e numero: alvo de toque minimo 56x56 -- o `.pdv-qty` do desktop tem
+   32px, apertado demais pro dedo. */
+.pdvt-qty {
+  display: inline-flex;
+  height: 3.5rem;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--color-input);
+  border-radius: 0.75rem;
+  background: var(--color-card);
+}
+
+.pdvt-qty button {
+  display: grid;
+  width: 3.5rem;
+  place-items: center;
+  color: var(--color-muted-foreground);
+}
+
+.pdvt-qty button:active:not(:disabled) {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.pdvt-qty button:disabled {
+  opacity: 0.35;
+}
+
+.pdvt-qty input {
+  width: 3.5rem;
+  border: 0;
+  border-inline: 1px solid var(--color-input);
+  background: transparent;
+  text-align: center;
+  font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdvt-remove {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-inline: auto;
+  place-items: center;
+  border-radius: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.pdvt-remove:active {
+  background: color-mix(in oklab, var(--color-destructive) 12%, transparent);
+  color: var(--color-destructive);
+}
+
+/* Cupom (coluna direita). */
+.pdvt-section {
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pdvt-section:first-child {
+  padding-top: 0;
+}
+
+.pdvt-customer {
+  display: flex;
+  width: 100%;
+  min-height: 3.75rem;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.pdvt-customer.is-asking {
+  border-color: color-mix(in oklab, var(--color-warning) 55%, transparent);
+  background: color-mix(in oklab, var(--color-warning) 9%, transparent);
+  color: var(--color-warning);
+}
+
+.pdvt-remove-discount {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border-radius: 0.5rem;
+  color: var(--color-muted-foreground);
+}
+
+.pdvt-remove-discount:active {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.pdvt-total {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--color-primary) 8%, var(--color-card));
+}
+
+.pdvt-total-value {
+  margin-top: 0.25rem;
+  font-family: var(--font-sans);
+  font-size: clamp(2rem, 6.5cqi, 3rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-foreground);
+}
+
+.pdvt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+}
+
+/* Metodos de pagamento do PaymentDialog ja tem fallback de 3 colunas em
+   telas estreitas (ver .pdv-methods em styles.css); tablet landscape cai
+   na grade de 6 colunas normal, sem precisar de nada daqui. */

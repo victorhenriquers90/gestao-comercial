@@ -6,7 +6,7 @@ import { parseQuantity } from "@/lib/pdv-sale";
 import { cn } from "@/lib/utils";
 import type { PricedLine } from "./sale-model";
 
-type Props = {
+export type CartTableProps = {
   lines: PricedLine[];
   /** Texto de comissao por linha, no mesmo indice de `lines`. */
   commission?: (string | null)[];
@@ -23,7 +23,7 @@ type Props = {
  * monitor de 1366x768 mostrava UM item inteiro -- o operador rolava pra ver
  * a propria venda. Em linha de 52px cabem dez.
  */
-export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRemove, flash }: Props) {
+export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRemove, flash }: CartTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

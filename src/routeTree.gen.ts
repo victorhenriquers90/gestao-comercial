@@ -24,6 +24,7 @@ import { Route as AppFinanceiroRouteImport } from './routes/app/financeiro'
 import { Route as AppFornecedoresRouteImport } from './routes/app/fornecedores'
 import { Route as AppMetasRouteImport } from './routes/app/metas'
 import { Route as AppPdvRouteImport } from './routes/app/pdv'
+import { Route as AppPdvTabletRouteImport } from './routes/app/pdv-tablet'
 import { Route as AppProdutosRouteImport } from './routes/app/produtos'
 import { Route as AppPromocoesRouteImport } from './routes/app/promocoes'
 import { Route as AppRelatoriosRouteImport } from './routes/app/relatorios'
@@ -106,6 +107,11 @@ const AppPdvRoute = AppPdvRouteImport.update({
   path: '/pdv',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppPdvTabletRoute = AppPdvTabletRouteImport.update({
+  id: '/pdv-tablet',
+  path: '/pdv-tablet',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppProdutosRoute = AppProdutosRouteImport.update({
   id: '/produtos',
   path: '/produtos',
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/app/fornecedores': typeof AppFornecedoresRoute
   '/app/metas': typeof AppMetasRoute
   '/app/pdv': typeof AppPdvRoute
+  '/app/pdv-tablet': typeof AppPdvTabletRoute
   '/app/produtos': typeof AppProdutosRoute
   '/app/promocoes': typeof AppPromocoesRoute
   '/app/relatorios': typeof AppRelatoriosRoute
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/app/fornecedores': typeof AppFornecedoresRoute
   '/app/metas': typeof AppMetasRoute
   '/app/pdv': typeof AppPdvRoute
+  '/app/pdv-tablet': typeof AppPdvTabletRoute
   '/app/produtos': typeof AppProdutosRoute
   '/app/promocoes': typeof AppPromocoesRoute
   '/app/relatorios': typeof AppRelatoriosRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/app/fornecedores': typeof AppFornecedoresRoute
   '/app/metas': typeof AppMetasRoute
   '/app/pdv': typeof AppPdvRoute
+  '/app/pdv-tablet': typeof AppPdvTabletRoute
   '/app/produtos': typeof AppProdutosRoute
   '/app/promocoes': typeof AppPromocoesRoute
   '/app/relatorios': typeof AppRelatoriosRoute
@@ -223,6 +232,7 @@ export interface FileRouteTypes {
     | '/app/fornecedores'
     | '/app/metas'
     | '/app/pdv'
+    | '/app/pdv-tablet'
     | '/app/produtos'
     | '/app/promocoes'
     | '/app/relatorios'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/app/fornecedores'
     | '/app/metas'
     | '/app/pdv'
+    | '/app/pdv-tablet'
     | '/app/produtos'
     | '/app/promocoes'
     | '/app/relatorios'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/app/fornecedores'
     | '/app/metas'
     | '/app/pdv'
+    | '/app/pdv-tablet'
     | '/app/produtos'
     | '/app/promocoes'
     | '/app/relatorios'
@@ -391,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPdvRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/pdv-tablet': {
+      id: '/app/pdv-tablet'
+      path: '/pdv-tablet'
+      fullPath: '/app/pdv-tablet'
+      preLoaderRoute: typeof AppPdvTabletRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/produtos': {
       id: '/app/produtos'
       path: '/produtos'
@@ -448,6 +467,7 @@ interface AppRouteRouteChildren {
   AppFornecedoresRoute: typeof AppFornecedoresRoute
   AppMetasRoute: typeof AppMetasRoute
   AppPdvRoute: typeof AppPdvRoute
+  AppPdvTabletRoute: typeof AppPdvTabletRoute
   AppProdutosRoute: typeof AppProdutosRoute
   AppPromocoesRoute: typeof AppPromocoesRoute
   AppRelatoriosRoute: typeof AppRelatoriosRoute
@@ -468,6 +488,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppFornecedoresRoute: AppFornecedoresRoute,
   AppMetasRoute: AppMetasRoute,
   AppPdvRoute: AppPdvRoute,
+  AppPdvTabletRoute: AppPdvTabletRoute,
   AppProdutosRoute: AppProdutosRoute,
   AppPromocoesRoute: AppPromocoesRoute,
   AppRelatoriosRoute: AppRelatoriosRoute,
