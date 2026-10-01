@@ -945,6 +945,25 @@ sem impacto hoje.
     (`commissions.percent` 5.00 e 15.00). Dados de teste (1 vendedor, 1
     produto, 1 regra, 2 vendas, 1 caixa) revertidos por completo depois.
 
+29. **Liquidação de cartão em LOTE testada ao vivo — confirma a correção do
+    item 14 também no caso de várias parcelas de vendas diferentes, nenhum
+    bug**: `settleCardBatchFn` (`src/lib/server/card-settlement.ts`) agrupa
+    por data de liquidação e baixa tudo de uma vez; o item 14 já tinha
+    provado que a baixa alimenta o fluxo de caixa certo, mas só com UMA
+    parcela. Faltava provar o agrupamento de verdade — múltiplas parcelas,
+    de vendas diferentes, na mesma data.
+
+    Duas vendas reais de R$100 no crédito (sem taxa configurada, 1x,
+    Visa), caindo as duas em 31/10/2026 por terem sido feitas no mesmo dia.
+    A aba Cartões agrupou certo ("2 parcela(s) · Visa · R$ 200,00", um lote
+    só). Ao confirmar: as duas `accounts_receivable` foram para `pago`,
+    **cada uma com seu próprio `audit_logs` de ação `receive`** (não um
+    registro só somado — é essa granularidade que o comentário do código já
+    avisava ser necessária, ver item 14) mais um `audit_logs` de
+    `settle-batch` resumindo o lote. O Fluxo de Caixa mostrou "Entradas
+    R$200,00" no dia da liquidação, batendo exato com o lote. Dados de
+    teste (2 vendas, 1 produto, 1 caixa) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
