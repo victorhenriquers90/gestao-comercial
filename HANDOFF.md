@@ -872,6 +872,32 @@ sem impacto hoje.
     em vez de depender de screenshot/coordenadas. Sem relação com o
     produto, só com a ferramenta de automação do navegador nesta sessão.
 
+26. **Contagem de estoque (inventário) testada ao vivo pelo fluxo real —
+    confirmado correto, nenhum bug, inclusive no cenário de maior risco**:
+    `applyStockCountFn` (`src/lib/server/stock-count.ts`) só tinha leitura
+    de código a favor dele até agora. A promessa do comentário no código é
+    específica: "ao aplicar, lança-se a DIFERENÇA encontrada, não o contado
+    como saldo absoluto — senão toda venda feita entre contar e aplicar é
+    desfeita". Testei exatamente essa promessa, não só o caminho feliz.
+
+    Contei 2 produtos descartáveis (estoque 10 cada): um ficou com falta
+    (contado 8, diferença −2) e outro com sobra (contado 13, diferença +3).
+    **Antes de aplicar**, vendi 1 unidade do produto com falta pelo PDV de
+    verdade — simulando uma venda real acontecendo durante a janela entre
+    contar e aplicar, que é justamente o cenário que a função promete
+    proteger. Estoque desse produto foi para 9 por causa da venda. Apliquei
+    o inventário depois.
+
+    Resultado conferido no banco: `stock_movements` mostra a venda (10→9)
+    e, por cima dela, o ajuste de inventário aplicando a DIFERENÇA (−2)
+    sobre o saldo ATUAL — 9→**7**, não 9→6 (dobro) nem 10→8 (que teria
+    apagado a venda real tratando o contado como absoluto). O produto com
+    sobra foi de 10→13 (diferença +3) normalmente. `stock_counts.status`
+    foi para `aplicado`, e `audit_logs` registrou `ajustados: 2, sobras: 3,
+    faltas: 2`, batendo exato com os dois itens. Dados de teste (1
+    inventário, 2 produtos, 1 venda, 1 caixa) revertidos por completo
+    depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
