@@ -1101,6 +1101,25 @@ sem impacto hoje.
     item 34). Dados de teste (1 venda, 1 produto, 1 caixa) revertidos por
     completo depois.
 
+36. **"Revelar o dinheiro esperado" no fechamento de caixa testado ao vivo
+    — a via de escape da conferência cega é real e totalmente auditada,
+    nenhum bug**: fica só com admin/gerente (`cash.reveal`, separada de
+    `cash.read`/`cash.write` de propósito — ver comentário em
+    `permissions.ts`), e existe pra quando a conferência cega não é
+    possível ou necessária. Nunca tinha sido exercitada ao vivo — só os
+    fechamentos cegos (itens 11 e 30).
+
+    Cliquei "Revelar o dinheiro esperado" antes de contar: mostrou
+    "Dinheiro esperado na gaveta R$80,00" e o aviso "a conferência deste
+    turno deixou de ser cega". Fechei contando certo. Confirmado no banco:
+    `expected_revealed_at`/`expected_revealed_by` gravados, um
+    `audit_logs` próprio de ação `reveal-expected` (quem e quando), e o
+    `audit_logs` do fechamento final com `cego: false` — a lista de
+    fechamentos mostrou "Esperado revelado antes" em vez de "Conferência
+    cega". Nada escondido, nada confundido com uma conferência cega de
+    verdade. Dados de teste (1 venda, 1 produto, 1 caixa) revertidos por
+    completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
