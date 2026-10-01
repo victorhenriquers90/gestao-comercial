@@ -898,6 +898,35 @@ sem impacto hoje.
     inventário, 2 produtos, 1 venda, 1 caixa) revertidos por completo
     depois.
 
+27. **Devolução TOTAL com pagamento misto testada ao vivo — confirma a
+    correção documentada no código, agora para o caso que faltava, nenhum
+    bug**: `createReturnFn` já tinha um comentário explicando um bug
+    corrigido em sessão anterior — devolver o item de uma venda com
+    dinheiro + crediário podia perdoar a parcela de crediário E devolver o
+    valor cheio em espécie, entregando o dobro do que foi devolvido. Os
+    testes ao vivo anteriores (itens 12/13) só tinham exercido essa
+    correção numa devolução PARCIAL; a devolução TOTAL tem um branch
+    próprio no código (cancela a comissão inteira em vez de ratear, define
+    `sales.status = 'devolvida'` em vez de `'devolvida_parcial'`) que nunca
+    tinha sido testado ao vivo.
+
+    Venda de R$100 (R$60 dinheiro + R$40 crediário) devolvida por inteiro
+    pela tela de Devoluções. Resultado no banco: `sales.status` →
+    `devolvida`; `returns.kind` → `total`; o título de crediário foi para
+    `cancelado` (dívida perdoada); e o estorno em dinheiro lançou **R$60,00
+    exatos** — não os R$100 cheios, que teria duplicado o valor dos R$40 já
+    perdoados via cancelamento do título. R$40 (perdão) + R$60 (espécie) =
+    R$100, batendo exato com a venda original, sem sobra nem falta.
+    Notificação e `audit_logs` corretos. Dados de teste (1 venda, 1
+    devolução, 1 produto, 1 cliente, 1 caixa) revertidos depois.
+
+    Nota de processo: a limpeza encontrou e removeu mais 2 notificações
+    órfãs da empresa #4, de rodadas de devolução de sessões anteriores que
+    aparentemente esqueceram a tabela `notifications` na limpeza — mesma
+    classe de descuido já documentada no item 6 (tabela `expenses`
+    esquecida). Sem impacto (notificação é só informativo, nada calcula em
+    cima dela), e a tabela ficou vazia para a empresa #4 depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
