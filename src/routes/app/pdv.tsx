@@ -50,6 +50,8 @@ function PdvPage() {
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const activeStore = storeId ?? tenant.data?.defaultStoreId ?? 0;
   const searchRef = useRef<HTMLInputElement>(null);
+  /** Ultima loja vista pelo efeito abaixo — `null` so antes da primeira loja real carregar. */
+  const lojaRef = useRef<number | null>(null);
 
   const [cart, setCart] = useState<Line[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -122,6 +124,38 @@ function PdvPage() {
     const match = (me ? sellers.data.find((s) => s.name === me) : null) ?? sellers.data[0];
     if (match) setSellerId(match.id);
   }, [sellers.data, tenant.data, tenant.isPending]);
+
+  /**
+   * Trocar a loja no seletor do topo com uma venda em andamento NAO podia
+   * deixar o carrinho como estava.
+   *
+   * Preco e estoque sao lidos da loja no momento em que cada item e
+   * adicionado (`add()` grava `stock` e preco ali, uma vez so) -- trocar a
+   * loja depois nao atualiza nada no carrinho, e `Finalizar venda` manda
+   * `storeId: activeStore`, ou seja, a loja ATUAL no seletor, nao a loja em
+   * que o item foi escolhido. Reproduzido ao vivo: produto escolhido com a
+   * Loja Centro selecionada, troca pra Loja Shopping sem tocar no
+   * carrinho, Finalizar -- a venda e a baixa de estoque saem inteiras na
+   * Shopping, a Centro (onde o operador viu o produto) nunca e tocada. Sem
+   * aviso, sem erro: parece uma venda normal. So nao deu pra reproduzir
+   * ainda pior (loja nova sem aquele produto) porque falta de estoque
+   * acusa erro -- mas com estoque suficiente nos dois lados, o engano
+   * passa batido.
+   *
+   * `lojaRef` so para de ser `null` na primeira loja de verdade (o valor
+   * nasce 0 enquanto o tenant ainda carrega); a partir dai, qualquer
+   * mudanca com carrinho não-vazio cancela a venda em vez de deixar o
+   * carrinho seguir pra loja errada.
+   */
+  useEffect(() => {
+    if (!activeStore) return;
+    if (lojaRef.current != null && lojaRef.current !== activeStore && cart.length > 0) {
+      novaVenda();
+      toast.error("Loja trocada: a venda em andamento foi cancelada — preço e estoque são por loja.");
+    }
+    lojaRef.current = activeStore;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- so deve disparar quando a LOJA muda; cart/novaVenda sao lidos no instante, nao devem re-rodar o efeito sozinhos
+  }, [activeStore]);
 
   const priced = cart.map((l) => {
     const sellPrice = l.override ?? l.listPrice ?? l.price;

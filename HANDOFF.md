@@ -1057,6 +1057,40 @@ sem impacto hoje.
     (carrinho → checkout → baixa de estoque). Dados de teste (1 venda, 1
     produto, 1 caixa) revertidos por completo depois.
 
+34. **Trocar de loja com venda em andamento vazava pra loja errada — achado
+    grave, corrigido**: o seletor de loja no topo (`useSelection`, estado
+    global) não tinha nenhuma trava contra mudar de loja com itens já no
+    carrinho. `ProductSearch`/`add()` gravam preço e estoque da loja UMA VEZ,
+    no momento de adicionar — trocar a loja depois não atualiza nada no
+    carrinho, e `Finalizar venda` manda `storeId: activeStore`, ou seja, a
+    loja ATUAL no seletor, não a loja em que o item foi escolhido.
+
+    Reproduzido ao vivo, pior caso possível: escolhi um produto com a Loja
+    Centro selecionada (estoque 5 lá), troquei pra Loja Shopping sem tocar
+    no carrinho, finalizei. Resultado real no banco: a venda e a baixa de
+    estoque saíram **inteiras na Loja Shopping** — a Loja Centro, onde o
+    operador viu e escolheu o produto, nunca foi tocada. Nenhum aviso,
+    nenhum erro: pareceu uma venda normal. Só não deu pra reproduzir ainda
+    pior (loja sem aquele produto) porque falta de estoque acusa erro — mas
+    com estoque suficiente nos dois lados (o caso comum, mesmo produto
+    cadastrado nas duas lojas), o engano passa batido, lançando a venda e
+    baixando o estoque físico da loja ERRADA de forma silenciosa.
+
+    **Corrigido** (autorizado pelo usuário): novo `useEffect` em
+    `src/routes/app/pdv.tsx` guarda a última loja vista (`lojaRef`); quando
+    `activeStore` muda de verdade (não a carga inicial) com o carrinho
+    não-vazio, cancela a venda (`novaVenda()`) e avisa — "Loja trocada: a
+    venda em andamento foi cancelada — preço e estoque são por loja." Com
+    carrinho vazio, trocar de loja continua livre, sem aviso nenhum
+    (comportamento normal).
+
+    **Provado ao vivo depois do fix**: mesmo roteiro (adicionar com Centro,
+    trocar pra Shopping) — o carrinho esvaziou sozinho com o aviso exato, e
+    confirmado que nenhuma venda nova foi criada e o estoque das duas lojas
+    ficou intacto. `npm run typecheck`, `npm run lint` e `npm test` (423)
+    limpos. Dados de teste (1 venda incorreta da reprodução, 2 produtos, 2
+    caixas) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
