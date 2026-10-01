@@ -1044,6 +1044,19 @@ sem impacto hoje.
     duplicata). Dados de teste (2 vendas, 2 clientes, 1 produto, 1 caixa)
     revertidos por completo depois.
 
+33. **Quantidade fracionada no PDV testada de ponta a ponta — nenhum bug**:
+    `parseQuantity` (`src/lib/pdv-sale.ts`) aceita até 3 casas decimais
+    (produto vendido por peso/metro, ex. "2,5"), mas isso nunca tinha
+    passado por uma venda real — só teste unitário da função isolada.
+
+    Editei a quantidade de um item pra "2,5" direto no campo do carrinho; a
+    tela recalculou o total certo (R$25,00) antes mesmo de finalizar.
+    Terminada a venda, bateu no banco: `sale_items.quantity` = 2.500,
+    `stock_movements` com delta exato de -2.500, estoque foi de 10.000 para
+    7.500 — sem arredondar pra 2 ou 3 unidades em nenhum ponto da cadeia
+    (carrinho → checkout → baixa de estoque). Dados de teste (1 venda, 1
+    produto, 1 caixa) revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
