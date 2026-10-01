@@ -813,6 +813,38 @@ sem impacto hoje.
     um ajuste pontual. Dados de teste (2 vendas, estoque, produto,
     caixas) completamente revertidos depois.
 
+24. **Idempotência do checkout — implementada, migrada e provada ao vivo**
+    (autorizado pelo usuário, item 23 acima): `checkoutFn` agora recebe
+    `idempotencyKey` (UUID gerado uma vez por tentativa de fechamento no
+    `pdv.tsx`, via `checkoutKey` ref, reenviado igual em cada retry da
+    MESMA tentativa — só zera numa venda nova de verdade, em `novaVenda()`).
+
+    `migrations/0031_sale_idempotency.sql` adiciona `sales.idempotency_key`
+    com índice único parcial `(company_id, idempotency_key) where
+    idempotency_key is not null` — mesmo padrão de `document`/`barcode` em
+    0020. Já aplicada no banco real (`npm run db:migrate`), confirmada via
+    `information_schema`/`pg_indexes`.
+
+    No servidor (`src/lib/server/commerce.ts`): antes de processar, se
+    `idempotencyKey` já bate com uma venda existente, devolve o mesmo
+    comprovante (`buildCheckoutReceipt`, reconstrói a resposta a partir de
+    `sales`/`sale_items`/`payments`/`commissions`) em vez de reprocessar o
+    carrinho. Corrida rara (duas requisições com a mesma chave quase juntas)
+    é pega no `catch` pelo código `23505` do índice único e também devolve
+    o comprovante já gravado, em vez de erro.
+
+    **Provado ao vivo, não só por leitura de código**: abri o PDV real,
+    criei produto descartável, fiz uma venda normal pela UI (nº 1), depois
+    importei o módulo `commerce.ts` já carregado pelo Vite no console do
+    navegador e chamei `checkoutFn` DUAS VEZES com o mesmo payload e a
+    mesma `idempotencyKey` — reproduzindo exatamente o cenário do item 23
+    (cliente reenviando a mesma tentativa). Resultado: as duas chamadas
+    devolveram a MESMA venda (id 234, nº 2); conferido no banco que só
+    existe UMA linha em `sales` com aquela chave e só UM `stock_movements`
+    para aquela venda (estoque 10→9 na venda nº1, 9→8 na nº2 — nunca 9→7
+    nem duas vendas nº 2). `npm run typecheck`, `npm run lint` e `npm test`
+    (423 testes) limpos. Dados de teste revertidos depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.

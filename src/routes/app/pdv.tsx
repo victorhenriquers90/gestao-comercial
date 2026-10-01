@@ -24,7 +24,14 @@ import { parseMoneyInput } from "@/lib/money-input";
 import { paymentStatus, summarizeSale, valorDigitado } from "@/lib/pdv-sale";
 import { bestPromo } from "@/lib/promo";
 import { runAction } from "@/lib/run-action";
-import { checkoutFn, discardHeldFn, holdSaleFn, listHeldFn, listPromotionsFn, resumeHeldFn } from "@/lib/server/commerce";
+import {
+  checkoutFn,
+  discardHeldFn,
+  holdSaleFn,
+  listHeldFn,
+  listPromotionsFn,
+  resumeHeldFn,
+} from "@/lib/server/commerce";
 import { simulateCommissionFn } from "@/lib/server/commission";
 import { getRegisterFn, openRegisterFn } from "@/lib/server/finance";
 import { emitNfceAfterCheckoutFn, refreshNfceStatusFn } from "@/lib/server/nfce";
@@ -65,6 +72,17 @@ function PdvPage() {
   const acaoEmCurso = useRef(false);
   /** Valor que o F8 preencheu sozinho; enquanto ninguem mexer, acompanha o total. */
   const preenchido = useRef<string | null>(null);
+  /**
+   * Uma chave por TENTATIVA de fechamento, reenviada igual em cada retry.
+   *
+   * Sem isto, uma falha de rede bem no instante em que o servidor ja
+   * comitou a venda deixava a tela sem confirmacao -- e um reenvio natural
+   * (recarregar, nova aba, clicar de novo) duplicava a venda inteira, com
+   * baixa de estoque em dobro. Reproduzido ao vivo. So zera numa venda nova
+   * de verdade (ver `novaVenda`); um retry da MESMA tentativa reusa a
+   * mesma chave de proposito.
+   */
+  const checkoutKey = useRef<string | null>(null);
   const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [nfce, setNfce] = useState<NfceState | null>(null);
@@ -74,7 +92,10 @@ function PdvPage() {
   const [openAmt, setOpenAmt] = useState("");
   const [openingCaixa, setOpeningCaixa] = useState(false);
 
-  const sellers = useQuery({ queryKey: ["seller-names"], queryFn: () => listActiveSellerNamesFn() });
+  const sellers = useQuery({
+    queryKey: ["seller-names"],
+    queryFn: () => listActiveSellerNamesFn(),
+  });
   const promos = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const register = useQuery({
@@ -104,7 +125,14 @@ function PdvPage() {
 
   const priced = cart.map((l) => {
     const sellPrice = l.override ?? l.listPrice ?? l.price;
-    const hit = bestPromo(promos.data ?? [], l.productId, l.categoryId, l.parentCategoryId ?? null, l.qty, sellPrice);
+    const hit = bestPromo(
+      promos.data ?? [],
+      l.productId,
+      l.categoryId,
+      l.parentCategoryId ?? null,
+      l.qty,
+      sellPrice,
+    );
     return { ...l, sellPrice, lineDiscount: hit?.discount ?? 0, promoName: hit?.name ?? null };
   });
   const summary = summarizeSale(priced, headerDisc);
@@ -147,13 +175,20 @@ function PdvPage() {
   const commissionHints: { key: string; text: string; tone?: "bonus" }[] = [
     ...(comm.data?.note ? [{ key: "note", text: comm.data.note }] : []),
     ...(comm.data?.volumeNote ? [{ key: "volume", text: comm.data.volumeNote }] : []),
-    ...(comm.data?.targetHints ?? []).map((h) => ({ key: `target-${h.id}`, text: `${h.name}: ${h.bonusHint}` })),
-    ...(comm.data?.bonusNote ? [{ key: "bonus", text: comm.data.bonusNote, tone: "bonus" as const }] : []),
+    ...(comm.data?.targetHints ?? []).map((h) => ({
+      key: `target-${h.id}`,
+      text: `${h.name}: ${h.bonusHint}`,
+    })),
+    ...(comm.data?.bonusNote
+      ? [{ key: "bonus", text: comm.data.bonusNote, tone: "bonus" as const }]
+      : []),
   ];
   const commissionPerLine = priced.map((_, idx) => {
     const c = comm.data?.lines[idx];
     if (!c) return null;
-    return c.amount <= 0 ? `sem comissão · ${c.ruleName}` : `comissão ${formatBRL(c.amount)} · ${c.ruleName}`;
+    return c.amount <= 0
+      ? `sem comissão · ${c.ruleName}`
+      : `comissão ${formatBRL(c.amount)} · ${c.ruleName}`;
   });
 
   function novaVenda() {
@@ -167,6 +202,7 @@ function PdvPage() {
     setDocDispensado(false);
     setPayments([emptyPay()]);
     preenchido.current = null;
+    checkoutKey.current = null;
   }
 
   function openPay() {
@@ -178,7 +214,9 @@ function PdvPage() {
       const first = payments[0] ?? emptyPay();
       const amount = total.toFixed(2).replace(".", ",");
       preenchido.current = amount;
-      setPayments([{ ...first, amount, received: first.method === "dinheiro" ? amount : first.received }]);
+      setPayments([
+        { ...first, amount, received: first.method === "dinheiro" ? amount : first.received },
+      ]);
     }
     setPayOpen(true);
   }
@@ -194,7 +232,13 @@ function PdvPage() {
     setPayments((prev) => {
       const r = prev[0];
       if (prev.length !== 1 || !r || r.amount !== antes) return prev;
-      return [{ ...r, amount: alvo, received: r.method === "dinheiro" && r.received === antes ? alvo : r.received }];
+      return [
+        {
+          ...r,
+          amount: alvo,
+          received: r.method === "dinheiro" && r.received === antes ? alvo : r.received,
+        },
+      ];
     });
   }, [total]);
 
@@ -230,7 +274,10 @@ function PdvPage() {
   /** Teclas com a busca vazia: o cupom responde ao teclado. */
   function onCartKey(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (!cart.length) return;
-    const i = Math.max(0, cart.findIndex((l) => l.variantId === selectedId));
+    const i = Math.max(
+      0,
+      cart.findIndex((l) => l.variantId === selectedId),
+    );
     const sel = cart[i];
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -310,7 +357,14 @@ function PdvPage() {
           sellerId,
           notes,
           discount: headerDisc,
-          payloadJson: JSON.stringify({ cart, headerDisc, customerId: customer?.id ?? null, sellerId, notes, cpfNota }),
+          payloadJson: JSON.stringify({
+            cart,
+            headerDisc,
+            customerId: customer?.id ?? null,
+            sellerId,
+            notes,
+            cpfNota,
+          }),
         },
       });
       const sellerMantido = sellerId;
@@ -350,7 +404,8 @@ function PdvPage() {
           sairam++;
           return [];
         }
-        if (Math.abs(c.price - l.price) > 0.004 || Math.abs(c.listPrice - l.listPrice) > 0.004) mudaram++;
+        if (Math.abs(c.price - l.price) > 0.004 || Math.abs(c.listPrice - l.listPrice) > 0.004)
+          mudaram++;
         return [{ ...l, price: c.price, listPrice: c.listPrice, stock: c.stock }];
       });
       const nome = held.data?.find((h) => h.id === id)?.customerName ?? null;
@@ -364,8 +419,12 @@ function PdvPage() {
       setDocDispensado(Boolean(row.customerId || payload.cpfNota));
       setHeldOpen(false);
       const avisos = [
-        mudaram ? `${mudaram} ${mudaram === 1 ? "item mudou" : "itens mudaram"} de preço desde que a venda foi guardada` : null,
-        sairam ? `${sairam} ${sairam === 1 ? "item saiu" : "itens saíram"} do catálogo e ${sairam === 1 ? "foi removido" : "foram removidos"}` : null,
+        mudaram
+          ? `${mudaram} ${mudaram === 1 ? "item mudou" : "itens mudaram"} de preço desde que a venda foi guardada`
+          : null,
+        sairam
+          ? `${sairam} ${sairam === 1 ? "item saiu" : "itens saíram"} do catálogo e ${sairam === 1 ? "foi removido" : "foram removidos"}`
+          : null,
       ].filter(Boolean);
       if (avisos.length) toast.warning(`Venda recuperada. ${avisos.join("; ")}. Confira o total.`);
       else toast.success("Venda recuperada.");
@@ -413,7 +472,9 @@ function PdvPage() {
     }[];
     const vendaRapida = payments.every((p) => !p.amount.trim());
     if (vendaRapida) {
-      pays = [{ method: "dinheiro", amount: total, received: total, installments: 1, brand: "", nsu: "" }];
+      pays = [
+        { method: "dinheiro", amount: total, received: total, installments: 1, brand: "", nsu: "" },
+      ];
     } else {
       pays = [];
       for (const p of payments) {
@@ -431,7 +492,14 @@ function PdvPage() {
           toast.error(`Valor recebido inválido: "${p.received}".`);
           return;
         }
-        pays.push({ method: p.method, amount, received, installments: p.installments, brand: p.brand, nsu: p.nsu });
+        pays.push({
+          method: p.method,
+          amount,
+          received,
+          installments: p.installments,
+          brand: p.brand,
+          nsu: p.nsu,
+        });
       }
       if (pays.length === 0) {
         setPayOpen(true);
@@ -441,12 +509,15 @@ function PdvPage() {
     }
     if (pays.reduce((a, p) => a + p.amount, 0) + 0.05 < total) {
       setPayOpen(true);
-      toast.error(`Pagamento incompleto: faltam ${formatBRL(total - pays.reduce((a, p) => a + p.amount, 0))}.`);
+      toast.error(
+        `Pagamento incompleto: faltam ${formatBRL(total - pays.reduce((a, p) => a + p.amount, 0))}.`,
+      );
       return;
     }
     if (acaoEmCurso.current) return;
     acaoEmCurso.current = true;
     setBusy(true);
+    checkoutKey.current ??= crypto.randomUUID();
     try {
       const res = await checkoutFn({
         data: {
@@ -463,6 +534,7 @@ function PdvPage() {
             discount: l.lineDiscount,
           })),
           payments: pays,
+          idempotencyKey: checkoutKey.current,
         },
       });
       setLastSale(res);
@@ -493,14 +565,29 @@ function PdvPage() {
     }
   }
 
-  function aplicarStatusNota(saleId: number, s: { status: string; numero: string | null; danfeUrl: string | null; error: string | null; env: string }) {
+  function aplicarStatusNota(
+    saleId: number,
+    s: {
+      status: string;
+      numero: string | null;
+      danfeUrl: string | null;
+      error: string | null;
+      env: string;
+    },
+  ) {
     if (nfceDaVenda.current !== saleId) return;
     if (s.status.startsWith("erro")) {
       setNfce({ fase: "erro", mensagens: [s.error ?? "A SEFAZ recusou a nota."] });
       toast.error(`NFC-e recusada: ${s.error ?? "veja o comprovante."}`);
       return;
     }
-    setNfce({ fase: "ok", status: s.status, numero: s.numero, danfeUrl: s.danfeUrl, teste: s.env === "homologacao" });
+    setNfce({
+      fase: "ok",
+      status: s.status,
+      numero: s.numero,
+      danfeUrl: s.danfeUrl,
+      teste: s.env === "homologacao",
+    });
   }
 
   /** Fora do checkout de proposito: a venda ja esta gravada, a nota nao a segura. */
@@ -581,7 +668,9 @@ function PdvPage() {
             <LockKeyhole className="size-5 shrink-0 text-warning" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">Caixa fechado</p>
-              <p className="text-xs text-muted-foreground">Abra o caixa para registrar vendas nesta loja.</p>
+              <p className="text-xs text-muted-foreground">
+                Abra o caixa para registrar vendas nesta loja.
+              </p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Fundo inicial</span>
@@ -604,7 +693,12 @@ function PdvPage() {
           </form>
         ) : null}
 
-        <ProductSearch ref={searchRef} storeId={activeStore} onPick={add} onEmptyKeyDown={onCartKey} />
+        <ProductSearch
+          ref={searchRef}
+          storeId={activeStore}
+          onPick={add}
+          onEmptyKeyDown={onCartKey}
+        />
 
         <CartTable
           lines={priced}
@@ -707,7 +801,12 @@ function PdvPage() {
         hasCustomer={Boolean(customer || cpfNota)}
         commissionNote={
           comm.data
-            ? [`Comissão prevista ${formatBRL(comm.data.amount)}`, comm.data.note, comm.data.volumeNote, comm.data.bonusNote]
+            ? [
+                `Comissão prevista ${formatBRL(comm.data.amount)}`,
+                comm.data.note,
+                comm.data.volumeNote,
+                comm.data.bonusNote,
+              ]
                 .filter(Boolean)
                 .join(" · ")
             : null
@@ -721,9 +820,19 @@ function PdvPage() {
           <DialogHeader>
             <DialogTitle>Venda nº {lastSale?.number} concluída</DialogTitle>
           </DialogHeader>
-          {nfce ? <NfceStatus state={nfce} onRefresh={() => void consultarNota()} refreshing={nfceConsultando} /> : null}
+          {nfce ? (
+            <NfceStatus
+              state={nfce}
+              onRefresh={() => void consultarNota()}
+              refreshing={nfceConsultando}
+            />
+          ) : null}
           {lastSale ? (
-            <Receipt data={lastSale} company={receiptCompany(settings.data)} onClose={() => setReceiptOpen(false)} />
+            <Receipt
+              data={lastSale}
+              company={receiptCompany(settings.data)}
+              onClose={() => setReceiptOpen(false)}
+            />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -731,13 +840,16 @@ function PdvPage() {
   );
 }
 
-function receiptCompany(settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined): ReceiptCompany {
+function receiptCompany(
+  settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined,
+): ReceiptCompany {
   const company = (settings?.company ?? {}) as ReceiptCompany;
   const extra = (settings?.settings ?? {}) as Record<string, unknown>;
   return {
     ...company,
     print_header: extra.print_header != null ? String(extra.print_header) : company.print_header,
     print_footer: extra.print_footer != null ? String(extra.print_footer) : company.print_footer,
-    receipt_message: extra.receipt_message != null ? String(extra.receipt_message) : company.receipt_message,
+    receipt_message:
+      extra.receipt_message != null ? String(extra.receipt_message) : company.receipt_message,
   };
 }
