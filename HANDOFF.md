@@ -1137,6 +1137,39 @@ sem impacto hoje.
     diferença já foi explicada." Dados de teste (1 venda, 1 produto, 1
     caixa) revertidos por completo depois.
 
+38. **Auditoria de prontidão pra produção DE VERDADE, a pedido do usuário**
+    — depois de 37 itens de correção/validação técnica, verifiquei o que
+    falta no CADASTRO da empresa real, já que o código em si está bem
+    testado. Achados no banco desta máquina piloto:
+
+    - **`companies.document` (CNPJ/CPF) está `null`.** Sem isso não dá pra
+      configurar NFC-e (Focus NFe exige), nem fechar boa parte da papelada
+      contábil real. `address`/`city`/`state`/`zip`/`phone`/`ie` também
+      estão todos `null` — é o registro que o seed criou, nunca editado.
+    - **NFC-e desligada e sem credencial**: `company_settings.nfce_enabled
+      = false`, e `FOCUS_NFE_TOKEN` não está nem configurado na variável de
+      ambiente de Máquina. Hoje, TODA venda sai sem nota fiscal eletrônica
+      — o código já suporta emitir (homologação por padrão,
+      `FOCUS_NFE_ENV=producao` pra valer), só falta a conta no Focus NFe e
+      o cadastro fiscal da empresa pra ligar.
+    - **As duas lojas ainda se chamam "Loja Centro"/"Loja Shopping"** —
+      nomes de demonstração do seed (item 4 já tinha avisado "renomeie se
+      quiser"), nunca renomeadas. Se só existe UMA loja de verdade, a
+      segunda loja fantasma é um risco real: estoque/venda pode ir pro
+      lugar errado sem ninguém perceber (mesma classe do bug do item 34).
+    - **Só existe 1 usuário (o admin)**: nenhum convite enviado ainda. Para
+      operar com mais de uma pessoa no caixa, falta convidar a equipe com
+      os papéis certos (vendedor/caixa/pdv) — o sistema de convite por
+      token já está auditado e correto (item 15), só não foi usado ainda.
+    - **Backup confirmado saudável**: `last-backup.json` mostra backup de
+      30/09 às 22:30, a tarefa agendada segue rodando. Cópia fora da
+      máquina continua pendente (item 15/pendência aberta).
+
+    Nenhum código mudado aqui — são decisões e cadastros que só o usuário
+    pode preencher (dados reais da empresa, conta no provedor fiscal,
+    convites da equipe). Ver a mensagem de resposta desta rodada pro
+    detalhamento priorizado.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
