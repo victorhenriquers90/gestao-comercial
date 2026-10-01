@@ -1026,6 +1026,24 @@ sem impacto hoje.
     ao padrão (`null` → 100% do admin) e dados de teste (1 venda, 1 produto,
     1 caixa) revertidos por completo depois.
 
+32. **CPF/CNPJ na nota testado ao vivo nos dois caminhos — nenhum bug**: no
+    PDV, digitar um documento direto no campo "CPF ou CNPJ na nota" (sem
+    escolher ninguém no "Ou busque no cadastro") deixa pro `checkoutFn`
+    decidir: achar cliente existente com aquele documento e vincular, ou
+    criar um "Consumidor" novo. Nunca tinha sido exercitado ao vivo — os
+    testes anteriores sempre usaram o combobox de busca do cadastro.
+
+    Caso 1: digitei um CPF válido sem nenhum cliente correspondente (deixando
+    o combobox em "Consumidor (só o documento acima)") — `checkoutFn` criou
+    um cliente novo "Consumidor" com aquele documento e vinculou a venda a
+    ele. Caso 2: pré-cadastrei um cliente com outro CPF válido e, numa venda
+    separada, digitei o MESMO CPF direto no campo (de novo sem tocar no
+    combobox) — `checkoutFn` encontrou o cliente existente pelo documento e
+    vinculou a venda a ele, sem duplicar. Confirmado no banco nos dois casos
+    (`sales.customer_id` apontando pro cliente certo, `customers` sem
+    duplicata). Dados de teste (2 vendas, 2 clientes, 1 produto, 1 caixa)
+    revertidos por completo depois.
+
 O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
