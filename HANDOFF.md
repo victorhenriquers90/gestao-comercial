@@ -1174,6 +1174,63 @@ O `--spacing-block` já rodou em todas as telas que qualificam, o `pdv.tsx`
 inclusive — a conversão lá foi verificada instância por instância (12/12 em
 12px, incluindo os diálogos de F4/F6/F8) e com uma venda de ponta a ponta.
 
+39. **PDV touch pra tablet (`/app/pdv-tablet`) + extração do hook
+    `usePdvSale`, e um alerta de infraestrutura achado no caminho**:
+
+    - Toda a lógica de venda do PDV (estado, queries, `checkoutFn`,
+      idempotência, guard de troca de loja, guard de duplo-clique) saiu de
+      `pdv.tsx` pro hook `src/components/pdv/use-pdv-sale.ts`. `pdv.tsx` só
+      monta a JSX a partir dele agora — atalho de teclado e navegação do
+      carrinho com busca vazia ficaram no componente, fora do hook, por
+      serem específicos de desktop. Comportamento idêntico, verificado ao
+      vivo (ver abaixo).
+    - Rota nova `src/routes/app/pdv-tablet.tsx`, pro balcão usar o PDV num
+      tablet em paisagem pelo navegador (mesma rede local/Tailscale, sem
+      instalar nada). Path começa com `/app/pdv` de propósito —
+      `app-shell.tsx:53` trata qualquer rota com esse prefixo como tela de
+      PDV (sidebar escondida, tela cheia) sem precisar tocar nesse arquivo.
+      Reusa a mesma lógica via `usePdvSale()`; só `CartTable`/`SalePanel`
+      ganharam versão touch (`TouchCartTable`/`TouchSalePanel`,
+      `src/components/pdv-tablet/`) com os dois alvos de toque mais
+      apertados do desktop corrigidos (stepper de qtd e remover item
+      32px→56px, remover desconto 20px→44px). CSS novo isolado em
+      `src/styles/pdv-tablet.css` (`pdvt-*`), zero mudança em `.pdv-*`.
+    - **ALERTA DE INFRAESTRUTURA achado durante a verificação**: ao
+      investigar por que o catálogo aparecia vazio no servidor de dev
+      iniciado nesta rodada, descobri que `DATABASE_URL` está definida como
+      variável de ambiente de **Máquina** (`[Environment]::GetEnvironmentVariable`
+      com escopo `Machine`), não em `.env` nem via NSSM — ela não aparece
+      em `HKLM...\GestaoComercial\Parameters` nem em nenhum arquivo do
+      diretório instalado. Ou seja: **qualquer `npm run dev` rodado nesta
+      máquina conecta no MESMO Postgres real da loja piloto**
+      (`localhost:5432/gestao_comercial`) que o serviço instalado (porta
+      8080) usa — não existe isolamento de ambiente de teste nesta máquina.
+      Isto bate com a premissa de todo o `HANDOFF.md` ("verificar contra o
+      Postgres real"), mas é fácil esquecer no meio de uma sessão longa e
+      assumir por engano que um servidor de dev novo está isolado (foi
+      exatamente o engano desta rodada — corrigido a tempo, ver abaixo).
+      **Próxima IA: todo teste ao vivo com `npm run dev` nesta máquina
+      grava no banco de produção de verdade. Dado descartável de teste
+      exige limpeza explícita depois, sempre.**
+    - Nesta rodada, antes de perceber isto, um produto de teste ("TESTE
+      REFACTOR PDV"), 2 vendas (nº 1 e nº 2, as primeiras do tenant
+      "Victor Comércio"/company 4) e 1 caixa aberto na Loja Shopping foram
+      gravados no banco real. Limpos depois, numa transação só, cobrindo
+      `payments`, `cash_movements`, `sale_items`, `stock_movements`,
+      `sales`, `stock_counts` (cascata pra `stock_count_items`),
+      `inventories`, `product_variants`, `products`, `cash_registers` e as
+      linhas de `audit_logs` criadas por eles — verificado por contagem
+      zerada em todas as tabelas pro `company_id = 4` depois, e confirmado
+      de novo pela própria tela (caixa voltou a "Caixa fechado").
+    - Verificação completa: `npm run typecheck` + `npm run lint` + `npm
+      test` (423 testes) limpos; fluxo completo ao vivo em `/app/pdv`
+      (desktop, confirma que a extração do hook não mudou nada) e em
+      `/app/pdv-tablet` (viewport 1024×768, confirma o layout touch e o
+      stepper de quantidade), produto → desconto → pagamento → finalizar →
+      baixa de estoque, nos dois. Ressalva: cliques simulados no browser
+      pane são mouse, não confirmam touch/multi-touch real num tablet
+      físico.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
