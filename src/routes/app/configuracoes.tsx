@@ -97,6 +97,17 @@ function ConfigPage() {
   });
   const [storeName, setStoreName] = useState("");
   const [salvando, setSalvando] = useState<string | null>(null);
+  /** Loja aberta pra edição na aba "Lojas"; `null` fecha o formulário inline. */
+  const [editingStoreId, setEditingStoreId] = useState<number | null>(null);
+  const [storeForm, setStoreForm] = useState({
+    name: "",
+    code: "",
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+  });
 
   /**
    * Caminho unico de gravacao desta tela. Quatro botoes daqui (nova loja,
@@ -290,12 +301,116 @@ function ConfigPage() {
         </TabsContent>
         <TabsContent value="lojas">
           <Card className="max-w-xl space-y-block p-5">
-            {(settings.data?.stores as Record<string, unknown>[] | undefined)?.map((s) => (
-              <div key={String(s.id)} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
-                <span>{String(s.name)}</span>
-                <span className="text-muted-foreground">{String(s.city ?? "")}</span>
-              </div>
-            ))}
+            {(settings.data?.stores as Record<string, unknown>[] | undefined)?.map((s) => {
+              const id = Number(s.id);
+              const editando = editingStoreId === id;
+              return (
+                <div key={id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                  {editando ? (
+                    <div className="space-y-block py-1">
+                      <Field label="Nome">
+                        <Input
+                          value={storeForm.name}
+                          onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })}
+                        />
+                      </Field>
+                      <div className="grid grid-cols-2 gap-block">
+                        <Field label="Código">
+                          <Input
+                            value={storeForm.code}
+                            onChange={(e) => setStoreForm({ ...storeForm, code: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Telefone">
+                          <Input
+                            value={storeForm.phone}
+                            onChange={(e) => setStoreForm({ ...storeForm, phone: e.target.value })}
+                          />
+                        </Field>
+                      </div>
+                      <Field label="Endereço">
+                        <Input
+                          value={storeForm.address}
+                          onChange={(e) => setStoreForm({ ...storeForm, address: e.target.value })}
+                        />
+                      </Field>
+                      <div className="grid grid-cols-3 gap-block">
+                        <Field label="Cidade">
+                          <Input
+                            value={storeForm.city}
+                            onChange={(e) => setStoreForm({ ...storeForm, city: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="UF">
+                          <Input
+                            value={storeForm.state}
+                            onChange={(e) => setStoreForm({ ...storeForm, state: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="CEP">
+                          <Input
+                            value={storeForm.zip}
+                            onChange={(e) => setStoreForm({ ...storeForm, zip: e.target.value })}
+                          />
+                        </Field>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={salvando === `loja-${id}`}
+                          onClick={() => {
+                            if (!storeForm.name.trim()) {
+                              toast.error("Informe o nome da loja.");
+                              return;
+                            }
+                            void salvar(
+                              `loja-${id}`,
+                              () => saveStoreFn({ data: { id, ...storeForm } }),
+                              "Loja atualizada.",
+                              () => {
+                                setEditingStoreId(null);
+                                void qc.invalidateQueries({ queryKey: ["settings"] });
+                                void qc.invalidateQueries({ queryKey: ["tenant"] });
+                              },
+                            );
+                          }}
+                        >
+                          Salvar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingStoreId(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span>{String(s.name)}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground">{String(s.city ?? "")}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setStoreForm({
+                              name: String(s.name ?? ""),
+                              code: String(s.code ?? ""),
+                              phone: String(s.phone ?? ""),
+                              address: String(s.address ?? ""),
+                              city: String(s.city ?? ""),
+                              state: String(s.state ?? ""),
+                              zip: String(s.zip ?? ""),
+                            });
+                            setEditingStoreId(id);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <Field label="Nova loja">
               <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} />
             </Field>
