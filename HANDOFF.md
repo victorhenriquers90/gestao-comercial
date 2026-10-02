@@ -1502,6 +1502,33 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+50. **Cadastro de produto nunca teve campo "Fornecedor" — achado revisando
+    o resto de `catalog.ts` depois do item 49** (`src/routes/app/produtos.tsx`):
+    `saveProductFn` aceita e grava `supplierId` desde sempre, com um
+    `coalesce` defensivo (`if (data.supplierId === undefined) supplierId =
+    cur?.supplier_id ?? null`) pra edição sem o campo não apagar o que já
+    tinha — mas nenhuma tela jamais ENVIAVA esse valor. Grep no projeto
+    inteiro confirmou: o único jeito de um produto ganhar `supplier_id` era
+    direto no banco (`seed.ts`).
+
+    Isso tornava a Sugestão de compra (item novo desta sessão, nunca
+    testado ao vivo até agora) morta na prática: ela agrupa por
+    fornecedor e manda "Defina o fornecedor no cadastro destes produtos
+    para gerar o orçamento" — apontando pra um campo que não existia.
+    Todo produto caía sempre em "Sem fornecedor definido".
+
+    Fix: `<Select>` de Fornecedor no diálogo de Novo/Editar produto,
+    ligado ao `supplierId` que o backend já suportava.
+
+    Verificado ao vivo: fornecedor e produto descartáveis (mínimo 5,
+    estoque 0) — o produto salvou com `supplier_id` correto, a Sugestão de
+    compra agrupou sob o NOME do fornecedor (não mais "Sem fornecedor
+    definido"), e "Gerar orçamento" criou o pedido de compra real
+    (status `orcamento`) com fornecedor, quantidade (5) e custo (R$100,00)
+    corretos. Dado de teste revertido por completo.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
