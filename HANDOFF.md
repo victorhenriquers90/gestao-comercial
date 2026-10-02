@@ -1476,6 +1476,32 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+49. **Exportação CSV de Relatórios vulnerável a injeção de fórmula —
+    achado por revisão de código, não por teste de fluxo** (`src/routes/app/relatorios.tsx`,
+    `csvCell`): qualquer texto livre que aparece num relatório (descrição
+    de despesa/conta, nome de cliente/fornecedor) ia direto pra célula do
+    CSV exportado. Um valor começando com `=`, `+`, `-` ou `@` — digitado
+    por qualquer usuário, sem precisar de falha nenhuma no sistema — vira
+    fórmula ao abrir no Excel/LibreOffice. Um `=HYPERLINK(...)` nessa
+    célula pode vazar dado pra fora assim que o contador abre o arquivo
+    exportado.
+
+    Fix padrão OWASP: prefixo `'` em células de texto/data que começam
+    com esses caracteres, neutraliza a fórmula sem mudar o que aparece na
+    célula. Colunas numéricas (money/qty/pct) nunca passam por esse
+    caminho — um valor negativo legítimo continua normal.
+
+    Verificado ao vivo: conta a pagar com descrição `=1+1 TESTE
+    AUDITORIA CSV` — a tela mostra o texto normal (React escapa JSX por
+    padrão, sem risco), mas o CSV exportado (capturado via hook em
+    `URL.createObjectURL`, sem precisar baixar o arquivo de verdade)
+    gravou `'=1+1 TESTE AUDITORIA CSV`. Único ponto de exportação CSV do
+    projeto inteiro (`grep` confirmou); "Imprimir / PDF" usa
+    `window.print()` sobre o DOM já renderizado pelo React, sem risco
+    equivalente. Dado de teste revertido.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
