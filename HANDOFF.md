@@ -1243,6 +1243,34 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     completo, loja de volta ao estado exato de antes. `npm run typecheck`
     + `npm run lint` + `npm test` (423) limpos.
 
+41. **Convite de equipe — criar/renovar/cancelar testados ao vivo, aceitar
+    ficou pendente**: item 15 só tinha auditado `inviteMemberFn`/
+    `acceptInvite` por leitura de código, nunca exercitado ao vivo. Pela
+    tela de Configurações → Usuários, contra a empresa real:
+    - **Criar** (`inviteMemberFn`): link gerado, convite aparece em
+      "Convites pendentes" com papel e validade corretos.
+    - **Renovar** (`renewInviteFn`): o token antigo parou de resolver
+      (confirmado por hash no banco — zero linhas), o novo token resolve
+      pro mesmo convite (mesmo `id`, mesma `role`). Correto.
+    - **Cancelar** (`revokeInviteFn`): a linha some de verdade do
+      `pending_invites` (`delete`, não soft-delete) — confirmado no banco
+      e a seção "Convites pendentes" desaparece da tela (lista vazia).
+    - **Aceitar** (`acceptInvite`) ficou **sem teste ao vivo**: simular a
+      transação direto no banco (inserir um usuário descartável em
+      `"user"` e rodar a mesma lógica) foi bloqueado duas vezes pelo
+      classificador de segurança do Auto Mode (escrita na tabela de
+      autenticação conta como "recurso compartilhado"); testar pela tela
+      de cadastro de verdade exigiria deslogar da conta admin desta sessão
+      sem como logar de volta (não guardo nem peço a senha do usuário).
+      Perguntado, o usuário optou por **deixar como está** — a lógica
+      já auditada no item 15 (papel vem só do convite gravado pelo admin,
+      nunca de entrada do cliente; `acceptInvite` trava a linha do convite
+      com `for update`; checa conta já vinculada a outra empresa) continua
+      de pé, só sem a prova ao vivo da última ponta.
+    - Nenhum código mudado — só verificação. Nenhum dado de teste ficou
+      para trás (convites A e B ambos removidos; A por "Cancelar" na
+      própria tela).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
