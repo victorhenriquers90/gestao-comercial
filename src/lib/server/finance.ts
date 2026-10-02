@@ -1442,6 +1442,32 @@ async function settleSellerBatch(
       : n > 1
         ? ` · ${n} lançamentos`
         : "";
+  /*
+    O recibo que sai daqui pede assinatura ("Recebi o líquido acima") --
+    isto paga o vendedor em dinheiro, na hora, do caixa aberto da loja. Mas
+    so gravava `expenses` (account_kind 'caixa', nunca lido em lugar
+    nenhum), nunca `cash_movements` -- o `expectedCash` do fechamento (ver
+    loadOpenRegister) so soma `cash_movements`, entao o dinheiro que saiu
+    de verdade da gaveta nunca entrava na conta. Reproduzido ao vivo:
+    caixa com fundo R$500 + venda de R$100 (esperado R$600), comissão de
+    R$5 paga em dinheiro, `cash_movements` do registro continuava com UMA
+    linha so (a venda) -- o fechamento ia cobrar R$600 de uma gaveta com
+    R$595, uma falta fantasma todo dia em que se paga comissão em
+    especie. Mesma logica de `cashMoveFn` (sangria manual): se houver
+    caixa aberto na loja, lança sangria pelo mesmo valor de cada despesa
+    gerada aqui -- liquido pro vendedor, imposto retido separado (o
+    imposto tambem sai fisicamente da gaveta, so muda de bolso dentro da
+    loja). Sem caixa aberto na loja (comissao paga fora do expediente,
+    ou loja nao informada), nao ha o que ajustar -- mesmo padrao do
+    `if (reg)` em `checkoutFn`.
+  */
+  const [openReg] = storeId
+    ? await sql<{ id: number }>`
+        select id from cash_registers
+         where company_id = ${tenant.companyId} and store_id = ${storeId} and status = 'open'
+         order by opened_at desc limit 1
+      `
+    : [];
   await sql`
     insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
     values (
@@ -1451,6 +1477,15 @@ async function settleSellerBatch(
       'caixa', ${tenant.userId}
     )
   `;
+  if (openReg) {
+    await sql`
+      insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+      values (
+        ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria', 'dinheiro', ${tax.net},
+        ${"Comissão líquida " + who + saleBit}
+      )
+    `;
+  }
   if (tax.totalTax > 0.009) {
     await sql`
       insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
@@ -1461,6 +1496,15 @@ async function settleSellerBatch(
         'caixa', ${tenant.userId}
       )
     `;
+    if (openReg) {
+      await sql`
+        insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+        values (
+          ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria', 'dinheiro', ${tax.totalTax},
+          ${"Retenção INSS/IRRF/ISS · " + who + saleBit}
+        )
+      `;
+    }
   }
   await audit(sql, tenant, "pay", "commission", n === 1 ? seller.id : null, null, {
     count: n,
