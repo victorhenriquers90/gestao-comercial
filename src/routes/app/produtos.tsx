@@ -23,6 +23,7 @@ import {
   listProductsFn,
   saveProductFn,
 } from "@/lib/server/catalog";
+import { listSuppliersFn } from "@/lib/server/party";
 import { parseBarcode } from "@/lib/check-digit";
 
 export const Route = createFileRoute("/app/produtos")({ component: ProdutosPage });
@@ -42,6 +43,7 @@ const empty = {
   imageUrl: "",
   isActive: true,
   categoryId: "" as string | number,
+  supplierId: "" as string | number,
   variantsText: "",
   ncm: "",
   cfop: "5102",
@@ -62,6 +64,7 @@ function ProdutosPage() {
   const [salvando, setSalvando] = useState(false);
 
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
+  const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
   const ncmPend = useQuery({
     queryKey: ["ncm-pending"],
     queryFn: () => listNcmPendingFn(),
@@ -105,15 +108,15 @@ function ProdutosPage() {
    * -- nunca so os campos resumidos da listagem.
    *
    * A listagem (`listProductsFn`) nem devolve categoria/descricao (so o
-   * NOME da categoria, pra mostrar na tabela) nem marca/fornecedor -- so o
-   * detalhe completo tem isso. Abrir o dialogo com esses campos vazios e
-   * salvar mandava `null` pro servidor, que sobrescrevia o que já estava
-   * gravado (a defesa do lado do servidor em catalog.ts cobre marca e
-   * fornecedor, que nem tem campo neste formulario, mas categoria e
-   * descricao o formulario tem -- e sem carregar o valor de verdade aqui,
-   * "editar" qualquer coisa apagava os dois). Foi assim que um produto do
-   * piloto perdeu categoria, descricao, marca, fornecedor e a grade de
-   * variantes com um simples Salvar sem mudar nada.
+   * NOME da categoria, pra mostrar na tabela) nem marca -- so o detalhe
+   * completo tem isso. Abrir o dialogo com esses campos vazios e salvar
+   * mandava `null` pro servidor, que sobrescrevia o que já estava gravado
+   * (a defesa do lado do servidor em catalog.ts cobre marca, que nem tem
+   * campo neste formulario, mas categoria e descricao o formulario tem --
+   * e sem carregar o valor de verdade aqui, "editar" qualquer coisa
+   * apagava os dois). Foi assim que um produto do piloto perdeu categoria,
+   * descricao, marca, fornecedor e a grade de variantes com um simples
+   * Salvar sem mudar nada.
    */
   async function openForEdit(id: number) {
     openedFor.current = id;
@@ -137,6 +140,7 @@ function ProdutosPage() {
         imageUrl: pr.image_url ? String(pr.image_url) : "",
         isActive: Boolean(pr.is_active),
         categoryId: pr.category_id == null ? "" : Number(pr.category_id),
+        supplierId: pr.supplier_id == null ? "" : Number(pr.supplier_id),
         ncm: pr.ncm ? String(pr.ncm) : "",
         cfop: pr.cfop ? String(pr.cfop) : "5102",
       });
@@ -185,6 +189,7 @@ function ProdutosPage() {
           imageUrl: form.imageUrl || null,
           isActive: form.isActive,
           categoryId: form.categoryId === "" ? null : Number(form.categoryId),
+          supplierId: form.supplierId === "" ? null : Number(form.supplierId),
           ncm: form.ncm || undefined,
           cfop: form.cfop || undefined,
           variants: variants.length ? variants : undefined,
@@ -348,6 +353,21 @@ function ProdutosPage() {
                 {(cats.data ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {/* Sem isto nao havia NENHUM jeito de ligar produto a fornecedor
+                na UI inteira -- a Sugestao de compra (Compras > aba
+                Sugestao) agrupa por fornecedor e manda "defina o fornecedor
+                no cadastro do produto" pra um campo que nao existia, entao
+                todo produto caia sempre em "Sem fornecedor definido". */}
+            <Field label="Fornecedor">
+              <Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
+                <option value="">—</option>
+                {(suppliers.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.tradeName || s.legalName}
                   </option>
                 ))}
               </Select>
