@@ -70,6 +70,13 @@ export async function loadRetentionGuide(
   from: string,
   to: string,
   sellerId?: number | null,
+  /**
+   * Opcional de proposito: retentionGuideFn (guia de vendedores.tsx) fecha
+   * folha da empresa inteira, nao por loja -- so o relatorio "Retencoes" de
+   * Relatorios.tsx, que respeita o seletor de loja do topo como todo o
+   * resto da pagina, passa isto.
+   */
+  storeId?: number | null,
 ): Promise<RetentionGuidePack> {
   const [company] = await sql<{
     name: string;
@@ -97,12 +104,14 @@ export async function loadRetentionGuide(
             c.amount, c.net_amount, c.tax_inss, c.tax_irrf, c.tax_iss, c.tax_other, c.tax_breakdown
        from commissions c
        join sellers sl on sl.id = c.seller_id
+       left join sales s on s.id = c.sale_id
       where c.company_id = $1 and c.status = 'pago'
         and coalesce(c.paid_at, c.created_at) >= $2::date
         and coalesce(c.paid_at, c.created_at) < ($3::date + interval '1 day')
         and ($4::int is null or c.seller_id = $4)
+        and ($5::int is null or s.store_id = $5)
       order by sl.name, c.id`,
-    [companyId, from, to, sellerId ?? null],
+    [companyId, from, to, sellerId ?? null, storeId ?? null],
   );
 
   const bySeller = new Map<number, RetentionSellerRow>();

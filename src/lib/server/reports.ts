@@ -733,6 +733,13 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "comissao") {
       const rows = (
         await sql.query<Row>(
+          /*
+            Mesmo vazamento de loja do relatorio "vendedor" (ver comentario
+            abaixo) e dos cards de comissao do Dashboard (insight.ts): sem
+            o join com `sales` pra filtrar por `store_id`, trocar de loja no
+            seletor do topo nao mudava este relatorio -- "Comissoes" sempre
+            somava as DUAS lojas juntas.
+          */
           `select sl.name, s.number, coalesce(c.note, cr.name, 'Padrão') as rule_name,
                   c.percent, c.amount, coalesce(c.net_amount, c.amount) as net_amount,
                   coalesce(c.tax_inss,0)+coalesce(c.tax_irrf,0)+coalesce(c.tax_iss,0)+coalesce(c.tax_other,0) as tax_total,
@@ -743,9 +750,10 @@ export const reportFn = createServerFn({ method: "POST" })
              left join commission_rules cr on cr.id = c.rule_id
             where c.company_id = $1
               and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')
-              and ($4::int is null or sl.id = $4)
+              and ($4::int is null or s.store_id = $4)
+              and ($5::int is null or sl.id = $5)
             order by c.created_at desc`,
-          [cid, data.from, data.to, sellerId],
+          params,
         )
       ).map((r) => [
         String(r.name),
@@ -783,7 +791,9 @@ export const reportFn = createServerFn({ method: "POST" })
     }
 
     if (type === "retencoes") {
-      const guide = await loadRetentionGuide(sql, cid, data.from, data.to, sellerId);
+      // Mesmo vazamento do tipo "comissao" acima: sem o storeId,
+      // loadRetentionGuide somava as duas lojas juntas (ver retention.ts).
+      const guide = await loadRetentionGuide(sql, cid, data.from, data.to, sellerId, storeId);
       const rows = guide.rows.map((r) => [
         r.sellerName,
         r.regimeLabel,
