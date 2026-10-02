@@ -21,6 +21,7 @@ import {
   listCategoriesFn,
   listNcmPendingFn,
   listProductsFn,
+  saveCategoryFn,
   saveProductFn,
 } from "@/lib/server/catalog";
 import { listSuppliersFn } from "@/lib/server/party";
@@ -62,6 +63,15 @@ function ProdutosPage() {
   /** Trava o Salvar: sem isto, duplo clique num produto sem codigo de barras
    * (a unica checagem de duplicidade do servidor) cria dois produtos iguais. */
   const [salvando, setSalvando] = useState(false);
+  /*
+    saveCategoryFn ja existia, mas nenhuma tela chamava -- o Select de
+    Categoria so lia `listCategoriesFn`, nunca criava. Pra uma empresa nova
+    (ou o piloto, depois da limpeza de dados de demonstracao) isso e um
+    beco sem saida: ZERO categorias cadastradas e nenhum jeito de criar a
+    primeira pela UI inteira.
+  */
+  const [novaCategoria, setNovaCategoria] = useState("");
+  const [criandoCategoria, setCriandoCategoria] = useState(false);
 
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
   const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
@@ -204,6 +214,23 @@ function ProdutosPage() {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function criarCategoria() {
+    const nome = novaCategoria.trim();
+    if (!nome || criandoCategoria) return;
+    setCriandoCategoria(true);
+    try {
+      const row = await saveCategoryFn({ data: { name: nome } });
+      await qc.invalidateQueries({ queryKey: ["categories"] });
+      setForm((f) => ({ ...f, categoryId: row.id }));
+      setNovaCategoria("");
+      toast.success("Categoria criada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao criar categoria.");
+    } finally {
+      setCriandoCategoria(false);
     }
   }
 
@@ -356,6 +383,28 @@ function ProdutosPage() {
                   </option>
                 ))}
               </Select>
+              <div className="mt-1.5 flex gap-1.5">
+                <Input
+                  placeholder="Nova categoria"
+                  value={novaCategoria}
+                  onChange={(e) => setNovaCategoria(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void criarCategoria();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!novaCategoria.trim() || criandoCategoria}
+                  onClick={() => void criarCategoria()}
+                >
+                  {criandoCategoria ? "Criando…" : "Criar"}
+                </Button>
+              </div>
             </Field>
             {/* Sem isto nao havia NENHUM jeito de ligar produto a fornecedor
                 na UI inteira -- a Sugestao de compra (Compras > aba
