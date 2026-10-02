@@ -1231,6 +1231,18 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
       pane são mouse, não confirmam touch/multi-touch real num tablet
       físico.
 
+40. **UI pra editar/renomear loja existente — gap achado no item 38**:
+    `saveStoreFn` já suportava atualizar por `id` (nome, código, telefone,
+    endereço, cidade, UF, CEP) desde sempre, mas a aba Lojas em
+    Configurações só tinha "Adicionar loja" — lojas existentes eram
+    só-leitura, sem nenhum jeito de corrigir o nome de demonstração sem
+    mexer direto no banco. Cada loja ganhou um botão "Editar" com
+    formulário inline. Verificado ao vivo contra o Postgres real: renomeei
+    "Loja Centro" pra um nome de teste, confirmei no banco e na tela
+    (lista e seletor do topo), e restaurei o nome original — round-trip
+    completo, loja de volta ao estado exato de antes. `npm run typecheck`
+    + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
