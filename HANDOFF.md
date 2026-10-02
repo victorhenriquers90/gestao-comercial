@@ -1370,6 +1370,23 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+45. **Pagar fornecedor em dinheiro também não gerava sangria — mesma
+    classe do item 44, achada em seguida** (`src/lib/server/finance.ts`
+    + `src/routes/app/financeiro.tsx`): `settlePayableFn` ("Contas a
+    pagar") baixava o título sem nunca perguntar como foi pago nem
+    lançar nada em `cash_movements` — comum o entregador cobrar na hora
+    em dinheiro. `settleReceivableFn` já tratava isso do lado do
+    recebimento (comentário no próprio arquivo já descrevia esse exato
+    bug, corrigido ali antes). Fix simétrico: exige `method` e, em
+    dinheiro, lança sangria no caixa aberto da loja; UI trocou o botão
+    único "Pagar" por duas etapas (escolher forma → Confirmar), igual
+    ao padrão já usado em "Contas a receber" na mesma tela.
+
+    Verificado ao vivo: conta de R$30 paga em dinheiro com caixa
+    aberto → `cash_movements` ganhou a sangria (R$30, "Pagamento:
+    ..."), título foi pra 'pago'. Dado de teste revertido.
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
