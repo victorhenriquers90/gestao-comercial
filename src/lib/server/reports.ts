@@ -256,11 +256,23 @@ export const reportFn = createServerFn({ method: "POST" })
     if (type === "vendedor") {
       const rows = (
         await sql.query<Row>(
+          /*
+            A subquery de comissao precisa do MESMO filtro de loja que o
+            resto da linha -- sem o join com `sales`/`store_id`, filtrar o
+            relatorio por uma loja estreitava Faturamento/Ticket pra ela
+            mas a coluna Comissao continuava somando o vendedor nas DUAS
+            lojas. `left join` (nao `join`) pra uma comissao sem venda
+            associada continuar contando quando nenhuma loja esta
+            filtrada.
+          */
           `select coalesce(sl.name,'Sem vendedor') as name, count(*)::int as n,
                   sum(s.total - coalesce(ret.returned_revenue,0)) as total,
                   avg(s.total - coalesce(ret.returned_revenue,0)) as ticket,
-                  coalesce((select sum(c.amount) from commissions c where c.seller_id = s.seller_id
-                            and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')),0) as comm
+                  coalesce((select sum(c.amount) from commissions c
+                            left join sales cs on cs.id = c.sale_id
+                            where c.company_id = $1 and c.seller_id = s.seller_id
+                              and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')
+                              and ($4::int is null or cs.store_id = $4)),0) as comm
              from sales s left join sellers sl on sl.id = s.seller_id
              ${RETURN_BY_SALE}
             where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial')
@@ -457,6 +469,16 @@ export const reportFn = createServerFn({ method: "POST" })
     }
 
     if (type === "dre") {
+      /*
+        `subtotal` precisa descontar devolucao igual `revenue`/`cost` --
+        senao "Receita de vendas" - "Descontos" nao bate com "Receita
+        liquida" na propria tabela do DRE sempre que ha devolucao parcial
+        no periodo (subtotal - desconto = total, e total ja sai liquido de
+        devolucao). Reproduzido ao vivo: venda de R$200 com devolucao
+        parcial de R$100 mostrava Receita de vendas R$200 - Descontos R$0
+        = R$200, mas Receita liquida R$100 -- as duas primeiras linhas do
+        proprio relatorio nao reconciliavam com a terceira.
+      */
       const [s] = await sql.query<{
         revenue: string | number;
         disc: string | number;
@@ -466,7 +488,7 @@ export const reportFn = createServerFn({ method: "POST" })
         `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)),0) as revenue,
                 coalesce(sum(s.discount),0) as disc,
                 coalesce(sum(s.cost_total - coalesce(ret.returned_cost,0)),0) as cost,
-                coalesce(sum(s.subtotal),0) as subtotal
+                coalesce(sum(s.subtotal - coalesce(ret.returned_revenue,0)),0) as subtotal
            from sales s
            ${RETURN_BY_SALE}
           where s.company_id = $1 and s.status in ('finalizada','devolvida_parcial') and s.deleted_at is null
