@@ -96,8 +96,14 @@ export const dashboardFn = createServerFn({ method: "POST" })
     const sellerScope = andEq(sellerParams, "s.store_id", storeId);
     const lowParams: unknown[] = [tenant.companyId];
     const lowScope = andEq(lowParams, "i.store_id", storeId);
+    // `commissions` nao tem `store_id` proprio -- so da pra escopar por loja
+    // juntando com `sales` pelo `sale_id`, igual ja foi corrigido no
+    // relatorio "Por vendedor". Sem o join, os dois cards de comissao abaixo
+    // ficavam mudos pro seletor "Loja" exatamente como "A receber"/"A pagar"
+    // ficavam antes do fix documentado logo abaixo -- mesma classe de bug,
+    // achada na mesma leitura.
     const commParams: unknown[] = [tenant.companyId];
-    const commScope = andEq(commParams, "seller_id", sellerId);
+    const commScope = `${andEq(commParams, "cs.store_id", storeId)}${andEq(commParams, "c.seller_id", sellerId)}`;
     // "A receber"/"A pagar" tambem ficavam mudos pro seletor "Loja" -- mesma
     // falha das quatro linhas acima, so que na outra dimensao (loja, nao
     // vendedor). accounts_receivable/accounts_payable tem store_id pra isso;
@@ -252,10 +258,11 @@ export const dashboardFn = createServerFn({ method: "POST" })
         [tenant.companyId],
       ),
       sql.query<{ net: string | number; gross: string | number }>(
-        `select coalesce(sum(coalesce(net_amount, amount)),0) as net,
-                coalesce(sum(amount),0) as gross
-           from commissions
-          where company_id = $1 and status = 'pendente'
+        `select coalesce(sum(coalesce(c.net_amount, c.amount)),0) as net,
+                coalesce(sum(c.amount),0) as gross
+           from commissions c
+           left join sales cs on cs.id = c.sale_id
+          where c.company_id = $1 and c.status = 'pendente'
             ${commScope}`,
         commParams,
       ),
@@ -264,17 +271,18 @@ export const dashboardFn = createServerFn({ method: "POST" })
         withheld: string | number;
         employer: string | number;
       }>(
-        `select coalesce(sum(coalesce(net_amount, amount)),0) as net,
-                coalesce(sum(coalesce(tax_inss,0)+coalesce(tax_irrf,0)+coalesce(tax_iss,0)+coalesce(tax_other,0)),0) as withheld,
+        `select coalesce(sum(coalesce(c.net_amount, c.amount)),0) as net,
+                coalesce(sum(coalesce(c.tax_inss,0)+coalesce(c.tax_irrf,0)+coalesce(c.tax_iss,0)+coalesce(c.tax_other,0)),0) as withheld,
                 coalesce(sum(
-                  coalesce((tax_breakdown->>'employerInss')::numeric, 0)
-                  + coalesce((tax_breakdown->>'employerFgts')::numeric, 0)
+                  coalesce((c.tax_breakdown->>'employerInss')::numeric, 0)
+                  + coalesce((c.tax_breakdown->>'employerFgts')::numeric, 0)
                 ),0) as employer
-           from commissions
-          where company_id = $1 and status = 'pago'
+           from commissions c
+           left join sales cs on cs.id = c.sale_id
+          where c.company_id = $1 and c.status = 'pago'
             and (
-              paid_at >= date_trunc('month', now())
-              or (paid_at is null and created_at >= date_trunc('month', now()))
+              c.paid_at >= date_trunc('month', now())
+              or (c.paid_at is null and c.created_at >= date_trunc('month', now()))
             )
             ${commScope}`,
         commParams,
