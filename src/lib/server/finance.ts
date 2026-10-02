@@ -1110,16 +1110,52 @@ export const listExpensesFn = createServerFn({ method: "POST" })
 export const saveExpenseFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { description: string; category?: string; amount: number; spentAt: string; accountKind?: string; storeId?: number | null }) => d,
+    (d: {
+      description: string;
+      category?: string;
+      amount: number;
+      spentAt: string;
+      accountKind?: string;
+      method: string;
+      /** Loja cujo caixa paga o dinheiro (a tela atual). */
+      storeId?: number | null;
+    }) => d,
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
     await assertOwned(sql, tenant.companyId, "stores", data.storeId);
-    await sql`
-      insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
-      values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category ?? null}, ${data.amount}, ${data.spentAt}, ${data.accountKind ?? null}, ${tenant.userId})
-    `;
+    if (!isReceiptMethod(data.method)) throw new Error("Informe como foi pago.");
+    await sql.transaction(async (sql) => {
+      /*
+        Mesma classe de bug de settlePayableFn/settleSellerBatch: uma despesa
+        manual (motoboy, material de limpeza) paga em DINHEIRO da gaveta
+        nunca gerava `cash_movements` -- o `expectedCash` do fechamento nao
+        descontava, e a loja fechava o dia com SOBRA sem explicacao. Tipo
+        `sangria_liquidacao`, nao `sangria` pura, pelo mesmo motivo: esta
+        despesa ja esta em `expenses`, que o `cashflowFn` ja soma em
+        "Saidas" -- uma `sangria` normal duplicaria o valor la.
+      */
+      if (data.method === "dinheiro") {
+        if (!data.storeId) throw new Error("Selecione a loja para lançar a despesa em dinheiro.");
+        await assertStore(sql, tenant.companyId, data.storeId);
+        const [reg] = await sql<{ id: number }>`
+          select id from cash_registers
+           where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
+           limit 1
+        `;
+        if (!reg) throw new Error("Abra o caixa desta loja para lançar a despesa em dinheiro.");
+        await sql`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+          values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro',
+                  ${data.amount}, ${`Despesa: ${data.description}`})
+        `;
+      }
+      await sql`
+        insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
+        values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category ?? null}, ${data.amount}, ${data.spentAt}, ${data.accountKind ?? null}, ${tenant.userId})
+      `;
+    });
     return { ok: true };
   });
 

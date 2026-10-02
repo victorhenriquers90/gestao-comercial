@@ -453,6 +453,7 @@ function FinanceiroPage() {
                     category: String(fd.get("c")),
                     amount: Number(fd.get("a")),
                     spentAt: String(fd.get("dt")),
+                    method: String(fd.get("m")),
                     storeId: storeId,
                   },
                 });
@@ -490,6 +491,15 @@ function FinanceiroPage() {
             </Field>
             <Field label="Data da despesa">
               <Input name="dt" type="date" required />
+            </Field>
+            <Field label="Como pagou?">
+              <Select name="m" defaultValue="dinheiro">
+                {RECEIPT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {RECEIPT_METHOD_LABELS[m]}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Button type="submit" className="mb-0.5 self-end" disabled={lancandoDespesa}>
               {lancandoDespesa ? "Lançando…" : "Lançar"}
