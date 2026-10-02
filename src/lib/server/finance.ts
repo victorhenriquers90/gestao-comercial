@@ -99,20 +99,64 @@ export const savePayableFn = createServerFn({ method: "POST" })
 
 export const settlePayableFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; amount: number; interest?: number; discount?: number }) => d)
+  .validator(
+    (d: {
+      id: number;
+      amount: number;
+      interest?: number;
+      discount?: number;
+      method: string;
+      /** Loja cujo caixa paga o dinheiro (a tela atual). */
+      storeId?: number | null;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
     const baixa = parseSettlement(data);
+    if (!isReceiptMethod(data.method)) throw new Error("Informe como foi pago.");
+    const metodo = data.method;
     const status = await sql.transaction(async (sql) => {
       // `for update` trava a linha ate o commit: sem isso, duas baixas
       // simultaneas leem o mesmo paid_amount e a segunda sobrescreve a
       // primeira -- some um pagamento sem deixar rastro.
-      const [row] = await sql<{ amount: string | number; paid_amount: string | number }>`
-        select amount, paid_amount from accounts_payable
+      const [row] = await sql<{
+        amount: string | number;
+        paid_amount: string | number;
+        store_id: number | null;
+        description: string | null;
+      }>`
+        select amount, paid_amount, store_id, description from accounts_payable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
+
+      /*
+        Mesma correcao de settleReceivableFn, no sentido contrario: pagar um
+        fornecedor em DINHEIRO (comum em entrega -- o entregador cobra na
+        hora) tirava da gaveta sem lancar nada em `cash_movements`. O
+        `expectedCash` do fechamento nunca descontava, e a loja fechava o
+        dia com SOBRA sem explicacao -- mesma classe do bug ja corrigido em
+        settleSellerBatch (pagamento de comissao). Vira sangria no caixa
+        aberto da loja; sem caixa aberto nao da pra pagar em especie, igual
+        ao recebimento.
+      */
+      if (metodo === "dinheiro") {
+        const lojaId = data.storeId ?? row.store_id ?? null;
+        if (!lojaId) throw new Error("Selecione a loja que está pagando em dinheiro.");
+        await assertStore(sql, tenant.companyId, lojaId);
+        const [reg] = await sql<{ id: number }>`
+          select id from cash_registers
+           where company_id = ${tenant.companyId} and store_id = ${lojaId} and status = 'open'
+           limit 1
+        `;
+        if (!reg) throw new Error("Abra o caixa desta loja para pagar em dinheiro.");
+        await sql`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+          values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'sangria', 'dinheiro',
+                  ${baixa.amount}, ${`Pagamento: ${row.description ?? `título ${data.id}`}`})
+        `;
+      }
       const paid = Number((num(row.paid_amount) + baixa.amount).toFixed(2));
       const target = num(row.amount) + baixa.interest - baixa.discount;
       const status = paid + 0.05 >= target ? "pago" : "parcial";

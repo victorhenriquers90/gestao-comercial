@@ -80,6 +80,9 @@ function FinanceiroPage() {
    * vezes.
    */
   const [pagandoId, setPagandoId] = useState<number | null>(null);
+  /** Como a loja pagou o fornecedor (sem padrao: pode ser banco) -- mesma pergunta do recebimento, em dinheiro sai do caixa aberto. */
+  const [formaPag, setFormaPag] = useState<ReceiptMethod | "">("");
+  const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
   const [confirmandoRecebimento, setConfirmandoRecebimento] = useState(false);
   const [salvandoConta, setSalvandoConta] = useState(false);
   const [salvandoTitulo, setSalvandoTitulo] = useState(false);
@@ -208,28 +211,71 @@ function FinanceiroPage() {
                   </Td>
                   <Td>
                     {r.status !== "pago" && r.status !== "cancelado" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pagandoId === num(r.id)}
-                        onClick={async () => {
-                          if (pagandoId === num(r.id)) return;
-                          setPagandoId(num(r.id));
-                          try {
-                            await settlePayableFn({
-                              data: { id: num(r.id), amount: num(r.amount) - num(r.paid_amount) },
-                            });
-                            toast.success("Baixa registrada.");
-                            void qc.invalidateQueries({ queryKey: ["ap"] });
-                          } catch (e) {
-                            toast.error(e instanceof Error ? e.message : "Falha");
-                          } finally {
-                            setPagandoId(null);
-                          }
-                        }}
-                      >
-                        {pagandoId === num(r.id) ? "Pagando…" : "Pagar"}
-                      </Button>
+                      pagandoId === num(r.id) ? (
+                        // Mesma pergunta do recebimento: em dinheiro (comum
+                        // quando o entregador cobra na hora) sai do caixa
+                        // aberto da loja; antes a baixa nao lancava nada e a
+                        // gaveta fechava com SOBRA sem explicacao.
+                        <div className="flex items-center gap-2">
+                          <Select
+                            className="h-8 w-40"
+                            aria-label="Forma de pagamento"
+                            value={formaPag}
+                            onChange={(e) => setFormaPag(e.target.value as ReceiptMethod | "")}
+                          >
+                            <option value="">Como pagou?</option>
+                            {RECEIPT_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {RECEIPT_METHOD_LABELS[m]}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="sm"
+                            disabled={!formaPag || confirmandoPagamento}
+                            onClick={async () => {
+                              if (!formaPag || confirmandoPagamento) return;
+                              setConfirmandoPagamento(true);
+                              try {
+                                const ok = await runAction(
+                                  () =>
+                                    settlePayableFn({
+                                      data: {
+                                        id: num(r.id),
+                                        amount: num(r.amount) - num(r.paid_amount),
+                                        method: formaPag,
+                                        storeId: storeId ?? null,
+                                      },
+                                    }),
+                                  { sucesso: "Baixa registrada." },
+                                );
+                                if (!ok) return;
+                                setPagandoId(null);
+                                void qc.invalidateQueries({ queryKey: ["ap"] });
+                                void qc.invalidateQueries({ queryKey: ["register"] });
+                              } finally {
+                                setConfirmandoPagamento(false);
+                              }
+                            }}
+                          >
+                            {confirmandoPagamento ? "Confirmando…" : "Confirmar"}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setPagandoId(null)}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setPagandoId(num(r.id));
+                            setFormaPag("");
+                          }}
+                        >
+                          Pagar
+                        </Button>
+                      )
                     ) : null}
                   </Td>
                 </tr>
