@@ -1447,6 +1447,35 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+48. **Relatórios "Comissões" e "Retenções" também ignoravam o filtro de
+    loja — terceiro e quarto lugar da mesma classe dos itens 42/43**
+    (`src/lib/server/reports.ts` + `src/lib/server/retention.ts`):
+    `reportFn` tipo "comissao" montava os parâmetros da query à mão, sem
+    `storeId`; `loadRetentionGuide` (usada pelo tipo "retencoes") nem
+    tinha o parâmetro. Nenhum dos dois fazia join com `sales` pra filtrar
+    por `store_id` — trocar de loja no seletor do topo não mudava nada,
+    os dois sempre somavam as duas lojas juntas. Mais grave que os
+    anteriores: "Retenções" é a guia usada pra fechar folha com o
+    contador.
+
+    Fix: `loadRetentionGuide` ganhou `storeId` opcional (5º parâmetro,
+    depois de `sellerId`) — só `reports.ts` passa; `retentionGuideFn`
+    (guia de `vendedores.tsx`) continua sem passar, de propósito, porque
+    fecha folha da empresa inteira, não por loja (tem seletor de loja na
+    página, mas é pra saber de QUAL caixa sai o dinheiro ao pagar, não
+    pra filtrar a lista — mesmo uso de `storeId` do item 44).
+
+    Verificado ao vivo: vendedor e produto descartáveis, uma venda de
+    R$100 em cada loja (comissão de R$5 cada, ambas pagas em dinheiro).
+    Com Loja Centro selecionada, "Comissões" e "Retenções" mostraram
+    R$5,00 (não R$10,00); trocando pra Loja Shopping, R$5,00 da outra
+    venda. A guia de Vendedores > Retenções (não filtrada por loja, por
+    design) continuou somando R$10,00 corretamente — confirma que o
+    parâmetro opcional não vazou pro caminho que não deveria mudar.
+    Dado de teste revertido por completo.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
