@@ -1419,6 +1419,34 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+47. **Despesa manual em dinheiro (aba "Despesas" do Financeiro) tinha o
+    mesmo bug dos itens 44/45, num terceiro lugar** (`src/lib/server/finance.ts`
+    + `src/routes/app/financeiro.tsx`): `saveExpenseFn` nem perguntava como a
+    despesa foi paga — motoboy, material de limpeza, qualquer coisa paga da
+    gaveta nunca virava `cash_movements`. Mesma falta fantasma no fechamento.
+
+    Fix: campo "Como pagou?" (`RECEIPT_METHODS`) no formulário de Nova
+    despesa, pré-selecionado em "Dinheiro" por ser o caso mais comum pra
+    despesa pequena de balcão. Em dinheiro, exige loja selecionada e caixa
+    aberto (mesmas mensagens de erro de `settlePayableFn`) e grava
+    `sangria_liquidacao` — não `sangria` pura, pelo mesmo motivo do item 46
+    (`cashflowFn` já soma esta despesa via `expenses`).
+
+    Verificado ao vivo: despesa de R$15 em dinheiro na Loja Shopping (fundo
+    R$350) — `cash_movements` gravou `sangria_liquidacao`/dinheiro/R$15,
+    "Dinheiro esperado na gaveta" caiu pra R$335,00, extrato do turno
+    mostrou "Pagamento · Despesa: ..." (rótulo reaproveitado do item 46), e
+    "Fluxo de caixa" mostrou Saídas = R$15,00 (não R$30,00 — sem duplicar).
+    Dado de teste revertido por completo (expense, cash_movement,
+    cash_register e audit_logs da abertura/revelação).
+
+    Com isto, as três formas de dinheiro sair da gaveta por um caminho que
+    não é "Sangria" manual — comissão (44), fornecedor (45), despesa (47) —
+    agora alimentam o fechamento de caixa corretamente, sem duplicar o
+    Fluxo de caixa (46).
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
