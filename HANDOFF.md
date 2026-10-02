@@ -1529,6 +1529,43 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+    De passagem, duas auditorias de segurança full-codebase (SQL injection
+    em `sql.query()` e isolamento entre tenants/IDOR em todo `src/lib/server/*.ts`)
+    não encontraram nenhum problema real — todo ponto de interpolação em
+    SQL é enum fixo ou fragmento estático, e todo `id` vindo do cliente é
+    validado contra `company_id` antes de uso (direto, via
+    `assertOwned`/`assertStore`, ou reaproveitando uma linha já validada
+    na mesma função). Confirma que a base já passou por um endurecimento
+    sério antes desta sessão.
+
+51. **Nenhuma tela criava CATEGORIA de produto — beco sem saída pra
+    empresa nova, achado ao investigar o mesmo padrão do item 50**
+    (`src/routes/app/produtos.tsx`): `saveCategoryFn` existia desde sempre
+    em `catalog.ts`, mas nenhuma tela do projeto inteiro o chamava — só
+    `listCategoriesFn` (leitura) era usado. Uma empresa nova (ou o piloto,
+    depois da limpeza de dados de demonstração do item 4) tem ZERO
+    categorias e nenhum jeito de criar a primeira pela UI: o Select de
+    Categoria em Produtos ficaria travado em "—" pra sempre, e tudo que
+    depende de categoria junto (regra de comissão por categoria, meta por
+    categoria, relatório "Por categoria"). Mais severo que o equivalente
+    de Fornecedor (item 50): categoria não tem nenhuma tela dedicada pra
+    apontar como alternativa.
+
+    Fix: campo "Nova categoria" + botão "Criar" logo abaixo do Select, no
+    mesmo diálogo de Novo/Editar produto — cria via `saveCategoryFn`,
+    invalida a lista e já seleciona a categoria nova.
+
+    Verificado ao vivo: categoria criada pelo campo novo, auto-selecionada;
+    produto salvo com `category_id` correto; listagem de Produtos mostrou
+    o nome certo na coluna Categoria. Dado de teste revertido por completo.
+
+    (`brand_id`/`listBrandsFn` têm o mesmo gap — backend pronto, zero UI —
+    mas nenhuma feature hoje DEPENDE de marca estar preenchida, diferente
+    de fornecedor/categoria. Não mexido por enquanto; mesmo padrão, se
+    algum dia uma tela precisar.)
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
