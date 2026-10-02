@@ -1271,6 +1271,37 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
       para trás (convites A e B ambos removidos; A por "Cancelar" na
       própria tela).
 
+42. **DRE não reconciliava com devolução parcial no período — achado e
+    corrigido** (`src/lib/server/reports.ts`): lendo `reportFn` atrás de
+    bugs em fluxos nunca testados ao vivo (Relatórios inteiro estava nessa
+    categoria), reparei que o relatório "DRE" soma `s.subtotal` cru, sem
+    descontar devolução — mas "Receita líquida" (`s.total -
+    ret.returned_revenue`) já desconta. As três primeiras linhas da
+    própria tabela (Receita de vendas − Descontos = Receita líquida)
+    paravam de bater sempre que havia devolução parcial no período.
+
+    Reproduzido ao vivo: produto a R$100, venda de 2 unidades (R$200, sem
+    desconto), devolução parcial de 1 unidade (R$100). Antes do fix:
+    Receita de vendas R$200 − Descontos R$0 = R$200, mas Receita líquida
+    mostrava R$100 — R$100 de diferença, exatamente o valor devolvido.
+    Fix: `subtotal` passa a descontar `ret.returned_revenue` igual
+    `revenue`/`cost` já faziam. Depois: R$100 − R$0 = R$100, bate.
+    Verificado de novo ao vivo pela tela de Relatórios. Dado de teste
+    (produto, venda, devolução, contagem de estoque, caixa) revertido por
+    completo depois, numa transação só.
+
+    Achado na mesma leitura, mesmo arquivo: o relatório "Por vendedor"
+    somava a comissão do vendedor nas DUAS lojas mesmo com filtro de loja
+    aplicado — Faturamento/Ticket respeitavam o filtro, a coluna Comissão
+    não (a subquery não tinha como saber a loja da venda sem juntar com
+    `sales`). Corrigido com `left join` por `sale_id` e o mesmo filtro
+    `store_id` do resto da linha. Verificação mais leve aqui (sem vendedor
+    cadastrado na massa de teste pra provar o double-counting entre duas
+    lojas de verdade) — confirmado que a query roda sem erro e mantém o
+    resultado correto no caso comum ("Sem vendedor").
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
