@@ -1302,6 +1302,33 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+43. **Cards de comissão do Dashboard ignoravam o filtro de loja — mesma
+    classe do item 42, achada ao vivo desta vez** (`src/lib/server/
+    insight.ts`): "Comissões a pagar" e "Comissões pagas no mês" somavam
+    o vendedor nas DUAS lojas mesmo com uma loja específica selecionada
+    no topo — Faturamento/Ticket/Lucro/A receber/A pagar já respeitavam
+    o filtro (o próprio arquivo já documentava essa correção num
+    comentário), só os dois cards de comissão ficaram de fora porque
+    `commissions` não tem `store_id` próprio.
+
+    Desta vez provado ao vivo de verdade, com double-counting
+    reproduzido: vendedor de teste com uma venda de R$100 (comissão
+    R$5) em CADA loja (Centro e Shopping). Antes do fix, qualquer das
+    duas lojas filtrada mostraria R$10,00 (a soma das duas). Depois do
+    fix: Loja Centro mostra R$5,00, Loja Shopping mostra R$5,00, cada
+    uma só a sua. Corrigido com `left join` em `sales` pelo `sale_id` e
+    o mesmo filtro de loja do resto do painel — igual ao fix do
+    relatório "Por vendedor".
+
+    De passagem, varri Fornecedores e CRM (nunca testados ao vivo) sem
+    achar bug novo: cadastro de fornecedor, ficha 360 (Dados/Pedidos/
+    Mix/Financeiro), quadro do CRM (mover estágio pelo select, criar e
+    concluir tarefa de follow-up, nota) — tudo funcionando certo.
+
+    Dado de teste (produto, vendedor, 2 vendas, 2 caixas, fornecedor,
+    cliente, tarefa) revertido por completo depois, numa transação só.
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
