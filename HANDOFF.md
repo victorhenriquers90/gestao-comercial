@@ -1387,6 +1387,38 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     ..."), título foi pra 'pago'. Dado de teste revertido.
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+46. **Autocrítica: os fixes dos itens 44/45 duplicavam o valor no "Fluxo
+    de caixa" — achado revisando o próprio trabalho antes de seguir**
+    (`src/lib/server/finance.ts`, `src/lib/constants.ts`): as duas
+    sangrias que acabei de lançar (comissão e fornecedor pagos em
+    dinheiro) somavam corretamente no `expectedCash` do fechamento, mas
+    `cashflowFn` (aba "Fluxo de caixa") já conta esse mesmo valor via
+    `paid`/`expenses` — somar `sangria` por cima duplicava a saída
+    (pagar R$20 em dinheiro inflava "Saídas" pra R$40).
+
+    Fix: as duas gravações passam a usar um tipo novo,
+    `sangria_liquidacao` (sem migration — `cash_movements.type` é texto
+    livre, sem CHECK). O fechamento de caixa soma os dois tipos
+    (`sangria` + `sangria_liquidacao`); `cashflowFn` continua somando só
+    `sangria` pura, excluindo o novo tipo por construção em vez de
+    tentar deduzir "este sangria já tem expense" pela descrição. Rótulo
+    "Pagamento" adicionado em `CASH_MOVE_LABELS` pro extrato do turno
+    (Caixa) mostrar certo.
+
+    Verificado ao vivo: conta de R$20 paga em dinheiro — `cash_movements`
+    gravou `sangria_liquidacao` (não mais `sangria`), "Saídas" no Fluxo
+    de caixa mostrou R$20,00 exatos (não R$40,00), e o agrupamento por
+    método/tipo que alimenta o fechamento confirma que o novo tipo entra
+    no cálculo do esperado. Dado de teste revertido.
+
+    Lição de processo: ao corrigir um bug de "dinheiro não lançado em
+    cash_movements", sempre conferir TODO lugar que já soma
+    `cash_movements` pra outro fim (aqui, `cashflowFn`) antes de dar o
+    fix por encerrado — o mesmo lançamento que resolve o fechamento pode
+    quebrar outro relatório que lia a ausência dele como normal.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
