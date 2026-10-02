@@ -120,7 +120,16 @@ function csvCell(value: string | number, kind: ColKind): string {
   if (kind === "money" || kind === "qty" || kind === "pct") {
     return String(num(value)).replace(".", ",");
   }
-  const s = kind === "date" ? formatCell(value, kind) : String(value);
+  let s = kind === "date" ? formatCell(value, kind) : String(value);
+  /*
+    Injecao de formula (CSV injection): "Descrição" de despesa/conta, nome
+    de cliente/fornecedor etc. sao texto livre digitado por alguem. Um valor
+    comecando com = + - @ vira formula ao abrir no Excel/LibreOffice --
+    =HYPERLINK(...) pode vazar dado pra fora, sem precisar de nenhuma falha
+    no sistema, so um campo de texto normal. Prefixo "'" neutraliza sem
+    mudar o que a pessoa ve na celula.
+  */
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
   const escaped = s.replaceAll('"', '""');
   return escaped.includes(";") || escaped.includes("\n") ? `"${escaped}"` : escaped.replaceAll(";", ",");
 }
