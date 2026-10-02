@@ -1329,6 +1329,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     cliente, tarefa) revertido por completo depois, numa transação só.
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+44. **Pagar comissão em dinheiro não gerava sangria no caixa — achado
+    auditando Promoções/Metas/Caixa a pedido do usuário** (`src/lib/
+    server/finance.ts`): `settleSellerBatch` (usado por `payCommissionFn`
+    e `payPendingCommissionsFn`, nunca exercitados ao vivo antes) emite
+    um recibo pedindo assinatura do vendedor ("Recebi o líquido acima")
+    — paga em dinheiro, na hora, do caixa aberto da loja. Mas só gravava
+    `expenses` (`account_kind: 'caixa'`, coluna nunca lida de volta em
+    lugar nenhum do código — confirmado por busca no projeto inteiro),
+    nunca `cash_movements`. O `expectedCash` do fechamento
+    (`loadOpenRegister`) só soma `cash_movements` — o dinheiro que saiu
+    de verdade da gaveta nunca entrava na conta.
+
+    Reproduzido ao vivo contra o Postgres real: caixa com fundo R$500 +
+    venda de R$100 (esperado R$600), comissão de R$5 paga em espécie —
+    `cash_movements` do registro continuou com UMA linha só (a venda).
+    Fechar o caixa aquele dia cobraria R$600 de uma gaveta com R$595 de
+    verdade: uma falta fantasma toda vez que se paga comissão em
+    dinheiro, mesma classe dos bugs de quebra de caixa já corrigidos
+    nesta sessão (itens 30/36/37).
+
+    Fix: mesma lógica do `cashMoveFn` (sangria manual) — se houver caixa
+    aberto na loja informada, lança sangria pelo mesmo valor de cada
+    despesa gerada (líquido pro vendedor, e o imposto retido separado,
+    que também sai fisicamente da gaveta, só muda de bolso dentro da
+    loja). Sem caixa aberto (comissão paga fora do expediente, ou loja
+    não informada), não há o que ajustar.
+
+    Verificado ao vivo com contraste direto: pagamento feito ANTES do
+    fix ficou sem sangria (confirmado por SQL); uma segunda venda +
+    pagamento DEPOIS do fix no mesmo teste gerou a linha de sangria
+    esperada (R$5,00, tipo sangria, método dinheiro, descrição
+    referenciando a venda). Dado de teste revertido por completo.
+
+    De passagem, testadas também **Metas** (meta de R$50 na Loja
+    Shopping, venda de R$100 → "Meta batida", 200,0% — correto) e
+    **Promoções** (desconto percentual simples de 10%, nunca testado ao
+    vivo nesta sessão — R$100 → R$90,00 no PDV, correto). Nenhum bug
+    novo nessas duas.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
