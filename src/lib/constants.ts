@@ -155,6 +155,8 @@ export function isTargetBonusKind(value: string): value is TargetBonusKind {
 export const CASH_MOVE_LABELS: Record<string, string> = {
   venda: "Venda",
   sangria: "Sangria",
+  /** Sangria automatica de pagar comissao/fornecedor em dinheiro (settleSellerBatch/settlePayableFn). */
+  sangria_liquidacao: "Pagamento",
   suprimento: "Suprimento",
   cancelamento: "Cancelamento",
   abertura: "Abertura",

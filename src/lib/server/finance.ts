@@ -139,7 +139,9 @@ export const settlePayableFn = createServerFn({ method: "POST" })
         dia com SOBRA sem explicacao -- mesma classe do bug ja corrigido em
         settleSellerBatch (pagamento de comissao). Vira sangria no caixa
         aberto da loja; sem caixa aberto nao da pra pagar em especie, igual
-        ao recebimento.
+        ao recebimento. Tipo `sangria_liquidacao`, nao `sangria` pura -- ver
+        o comentario em settleSellerBatch sobre o motivo (evitar duplicar
+        este valor em cashflowFn, que ja soma `paid`).
       */
       if (metodo === "dinheiro") {
         const lojaId = data.storeId ?? row.store_id ?? null;
@@ -153,7 +155,7 @@ export const settlePayableFn = createServerFn({ method: "POST" })
         if (!reg) throw new Error("Abra o caixa desta loja para pagar em dinheiro.");
         await sql`
           insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
-          values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'sangria', 'dinheiro',
+          values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro',
                   ${baixa.amount}, ${`Pagamento: ${row.description ?? `título ${data.id}`}`})
         `;
       }
@@ -550,7 +552,14 @@ async function loadOpenRegister(
   const cards = byMethod
     .filter((m) => m.type === "venda" && (m.method === "debito" || m.method === "credito"))
     .reduce((a, m) => a + num(m.total), 0);
-  const sangria = byMethod.filter((m) => m.type === "sangria").reduce((a, m) => a + num(m.total), 0);
+  // 'sangria_liquidacao' e o mesmo dinheiro saindo da gaveta que
+  // settleSellerBatch/settlePayableFn ja lancam quando pagam em especie --
+  // conta aqui pro fechamento (expectedCash so soma cash_movements), mas
+  // NAO em cashflowFn (que ja soma esse mesmo valor via `expenses`/`paid`;
+  // somar os dois ali duplicava o valor em "Saidas").
+  const sangria = byMethod
+    .filter((m) => m.type === "sangria" || m.type === "sangria_liquidacao")
+    .reduce((a, m) => a + num(m.total), 0);
   const suprimento = byMethod.filter((m) => m.type === "suprimento").reduce((a, m) => a + num(m.total), 0);
   const refunds = byMethod
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
@@ -1501,7 +1510,11 @@ async function settleSellerBatch(
     caixa aberto na loja, lança sangria pelo mesmo valor de cada despesa
     gerada aqui -- liquido pro vendedor, imposto retido separado (o
     imposto tambem sai fisicamente da gaveta, so muda de bolso dentro da
-    loja). Sem caixa aberto na loja (comissao paga fora do expediente,
+    loja). Tipo `sangria_liquidacao`, nao `sangria` pura: conta pro
+    `expectedCash` do fechamento (que soma os dois tipos, ver
+    loadOpenRegister) mas fica de fora do somatorio de `cashflowFn`, que
+    ja conta este mesmo valor via `expenses` -- `sangria` lá ia duplicar.
+    Sem caixa aberto na loja (comissao paga fora do expediente,
     ou loja nao informada), nao ha o que ajustar -- mesmo padrao do
     `if (reg)` em `checkoutFn`.
   */
@@ -1525,7 +1538,7 @@ async function settleSellerBatch(
     await sql`
       insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
       values (
-        ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria', 'dinheiro', ${tax.net},
+        ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro', ${tax.net},
         ${"Comissão líquida " + who + saleBit}
       )
     `;
@@ -1544,7 +1557,7 @@ async function settleSellerBatch(
       await sql`
         insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
         values (
-          ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria', 'dinheiro', ${tax.totalTax},
+          ${tenant.companyId}, ${storeId}, ${openReg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro', ${tax.totalTax},
           ${"Retenção INSS/IRRF/ISS · " + who + saleBit}
         )
       `;
