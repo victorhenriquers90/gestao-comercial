@@ -555,18 +555,68 @@ export const saveStoreFn = createServerFn({ method: "POST" })
       city?: string;
       state?: string;
       zip?: string;
-    }) => d,
+    }) => ({
+      id: d.id,
+      name: requireLine(d.name, "Nome da loja", 120),
+      // undefined = campo nao enviado (mantem o gravado); null = apagado de proposito.
+      code: d.code === undefined ? undefined : sanitizeCode(d.code, 20),
+      phone: d.phone === undefined ? undefined : sanitizeCode(d.phone, 32),
+      address: d.address === undefined ? undefined : optionalLine(d.address, 200),
+      city: d.city === undefined ? undefined : optionalLine(d.city, 80),
+      state: d.state === undefined ? undefined : (parseUf(d.state) ?? null),
+      zip: d.zip === undefined ? undefined : sanitizeCode(d.zip, 16),
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "settings.write");
+    type StoreFields = {
+      name: string;
+      code: string | null;
+      phone: string | null;
+      address: string | null;
+      city: string | null;
+      state: string | null;
+      zip: string | null;
+    };
+    // Duas lojas com o mesmo nome (ou codigo) aparecem iguais nos seletores e
+    // nos relatorios por loja: ninguem distingue qual e qual.
+    const sameName = await sql<{ id: number }>`
+      select id from stores
+      where company_id = ${tenant.companyId} and deleted_at is null
+        and id <> ${data.id ?? 0} and lower(name) = lower(${data.name})
+    `;
+    if (sameName.length) throw new Error("Já existe uma loja com esse nome.");
+    if (data.code) {
+      const sameCode = await sql<{ id: number }>`
+        select id from stores
+        where company_id = ${tenant.companyId} and deleted_at is null
+          and id <> ${data.id ?? 0} and lower(code) = lower(${data.code})
+      `;
+      if (sameCode.length) throw new Error("Já existe uma loja com esse código.");
+    }
     if (data.id) {
+      const [cur] = await sql<StoreFields>`
+        select name, code, phone, address, city, state, zip from stores
+        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+      `;
+      if (!cur) throw new Error("Loja não encontrada.");
+      const next: StoreFields = {
+        name: data.name,
+        code: data.code === undefined ? cur.code : data.code,
+        phone: data.phone === undefined ? cur.phone : data.phone,
+        address: data.address === undefined ? cur.address : data.address,
+        city: data.city === undefined ? cur.city : data.city,
+        state: data.state === undefined ? cur.state : data.state,
+        zip: data.zip === undefined ? cur.zip : data.zip,
+      };
       await sql`
-        update stores set name = ${data.name}, code = ${data.code ?? null}, phone = ${data.phone ?? null},
-          address = ${data.address ?? null}, city = ${data.city ?? null}, state = ${data.state ?? null},
-          zip = ${data.zip ?? null}, updated_at = now()
+        update stores set name = ${next.name}, code = ${next.code}, phone = ${next.phone},
+          address = ${next.address}, city = ${next.city}, state = ${next.state},
+          zip = ${next.zip}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
+      await audit(sql, tenant, "update", "store", data.id, cur, next);
       return { id: data.id };
     }
     const [row] = await sql<{ id: number }>`
@@ -574,6 +624,7 @@ export const saveStoreFn = createServerFn({ method: "POST" })
       values (${tenant.companyId}, ${data.name}, ${data.code ?? null}, ${data.phone ?? null}, ${data.address ?? null}, ${data.city ?? null}, ${data.state ?? null}, ${data.zip ?? null})
       returning id
     `;
+    await audit(sql, tenant, "create", "store", row!.id, null, { name: data.name });
     return { id: row!.id };
   });
 

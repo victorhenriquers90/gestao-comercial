@@ -1667,6 +1667,42 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     `npm run typecheck` + `npm run lint` (0 erros, 7 avisos antigos) +
     `npm test` (423) limpos.
 
+54. **`saveStoreFn` gravava o que chegava, sem validar nem auditar.** Único
+    cadastro do sistema que ainda não passava pelo `sanitize`: o nome ia
+    cru (espaços nas pontas, tags HTML, tamanho livre), "São Paulo" entrava
+    como UF (as colunas são `text`, sem CHECK), duas lojas podiam ter o
+    mesmo nome/código (indistinguíveis nos seletores e relatórios por
+    loja), a edição achava lojas apagadas (`deleted_at`) e nada ia para
+    `audit_logs` — ao contrário de empresa e usuário. Sintoma já visível no
+    banco: a Loja Centro tem `""` em telefone/endereço/CEP e a Loja Shopping
+    tem `null` (a UI mandava string vazia).
+
+    Correção (`session.ts`): o validador usa `requireLine`/`optionalLine`/
+    `sanitizeCode`/`parseUf` (mesmos da empresa); nome e código repetidos
+    na mesma empresa (sem diferenciar maiúscula) são recusados; a edição só
+    acha loja não apagada ("Loja não encontrada."); campo que não veio no
+    pedido mantém o gravado (undefined ≠ null apagado de propósito — mesma
+    família do item 52); criar e editar auditam (`entity = 'store'`, com
+    antes/depois).
+
+    Verificado ao vivo pela tela Configurações → Lojas, contra o Postgres
+    real: "loja CENTRO" recusada ("Já existe uma loja com esse nome.", nada
+    criado); `   ZZTESTE <b>Loja</b> Norte   ` gravou `ZZTESTE Loja Norte`;
+    UF "São Paulo" recusada ("UF deve ter 2 letras (ex.: SP)."); código
+    "lj01" recusado ("Já existe uma loja com esse código."); código ZZ99,
+    UF "sp" e telefone com espaços gravaram `ZZ99` / `SP` / `(11) 99999-0000`,
+    vazios como `null`; 2 linhas de auditoria com antes/depois. Loja e
+    auditoria de teste removidas; contagem final zero e 2 lojas reais.
+    `typecheck` + `lint` (0 erros) + `npm test` (423) limpos.
+
+    NÃO existe como encerrar uma loja: não há função de servidor nem botão
+    (`stores.is_active`/`deleted_at` existem e nada os grava). Não foi
+    construído de propósito — exige decidir o que fazer com o estoque da
+    loja, vendas/caixa abertos e `memberships.store_id` que apontam para
+    ela (`defaultStoreId` usa esse id sem checar se a loja saiu da lista, e
+    `assertStore` recusaria o PDV). Os campos endereço/telefone/CEP/UF da
+    loja hoje só aparecem na própria aba Lojas; nenhum cupom ou nota os lê.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
