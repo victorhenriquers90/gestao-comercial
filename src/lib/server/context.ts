@@ -177,6 +177,19 @@ export async function audit(
   );
 }
 
+/** Edição só entra na trilha se algo mudou; salvar sem alterar nada não gera linha "alterou X" vazia. */
+export async function auditUpdate(
+  sql: Sql,
+  tenant: Tenant,
+  entity: string,
+  entityId: string | number,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+) {
+  if (JSON.stringify(before) === JSON.stringify(after)) return;
+  await audit(sql, tenant, "update", entity, entityId, before, after);
+}
+
 async function loadUser(sql: Sql, userId: string) {
   const rows = await sql<{ id: string; name: string; email: string | null }>`
     select id, name, email from "user" where id = ${userId}

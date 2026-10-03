@@ -18,6 +18,7 @@ import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime } from "@/lib/nfce";
 import {
   optionalLine,
+  parseUf,
   requireLine,
   sanitizeCode,
   sanitizeImageUrl,
@@ -420,24 +421,6 @@ export const getSettingsFn = createServerFn({ method: "GET" })
       appName: APP_NAME,
     });
   });
-
-/**
- * UF da empresa: 2 letras, maiusculas.
- *
- * `optionalLine(d.state, 2)` so CORTA em 2 caracteres, sem validar --
- * "São Paulo" digitado por engano no lugar da sigla virava "Sã" (com
- * acento, sem sentido nenhum), e "sp" gravava em minusculo. Aparece no
- * cabecalho de recibo e no guia de retencao impresso, sem erro nenhum
- * avisando que o campo esta errado.
- */
-function parseUf(raw: unknown): string | undefined {
-  const s = optionalLine(raw, 10)?.toUpperCase();
-  if (!s) return undefined;
-  if (!/^[A-Z]{2}$/.test(s)) {
-    throw new Error("UF deve ter 2 letras (ex.: SP).");
-  }
-  return s;
-}
 
 export const saveCompanyFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

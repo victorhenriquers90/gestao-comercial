@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   optionalLine,
+  parseUf,
   requireLine,
+  requireRange,
   sanitizeCode,
   sanitizeHttpUrl,
   sanitizeImageUrl,
@@ -39,5 +41,30 @@ describe("sanitize input", () => {
     assert.equal(sanitizeImageUrl("javascript:alert(1)"), null);
     assert.equal(sanitizeImageUrl("data:image/jpeg;base64," + "A".repeat(3_000_000)), null);
     assert.ok(sanitizeImageUrl("https://cdn.example/logo.png")?.startsWith("https://"));
+  });
+});
+
+describe("UF e faixa numerica", () => {
+  it("UF: 2 letras maiusculas, vazio vira undefined, o resto e erro", () => {
+    assert.equal(parseUf("sp"), "SP");
+    assert.equal(parseUf("  "), undefined);
+    assert.equal(parseUf(null), undefined);
+    assert.throws(() => parseUf("São Paulo"), /UF deve ter 2 letras/);
+    assert.throws(() => parseUf("S"), /UF deve ter 2 letras/);
+    assert.throws(() => parseUf("12"), /UF deve ter 2 letras/);
+  });
+
+  it("faixa: aceita dentro, arredonda a 2 casas, recusa fora/ausente/NaN", () => {
+    assert.equal(requireRange(5, "Comissão", 0, 100), 5);
+    assert.equal(requireRange("7.256", "Comissão", 0, 100), 7.26);
+    assert.equal(requireRange(0, "Comissão", 0, 100), 0);
+    assert.equal(requireRange(100, "Comissão", 0, 100), 100);
+    assert.throws(() => requireRange(150, "Comissão", 0, 100), /Comissão deve ficar entre 0 e 100/);
+    assert.throws(() => requireRange(-1, "Comissão", 0, 100), /entre 0 e 100/);
+    assert.throws(() => requireRange(undefined, "Comissão", 0, 100), /entre 0 e 100/);
+    assert.throws(() => requireRange(null, "Comissão", 0, 100), /entre 0 e 100/);
+    assert.throws(() => requireRange("", "Comissão", 0, 100), /entre 0 e 100/);
+    assert.throws(() => requireRange(Number.NaN, "Comissão", 0, 100), /entre 0 e 100/);
+    assert.throws(() => requireRange(Infinity, "Comissão", 0, 100), /entre 0 e 100/);
   });
 });

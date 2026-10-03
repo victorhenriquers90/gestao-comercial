@@ -1732,6 +1732,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     mostra só as 40 mais recentes, sem paginação na tela (`listAuditFn` já
     aceita `page`).
 
+56. **Salvar cliente, fornecedor e vendedor não deixava rastro, aceitava
+    valor impossível e apagava campo que a tela não enviou.** Achados em
+    `party.ts`, todos reproduzidos antes de corrigir:
+
+    - **Comissão do vendedor sem validação**: `saveSellerFn` aceitava 150% e
+      -5% (a comissão vira dinheiro na folha). Agora `requireRange` (0–100).
+    - **Reativação silenciosa**: `isActive ?? true` — um salvamento que não
+      mandava `isActive` religava o vendedor desativado (item 53). Agora
+      preserva o valor guardado.
+    - **Cliente: salvar pelo painel apagava IE, RG, CEP, limite de crédito e
+      vendedor** (o painel não envia esses campos, o servidor gravava o
+      default). Mesma família do "campo não enviado vira default" dos itens
+      anteriores: `undefined` = não mexe, `null`/`""` = limpou de propósito.
+    - **UF truncada**: "São Paulo" virava "Sã" em cliente e fornecedor.
+      `parseUf` (agora em `sanitize.ts`, reaproveitado por `session.ts`)
+      recusa o que não tem 2 letras. `creditLimit` ganhou `requireRange`.
+    - **Editar registro inexistente/apagado "dava certo"** (UPDATE em zero
+      linhas). Agora lê a linha antes e lança "Cliente/Fornecedor/Vendedor
+      não encontrado.".
+    - **Sem auditoria**: edição de cliente, criação/edição de fornecedor e de
+      vendedor não gravavam nada. Agora gravam antes/depois (nome, documento,
+      contato, limite, comissão, regime, salário, ISS, loja, situação...).
+      `auditUpdate` (`context.ts`) só grava se algo mudou — salvar sem alterar
+      não gera linha "alterou X" vazia. `audit-label.ts` ganhou os campos e as
+      entidades fornecedor/vendedor (documento formatado, comissão/ISS em %,
+      regime por extenso, loja, situação).
+
+    Verificado ao vivo contra o Postgres real com ZZTESTE (cliente 46,
+    vendedor 26, fornecedor 14), chamando as server functions reais pela
+    sessão logada: comissão 150/-5 e UF "M" recusadas; edição pelo painel
+    preservou ie/rg/limite e `zip: ""` limpou o CEP; vendedor inativo
+    continuou inativo; ids inexistentes recusados; `audit_logs` com
+    before/after corretos; salvar fornecedor sem mudar nada não gravou linha
+    e a mudança de cidade gravou (id 177); a aba Auditoria exibiu "Victor
+    alterou vendedor “ZZTESTE Vendedor” — comissão: 8% → 12% · salário: R$
+    2.000,00 → R$ 2.500,00 · loja: Loja Centro → Loja Shopping · situação:
+    ativo → inativo" e linhas equivalentes para cliente e fornecedor. Dados
+    de teste e 12 linhas de auditoria removidos; contagem final zero.
+    `typecheck` + `lint` (0 erros, 7 avisos antigos) + `npm test` (434)
+    limpos. Testes novos em `sanitize.test.ts` (`parseUf`, `requireRange`) e
+    `audit-label.test.ts`.
+
+    Lacunas que continuam: a aba Auditoria mostra só as 40 mais recentes
+    (sem paginação na tela, `listAuditFn` já aceita `page`); `birthDate` do
+    cliente não é validado e, por causa do `coalesce`, não dá para limpar
+    (nenhuma tela usa o campo); `monthlySalary` não tem teto — acima de
+    numeric(14,2) o banco devolve erro cru; o serviço instalado só recebe
+    isto quando for atualizado.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

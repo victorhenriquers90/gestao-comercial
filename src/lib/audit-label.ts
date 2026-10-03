@@ -1,5 +1,6 @@
-import { formatBRL } from "./format.ts";
+import { formatBRL, formatDoc } from "./format.ts";
 import { ROLE_LABELS, type Role } from "./permissions.ts";
+import { TAX_REGIME_LABELS, type TaxRegime } from "./tax.ts";
 
 export type AuditRow = {
   user_name?: string | null;
@@ -19,6 +20,8 @@ const ENTITY: Record<string, string> = {
   sale: "venda",
   return: "devolução",
   customer: "cliente",
+  supplier: "fornecedor",
+  seller: "vendedor",
   inventory: "estoque",
   purchase: "compra",
   nfce: "NFC-e",
@@ -54,22 +57,33 @@ const ACTION: Record<string, string> = {
   "card_rates.save": "salvou",
 };
 
-type FieldKind = "text" | "money" | "bool" | "role" | "percent";
+type FieldKind = "text" | "money" | "bool" | "role" | "percent" | "doc" | "regime";
 
 const FIELDS: Record<string, { label: string; kind: FieldKind }> = {
   name: { label: "nome", kind: "text" },
+  tradeName: { label: "nome fantasia", kind: "text" },
+  document: { label: "documento", kind: "doc" },
+  email: { label: "e-mail", kind: "text" },
   price: { label: "preço", kind: "money" },
   cost: { label: "custo", kind: "money" },
   promoPrice: { label: "preço promocional", kind: "money" },
   role: { label: "papel", kind: "role" },
   limit: { label: "limite de desconto", kind: "percent" },
-  isActive: { label: "situação", kind: "bool" },
+  creditLimit: { label: "limite de crédito", kind: "money" },
+  commissionPct: { label: "comissão", kind: "percent" },
+  monthlySalary: { label: "salário", kind: "money" },
+  dependents: { label: "dependentes", kind: "text" },
+  issRate: { label: "ISS", kind: "percent" },
+  taxRegime: { label: "regime", kind: "regime" },
+  store: { label: "loja", kind: "text" },
   code: { label: "código", kind: "text" },
   phone: { label: "telefone", kind: "text" },
+  representative: { label: "representante", kind: "text" },
   address: { label: "endereço", kind: "text" },
   city: { label: "cidade", kind: "text" },
   state: { label: "UF", kind: "text" },
   zip: { label: "CEP", kind: "text" },
+  isActive: { label: "situação", kind: "bool" },
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -87,6 +101,10 @@ function show(kind: FieldKind, v: unknown): string {
       return ROLE_LABELS[v as Role] ?? String(v);
     case "percent":
       return `${Number(v)}%`;
+    case "doc":
+      return formatDoc(String(v));
+    case "regime":
+      return TAX_REGIME_LABELS[v as TaxRegime] ?? String(v);
     default:
       return String(v);
   }

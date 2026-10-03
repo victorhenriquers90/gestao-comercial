@@ -65,6 +65,38 @@ describe("mudancas da auditoria", () => {
     );
   });
 
+  it("traduz comissao, limite de credito, regime e documento", () => {
+    assert.deepEqual(
+      auditChanges({
+        action: "update",
+        entity: "seller",
+        before_data: { commissionPct: 5, taxRegime: "none", document: "52998224725", store: "Loja Centro" },
+        after_data: { commissionPct: 8.5, taxRegime: "clt", document: "52998224725", store: "Loja Shopping" },
+      }),
+      ["comissão: 5% → 8.5%", "regime: Sem retenção → CLT (folha)", "loja: Loja Centro → Loja Shopping"],
+    );
+    const out = auditChanges({
+      action: "update",
+      entity: "customer",
+      before_data: { creditLimit: 0, document: null },
+      after_data: { creditLimit: 500, document: "52998224725" },
+    });
+    assert.equal(out.length, 2);
+    assert.match(out[0]!, /^documento: vazio → 529\.982\.247-25$/);
+    assert.match(out[1]!, /^limite de crédito: R\$\s?0,00 → R\$\s?500,00$/);
+  });
+
+  it("titulo de fornecedor e vendedor", () => {
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "update", entity: "supplier", entity_id: 3, after_data: { name: "Têxtil Sul" } }),
+      "Ana alterou fornecedor “Têxtil Sul”",
+    );
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "create", entity: "seller", entity_id: 4, after_data: { name: "João" } }),
+      "Ana criou vendedor “João”",
+    );
+  });
+
   it("sem antes (criacao) ou com payload estranho nao quebra", () => {
     assert.deepEqual(auditChanges({ action: "create", entity: "store", before_data: null, after_data: { name: "X" } }), []);
     assert.deepEqual(auditChanges({ action: "x", entity: "y", before_data: [1], after_data: "z" }), []);

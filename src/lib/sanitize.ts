@@ -49,6 +49,25 @@ export function sanitizeCode(raw: unknown, max = 64): string | null {
   return s || null;
 }
 
+/** UF com 2 letras; vazio vira undefined, "São Paulo" ou "S" são recusados em vez de truncados. */
+export function parseUf(raw: unknown): string | undefined {
+  const s = optionalLine(raw, 10)?.toUpperCase();
+  if (!s) return undefined;
+  if (!/^[A-Z]{2}$/.test(s)) {
+    throw new Error("UF deve ter 2 letras (ex.: SP).");
+  }
+  return s;
+}
+
+/** Número finito dentro de [min, max], arredondado a 2 casas; ausente ou fora da faixa é erro. */
+export function requireRange(raw: unknown, label: string, min: number, max: number): number {
+  const n = raw === null || raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw new Error(`${label} deve ficar entre ${min} e ${max}.`);
+  }
+  return Math.round(n * 100) / 100;
+}
+
 /** http(s) or same-origin path. Rejects javascript:/data:. */
 export function sanitizeHttpUrl(raw: unknown, max = 2000): string | null {
   const s = String(raw ?? "").replace(CTRL, "").trim().slice(0, max);

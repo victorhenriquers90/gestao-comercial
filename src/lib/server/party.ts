@@ -2,15 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertFreeDocument, assertOwned, audit, requireTenant } from "./context";
+import { assertFreeDocument, assertOwned, audit, auditUpdate, requireTenant } from "./context";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument, parseCnpj, sellerDocKind, onlyDigits } from "@/lib/document";
 import { clampIss } from "@/lib/tax";
 import {
   optionalLine,
+  parseUf,
   requireLine,
   requireMultiline,
+  requireRange,
   sanitizeCode,
   sanitizeMultiline,
 } from "@/lib/sanitize";
@@ -257,15 +259,20 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       name: requireLine(d.name, "Nome"),
       tradeName: optionalLine(d.tradeName) ?? undefined,
       document: parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf") ?? undefined,
-      ie: sanitizeCode(d.ie, 32) ?? undefined,
-      rg: sanitizeCode(d.rg, 32) ?? undefined,
+      // ie/rg/zip/creditLimit/sellerId: undefined = "nao veio, mantem o
+      // gravado"; null/"" = apagado de proposito. A ficha do cliente nao
+      // mostra ie/rg/zip, e uma edicao la os apagava ao regravar.
+      ie: d.ie === undefined ? undefined : sanitizeCode(d.ie, 32),
+      rg: d.rg === undefined ? undefined : sanitizeCode(d.rg, 32),
       email: optionalLine(d.email, 120) ?? undefined,
       phone: sanitizeCode(d.phone, 32) ?? undefined,
       whatsapp: sanitizeCode(d.whatsapp, 32) ?? undefined,
       address: optionalLine(d.address, 200) ?? undefined,
       city: optionalLine(d.city, 80) ?? undefined,
-      state: optionalLine(d.state, 2) ?? undefined,
-      zip: sanitizeCode(d.zip, 16) ?? undefined,
+      state: parseUf(d.state),
+      zip: d.zip === undefined ? undefined : sanitizeCode(d.zip, 16),
+      creditLimit:
+        d.creditLimit === undefined ? undefined : requireRange(d.creditLimit, "Limite de crédito", 0, 999_999_999),
       notes: sanitizeMultiline(d.notes) ?? undefined,
       crmStage: optionalLine(d.crmStage, 24) ?? undefined,
     }),
@@ -276,6 +283,38 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     await assertFreeDocument(sql, "customers", tenant.companyId, data.document, data.id, "um cliente");
     if (data.id) {
+      const [cur] = await sql<Row>`
+        select * from customers
+        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+      `;
+      if (!cur) throw new Error("Cliente não encontrado.");
+      const ie = data.ie === undefined ? (cur.ie ?? null) : data.ie;
+      const rg = data.rg === undefined ? (cur.rg ?? null) : data.rg;
+      const zip = data.zip === undefined ? (cur.zip ?? null) : data.zip;
+      const creditLimit = data.creditLimit ?? num(cur.credit_limit);
+      const sellerId = data.sellerId === undefined ? (cur.seller_id ?? null) : data.sellerId;
+      const before = {
+        name: cur.name,
+        tradeName: cur.trade_name ?? null,
+        document: cur.document ?? null,
+        email: cur.email ?? null,
+        phone: cur.phone ?? null,
+        address: cur.address ?? null,
+        city: cur.city ?? null,
+        state: cur.state ?? null,
+        creditLimit: num(cur.credit_limit),
+      };
+      const after = {
+        name: data.name,
+        tradeName: data.tradeName ?? null,
+        document: data.document ?? null,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        address: data.address ?? null,
+        city: data.city ?? null,
+        state: data.state ?? null,
+        creditLimit,
+      };
       /*
         crm_stage = coalesce(novo, o que ja tinha), nunca um valor fixo.
         `crmStage` e opcional no validador (so o painel do CRM manda, com o
@@ -291,14 +330,15 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       */
       await sql`
         update customers set kind = ${data.kind}, name = ${data.name}, trade_name = ${data.tradeName ?? null},
-          document = ${data.document ?? null}, ie = ${data.ie ?? null}, rg = ${data.rg ?? null},
-          birth_date = ${data.birthDate ?? null}, email = ${data.email ?? null}, phone = ${data.phone ?? null},
+          document = ${data.document ?? null}, ie = ${ie}, rg = ${rg},
+          birth_date = coalesce(${data.birthDate ?? null}, birth_date), email = ${data.email ?? null}, phone = ${data.phone ?? null},
           whatsapp = ${data.whatsapp ?? null}, address = ${data.address ?? null}, city = ${data.city ?? null},
-          state = ${data.state ?? null}, zip = ${data.zip ?? null}, credit_limit = ${data.creditLimit ?? 0},
+          state = ${data.state ?? null}, zip = ${zip}, credit_limit = ${creditLimit},
           notes = ${data.notes ?? null}, crm_stage = coalesce(${data.crmStage ?? null}, crm_stage),
-          seller_id = ${data.sellerId ?? null}, updated_at = now()
+          seller_id = ${sellerId}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
+      await auditUpdate(sql, tenant, "customer", data.id, before, after);
       return { id: data.id };
     }
     const [row] = await sql<{ id: number }>`
@@ -312,7 +352,10 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
         ${data.creditLimit ?? 0}, ${data.notes ?? null}, ${data.crmStage ?? "novo"}, ${data.sellerId ?? null}
       ) returning id
     `;
-    await audit(sql, tenant, "create", "customer", row!.id, null, { name: data.name });
+    await audit(sql, tenant, "create", "customer", row!.id, null, {
+      name: data.name,
+      creditLimit: data.creditLimit ?? 0,
+    });
     return { id: row!.id };
   });
 
@@ -568,7 +611,7 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
       whatsapp: sanitizeCode(d.whatsapp, 32) ?? undefined,
       address: optionalLine(d.address, 200) ?? undefined,
       city: optionalLine(d.city, 80) ?? undefined,
-      state: optionalLine(d.state, 2) ?? undefined,
+      state: parseUf(d.state),
       zip: sanitizeCode(d.zip, 16) ?? undefined,
       representative: optionalLine(d.representative) ?? undefined,
       notes: sanitizeMultiline(d.notes) ?? undefined,
@@ -578,7 +621,23 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.write");
     await assertFreeDocument(sql, "suppliers", tenant.companyId, data.document, data.id, "um fornecedor");
+    const snapshot = {
+      name: data.legalName,
+      tradeName: data.tradeName ?? null,
+      document: data.document ?? null,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      representative: data.representative ?? null,
+      address: data.address ?? null,
+      city: data.city ?? null,
+      state: data.state ?? null,
+    };
     if (data.id) {
+      const [cur] = await sql<Row>`
+        select * from suppliers
+        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+      `;
+      if (!cur) throw new Error("Fornecedor não encontrado.");
       await sql`
         update suppliers set legal_name = ${data.legalName}, trade_name = ${data.tradeName ?? null},
           document = ${data.document ?? null}, email = ${data.email ?? null}, phone = ${data.phone ?? null},
@@ -587,6 +646,24 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
           notes = ${data.notes ?? null}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
+      await auditUpdate(
+        sql,
+        tenant,
+        "supplier",
+        data.id,
+        {
+          name: cur.legal_name,
+          tradeName: cur.trade_name ?? null,
+          document: cur.document ?? null,
+          email: cur.email ?? null,
+          phone: cur.phone ?? null,
+          representative: cur.representative ?? null,
+          address: cur.address ?? null,
+          city: cur.city ?? null,
+          state: cur.state ?? null,
+        },
+        snapshot,
+      );
       return { id: data.id };
     }
     const [row] = await sql<{ id: number }>`
@@ -598,6 +675,7 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
         ${data.zip ?? null}, ${data.representative ?? null}, ${data.notes ?? null}
       ) returning id
     `;
+    await audit(sql, tenant, "create", "supplier", row!.id, null, snapshot);
     return { id: row!.id };
   });
 
@@ -698,6 +776,9 @@ export const saveSellerFn = createServerFn({ method: "POST" })
       email: optionalLine(d.email, 120) ?? undefined,
       phone: sanitizeCode(d.phone, 32) ?? undefined,
       document: parseBrDocument(d.document, sellerDocKind(d.taxRegime)) ?? undefined,
+      // Sem isto dava para gravar comissao de 150% ou negativa: o calculo da
+      // venda usa o numero cru.
+      commissionPct: requireRange(d.commissionPct, "Comissão (%)", 0, 100),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -712,14 +793,58 @@ export const saveSellerFn = createServerFn({ method: "POST" })
     const dependents = Math.max(0, Math.floor(Number(data.dependents) || 0));
     const issRate = data.issRate == null || data.issRate === undefined ? null : clampIss(data.issRate);
     const document = data.document ?? null;
+    const storeName = async (id: unknown) => {
+      if (id == null) return null;
+      const [st] = await sql<{ name: string }>`select name from stores where id = ${id as number}`;
+      return st?.name ?? null;
+    };
     if (data.id) {
+      const [cur] = await sql<Row>`
+        select * from sellers
+        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+      `;
+      if (!cur) throw new Error("Vendedor não encontrado.");
+      // isActive omitido nao pode reativar quem foi desligado.
+      const isActive = data.isActive ?? Boolean(cur.is_active);
       await sql`
         update sellers set name = ${data.name}, email = ${data.email ?? null}, phone = ${data.phone ?? null},
           document = ${document},
-          commission_pct = ${data.commissionPct}, store_id = ${data.storeId ?? null}, is_active = ${data.isActive ?? true},
+          commission_pct = ${data.commissionPct}, store_id = ${data.storeId ?? null}, is_active = ${isActive},
           tax_regime = ${taxRegime}, monthly_salary = ${monthlySalary}, dependents = ${dependents}, iss_rate = ${issRate}
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
+      await auditUpdate(
+        sql,
+        tenant,
+        "seller",
+        data.id,
+        {
+          name: cur.name,
+          email: cur.email ?? null,
+          phone: cur.phone ?? null,
+          document: cur.document ?? null,
+          commissionPct: num(cur.commission_pct),
+          store: await storeName(cur.store_id),
+          taxRegime: cur.tax_regime ?? "none",
+          monthlySalary: num(cur.monthly_salary),
+          dependents: num(cur.dependents),
+          issRate: cur.iss_rate == null ? null : num(cur.iss_rate),
+          isActive: Boolean(cur.is_active),
+        },
+        {
+          name: data.name,
+          email: data.email ?? null,
+          phone: data.phone ?? null,
+          document,
+          commissionPct: data.commissionPct,
+          store: await storeName(data.storeId),
+          taxRegime,
+          monthlySalary,
+          dependents,
+          issRate,
+          isActive,
+        },
+      );
       return { id: data.id };
     }
     const [row] = await sql<{ id: number }>`
@@ -733,5 +858,10 @@ export const saveSellerFn = createServerFn({ method: "POST" })
       )
       returning id
     `;
+    await audit(sql, tenant, "create", "seller", row!.id, null, {
+      name: data.name,
+      commissionPct: data.commissionPct,
+      store: await storeName(data.storeId),
+    });
     return { id: row!.id };
   });
