@@ -8,6 +8,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KpiCard } from "@/components/shared";
 import { ACCOUNT_STATUS_LABELS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
+import { maskCnpj } from "@/lib/document";
 import { formatBRL, formatDate, formatDateTime, formatDoc } from "@/lib/format";
 import { getSupplierFn, saveSupplierFn } from "@/lib/server/party";
 
@@ -22,10 +23,15 @@ export function SupplierPanel({
 }) {
   const qc = useQueryClient();
   const [edit, setEdit] = useState({
+    legalName: "",
+    tradeName: "",
+    document: "",
     phone: "",
     email: "",
     representative: "",
     city: "",
+    state: "",
+    address: "",
     notes: "",
   });
   const detail = useQuery({
@@ -38,13 +44,30 @@ export function SupplierPanel({
   useEffect(() => {
     if (!s) return;
     setEdit({
+      legalName: s.legalName,
+      tradeName: s.tradeName ?? "",
+      document: maskCnpj(s.document ?? ""),
       phone: s.phone ?? "",
       email: s.email ?? "",
       representative: s.representative ?? "",
       city: s.city ?? "",
+      state: s.state ?? "",
+      address: s.address ?? "",
       notes: s.notes ?? "",
     });
-  }, [s?.id, s?.phone, s?.email, s?.representative, s?.city, s?.notes]);
+  }, [
+    s?.id,
+    s?.legalName,
+    s?.tradeName,
+    s?.document,
+    s?.phone,
+    s?.email,
+    s?.representative,
+    s?.city,
+    s?.state,
+    s?.address,
+    s?.notes,
+  ]);
 
   async function refresh() {
     void qc.invalidateQueries({ queryKey: ["supplier", supplierId] });
@@ -91,6 +114,26 @@ export function SupplierPanel({
               </TabsList>
               <TabsContent value="dados" className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Razão social">
+                    <Input
+                      value={edit.legalName}
+                      onChange={(e) => setEdit({ ...edit, legalName: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Nome fantasia">
+                    <Input
+                      value={edit.tradeName}
+                      onChange={(e) => setEdit({ ...edit, tradeName: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="CNPJ">
+                    <Input
+                      value={edit.document}
+                      inputMode="numeric"
+                      placeholder="00.000.000/0000-00"
+                      onChange={(e) => setEdit({ ...edit, document: maskCnpj(e.target.value) })}
+                    />
+                  </Field>
                   <Field label="Telefone">
                     <Input
                       value={edit.phone}
@@ -115,6 +158,19 @@ export function SupplierPanel({
                       onChange={(e) => setEdit({ ...edit, city: e.target.value })}
                     />
                   </Field>
+                  <Field label="UF">
+                    <Input
+                      value={edit.state}
+                      maxLength={2}
+                      onChange={(e) => setEdit({ ...edit, state: e.target.value.toUpperCase() })}
+                    />
+                  </Field>
+                  <Field label="Endereço">
+                    <Input
+                      value={edit.address}
+                      onChange={(e) => setEdit({ ...edit, address: e.target.value })}
+                    />
+                  </Field>
                 </div>
                 <Textarea
                   placeholder="Observações"
@@ -128,15 +184,15 @@ export function SupplierPanel({
                       await saveSupplierFn({
                         data: {
                           id: s.id,
-                          legalName: s.legalName,
-                          tradeName: s.tradeName ?? undefined,
-                          document: s.document ?? undefined,
+                          legalName: edit.legalName,
+                          tradeName: edit.tradeName || undefined,
+                          document: edit.document || undefined,
                           email: edit.email || undefined,
                           phone: edit.phone || undefined,
                           whatsapp: s.whatsapp ?? undefined,
-                          address: s.address ?? undefined,
+                          address: edit.address || undefined,
                           city: edit.city || undefined,
-                          state: s.state ?? undefined,
+                          state: edit.state || undefined,
                           zip: s.zip ?? undefined,
                           representative: edit.representative || undefined,
                           notes: edit.notes || undefined,

@@ -9,6 +9,7 @@ import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KpiCard } from "@/components/shared";
 import { ACCOUNT_STATUS_LABELS, CRM_STAGE_LABELS, CRM_STAGES, SALE_STATUS_LABELS } from "@/lib/constants";
+import { maskCnpj, maskCpf } from "@/lib/document";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate, formatDateTime, formatDoc, formatQty } from "@/lib/format";
 import {
@@ -33,7 +34,17 @@ export function CustomerPanel({
   const [note, setNote] = useState("");
   const [task, setTask] = useState("");
   const [due, setDue] = useState("");
-  const [edit, setEdit] = useState({ phone: "", email: "", creditLimit: 0, city: "" });
+  const [edit, setEdit] = useState({
+    name: "",
+    document: "",
+    phone: "",
+    email: "",
+    creditLimit: 0,
+    city: "",
+    state: "",
+    address: "",
+    notes: "",
+  });
   const detail = useQuery({
     queryKey: ["customer", customerId],
     queryFn: () => getCustomerFn({ data: { id: customerId! } }),
@@ -44,12 +55,17 @@ export function CustomerPanel({
   useEffect(() => {
     if (!c) return;
     setEdit({
+      name: c.name,
+      document: c.kind === "pj" ? maskCnpj(c.document ?? "") : maskCpf(c.document ?? ""),
       phone: c.phone ?? "",
       email: c.email ?? "",
       creditLimit: c.creditLimit,
       city: c.city ?? "",
+      state: c.state ?? "",
+      address: c.address ?? "",
+      notes: c.notes ?? "",
     });
-  }, [c?.id, c?.phone, c?.email, c?.creditLimit, c?.city]);
+  }, [c?.id, c?.name, c?.kind, c?.document, c?.phone, c?.email, c?.creditLimit, c?.city, c?.state, c?.address, c?.notes]);
 
   async function refresh() {
     void qc.invalidateQueries({ queryKey: ["customer", customerId] });
@@ -117,6 +133,24 @@ export function CustomerPanel({
               </TabsList>
               <TabsContent value="dados" className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={c.kind === "pj" ? "Razão social" : "Nome"}>
+                    <Input
+                      value={edit.name}
+                      onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                    />
+                  </Field>
+                  <Field label={c.kind === "pj" ? "CNPJ" : "CPF"}>
+                    <Input
+                      value={edit.document}
+                      inputMode="numeric"
+                      onChange={(e) =>
+                        setEdit({
+                          ...edit,
+                          document: c.kind === "pj" ? maskCnpj(e.target.value) : maskCpf(e.target.value),
+                        })
+                      }
+                    />
+                  </Field>
                   <Field label="Telefone / WhatsApp">
                     <Input
                       value={edit.phone}
@@ -135,6 +169,19 @@ export function CustomerPanel({
                       onChange={(e) => setEdit({ ...edit, city: e.target.value })}
                     />
                   </Field>
+                  <Field label="UF">
+                    <Input
+                      value={edit.state}
+                      maxLength={2}
+                      onChange={(e) => setEdit({ ...edit, state: e.target.value.toUpperCase() })}
+                    />
+                  </Field>
+                  <Field label="Endereço">
+                    <Input
+                      value={edit.address}
+                      onChange={(e) => setEdit({ ...edit, address: e.target.value })}
+                    />
+                  </Field>
                   <Field label="Limite de crédito">
                     <Input
                       type="number"
@@ -144,6 +191,11 @@ export function CustomerPanel({
                     />
                   </Field>
                 </div>
+                <Textarea
+                  placeholder="Observações"
+                  value={edit.notes}
+                  onChange={(e) => setEdit({ ...edit, notes: e.target.value })}
+                />
                 <Button
                   size="sm"
                   onClick={async () => {
@@ -152,17 +204,17 @@ export function CustomerPanel({
                         data: {
                           id: c.id,
                           kind: c.kind,
-                          name: c.name,
+                          name: edit.name,
                           tradeName: c.tradeName ?? undefined,
-                          document: c.document ?? undefined,
+                          document: edit.document || undefined,
                           email: edit.email || undefined,
                           phone: edit.phone || undefined,
                           whatsapp: edit.phone || undefined,
                           city: edit.city || undefined,
-                          state: c.state ?? undefined,
-                          address: c.address ?? undefined,
+                          state: edit.state || undefined,
+                          address: edit.address || undefined,
                           creditLimit: edit.creditLimit,
-                          notes: c.notes ?? undefined,
+                          notes: edit.notes || undefined,
                           crmStage: c.crmStage,
                           sellerId: c.sellerId,
                         },
