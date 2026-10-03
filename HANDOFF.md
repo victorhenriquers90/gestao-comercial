@@ -1566,6 +1566,51 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+52. **Nome, CPF/CNPJ, endereço, UF e observações de cliente e fornecedor
+    eram IMPOSSÍVEIS de corrigir depois de cadastrados** (`customer-panel.tsx`,
+    `supplier-panel.tsx`): a aba "Dados" só editava telefone, e-mail,
+    cidade e limite (cliente) / telefone, e-mail, representante, cidade e
+    observações (fornecedor). Os campos "críticos" eram reenviados do
+    cadastro original (`name: c.name`, `document: c.document`...) — então
+    um CPF/CNPJ digitado errado, ou um nome com erro de digitação, ficava
+    pra sempre: não existe tela de exclusão (`grep` por `delete from
+    customers|suppliers` não acha nada) nem de edição desses campos. Num
+    ERP real isso trava o cadastro de qualquer cliente que alguém digitou
+    com pressa; e pra fornecedor trava o CNPJ usado em compras/NF.
+
+    Fix: a aba "Dados" dos dois painéis agora edita também Nome / Razão
+    social, CPF ou CNPJ (com a máscara de `lib/document.ts`, conforme o
+    `kind` do cliente), UF e Endereço — e Nome fantasia no fornecedor —
+    mais Observações no cliente (o fornecedor já tinha). A validação de
+    CPF/CNPJ e a trava de duplicidade (`assertFreeDocument`, que ignora o
+    próprio `id`) já estavam no backend e passam a valer na edição.
+
+    Verificado ao vivo contra o Postgres real: cliente criado com nome
+    errado e CPF 111.444.777-35 → painel corrigiu nome, CPF (gravado só
+    com dígitos), UF (digitada "sp", gravada "SP"), endereço e observações,
+    `crm_stage` intacto; CPF inválido (11111111111) recusado com "CPF
+    inválido." e banco inalterado. Fornecedor idem: razão social, nome
+    fantasia, CNPJ, UF e endereço gravados corretamente. Dados de teste
+    (cliente 45, fornecedor 13 e a linha de `audit_logs` do cadastro)
+    removidos numa transação; contagem final zero.
+
+    Colunas `customers.ie`, `rg`, `birth_date` e `zip` continuam sem NENHUM
+    campo na UI (nem no cadastro, nem no painel), e `getCustomerFn` nem as
+    devolve — hoje nada as preenche, então o `update` que as zera não perde
+    dado. Se algum dia uma tela ou importação passar a gravá-las, o painel
+    precisa devolvê-las no payload (como o painel de fornecedor já faz com
+    `zip`/`whatsapp`), senão cada "Salvar dados" as apaga.
+
+    Também neste item: `eslint .` varria os binários de build do instalador
+    (`installer-gui/**/bin|obj|publish`, ~10 mil falsos erros) — agora
+    ignorados em `eslint.config.mjs` — e 4 erros reais em `src` foram
+    zerados (`tax.ts` let→const; `sanitize.ts`/`check-digit.ts`
+    `no-control-regex` marcados como intencionais; `catch {}` vazio em
+    `app-data/client.server.ts` ganhou comentário). Lint: 0 erros, 7
+    avisos antigos.
+
+    `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
