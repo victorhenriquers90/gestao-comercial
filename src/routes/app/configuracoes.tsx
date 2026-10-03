@@ -26,6 +26,7 @@ import {
 import { NfceReadinessPanel } from "@/components/nfce-readiness-panel";
 import { nfceStatusFn } from "@/lib/server/nfce";
 import { formatDateTime } from "@/lib/format";
+import { auditChanges, auditTitle, type AuditRow } from "@/lib/audit-label";
 import { parseCnpj, maskCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime, TAX_REGIME_LABELS, type TaxRegime } from "@/lib/nfce";
@@ -584,14 +585,20 @@ function ConfigPage() {
         <TabsContent value="audit">
           <Card className="p-5">
             <div className="space-y-2 text-sm">
-              {(audit.data as Record<string, unknown>[] | undefined)?.map((a) => (
-                <div key={String(a.id)} className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
-                  <span>
-                    {String(a.action)} · {String(a.entity)} {String(a.entity_id ?? "")}
-                  </span>
-                  <span className="text-muted-foreground">{formatDateTime(String(a.created_at))}</span>
-                </div>
-              ))}
+              {(audit.data as (AuditRow & { id: number; created_at: string })[] | undefined)?.map((a) => {
+                const mudancas = auditChanges(a);
+                return (
+                  <div key={a.id} className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
+                    <span>
+                      {auditTitle(a)}
+                      {mudancas.length > 0 && (
+                        <span className="block text-xs text-muted-foreground">{mudancas.join(" · ")}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">{formatDateTime(a.created_at)}</span>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </TabsContent>

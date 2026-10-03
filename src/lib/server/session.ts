@@ -735,10 +735,12 @@ export const listAuditFn = createServerFn({ method: "POST" })
     const page = data.page ?? 1;
     const offset = (page - 1) * 40;
     return dump(await sql<Row>`
-      select id, user_id, action, entity, entity_id, created_at
-      from audit_logs
-      where company_id = ${tenant.companyId}
-      order by created_at desc
+      select a.id, a.user_id, u.name as user_name, a.action, a.entity, a.entity_id,
+             a.before_data, a.after_data, a.created_at
+      from audit_logs a
+      left join "user" u on u.id = a.user_id
+      where a.company_id = ${tenant.companyId}
+      order by a.created_at desc, a.id desc
       limit 40 offset ${offset}
     `);
   });

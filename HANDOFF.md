@@ -1703,6 +1703,35 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     `assertStore` recusaria o PDV). Os campos endereço/telefone/CEP/UF da
     loja hoje só aparecem na própria aba Lojas; nenhum cupom ou nota os lê.
 
+55. **A aba Auditoria era ilegível e a auditoria de produto não guardava
+    preço nem custo.** A tela mostrava só `ação · entidade id` ("update ·
+    product 93"), sem quem fez nem o que mudou, e `saveProductFn` gravava no
+    `audit_logs` apenas o nome — a mudança que mais interessa ao dono
+    (alguém baixou o preço? mexeu no custo?) não deixava rastro.
+
+    Correção: `listAuditFn` (`session.ts`) faz `left join "user"` e devolve
+    `user_name`, `before_data`, `after_data`; `saveProductFn` (`catalog.ts`)
+    lê o produto antes de gravar e audita antes/depois de `name`, `price`,
+    `cost`, `promoPrice` e `isActive`; o novo `src/lib/audit-label.ts`
+    transforma a linha em texto ("Victor alterou produto “X”" + "preço: R$
+    50,00 → R$ 40,00"), traduzindo papel, situação e limite de desconto, e
+    mostrando só os campos que mudaram. 7 testes novos
+    (`audit-label.test.ts`).
+
+    Verificado ao vivo contra o Postgres real: produto descartável editado
+    pela tela (preço 50 → 40) gravou `before_data.price = 50` /
+    `after_data.price = 40`, e a aba Auditoria exibiu "Victor alterou produto
+    “ZZTESTE Produto Auditoria” — preço: R$ 50,00 → R$ 40,00"; as linhas
+    antigas (sem preço) continuam aparecendo só com título. Produto,
+    variante e auditoria de teste removidos; contagem final zero.
+    `typecheck` + `lint` (0 erros, 7 avisos antigos) + `npm test` (430)
+    limpos.
+
+    Lacunas de auditoria que continuam: atualização de cliente, fornecedores
+    e vendedores (inclusive ativar/desativar do item 53) não auditam; a aba
+    mostra só as 40 mais recentes, sem paginação na tela (`listAuditFn` já
+    aceita `page`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -300,6 +300,7 @@ export const saveProductFn = createServerFn({ method: "POST" })
         nada). So sobrescreve o que veio de verdade; o resto preserva o
         que ja esta gravado.
       */
+      let auditBefore: Record<string, unknown> | null = null;
       if (productId) {
         const [cur] = await sql<{
           has_variants: boolean;
@@ -307,10 +308,25 @@ export const saveProductFn = createServerFn({ method: "POST" })
           category_id: number | null;
           brand_id: number | null;
           supplier_id: number | null;
+          name: string;
+          price: string | number | null;
+          cost: string | number | null;
+          promo_price: string | number | null;
+          is_active: boolean;
         }>`
-          select has_variants, description, category_id, brand_id, supplier_id from products
+          select has_variants, description, category_id, brand_id, supplier_id,
+                 name, price, cost, promo_price, is_active from products
            where id = ${productId} and company_id = ${tenant.companyId}
         `;
+        if (cur) {
+          auditBefore = {
+            name: cur.name,
+            price: num(cur.price),
+            cost: num(cur.cost),
+            promoPrice: cur.promo_price == null ? null : num(cur.promo_price),
+            isActive: cur.is_active,
+          };
+        }
         if (data.variants === undefined) hasVariants = Boolean(cur?.has_variants);
         if (data.description === undefined) description = cur?.description ?? null;
         if (data.categoryId === undefined) categoryId = cur?.category_id ?? null;
@@ -376,7 +392,15 @@ export const saveProductFn = createServerFn({ method: "POST" })
           `;
         }
       }
-      await audit(sql, tenant, data.id ? "update" : "create", "product", productId, null, { name: data.name });
+      // Preco e custo vao com o antes/depois: sem isso a auditoria diz que
+      // alguem "alterou o produto" mas nao diz de quanto para quanto.
+      await audit(sql, tenant, data.id ? "update" : "create", "product", productId, auditBefore, {
+        name: data.name,
+        price,
+        cost,
+        promoPrice,
+        isActive: data.isActive ?? true,
+      });
       return { id: productId };
     });
   });
