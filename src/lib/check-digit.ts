@@ -39,6 +39,7 @@ export function isValidGtin(raw: string | null | undefined): boolean {
  * pass GTIN. Other numeric lengths stay as internal codes.
  */
 export function parseBarcode(raw: string | null | undefined): string | null {
+  // eslint-disable-next-line no-control-regex -- remover caracteres de controle e o objetivo
   const trimmed = String(raw ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
   if (!trimmed) return null;
   const d = onlyDigits(trimmed);

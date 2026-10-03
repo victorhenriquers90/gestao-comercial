@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-control-regex -- o objetivo e justamente remover caracteres de controle
 const CTRL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const TAG = /<\/?[a-zA-Z][^>]{0,200}>/g;
 const JS_URL = /^(javascript|vbscript|data):/i;

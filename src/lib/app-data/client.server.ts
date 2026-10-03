@@ -211,7 +211,9 @@ function tokenIdentityKey(token: string): string {
             .digest("base64url");
         }
       }
-    } catch {}
+    } catch {
+      // token que nao e JWT: cai no hash do token inteiro, logo abaixo
+    }
   }
   return createHash("sha256").update(token).digest("base64url");
 }

@@ -510,7 +510,7 @@ export function parseTaxBreakdown(
   const employerInss = asNumber(o.employerInss, 0);
   const employerFgts = asNumber(o.employerFgts, 0);
   const employerCost = asNumber(o.employerCost, money(gross + employerInss + employerFgts));
-  let lines = asLines(o.lines);
+  const lines = asLines(o.lines);
   if (lines.length === 0) {
     if (inss > 0) lines.push({ key: "inss", label: "INSS", amount: inss, note: "" });
     if (irrf > 0) lines.push({ key: "irrf", label: "IRRF", amount: irrf, note: "" });
