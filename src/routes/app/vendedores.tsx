@@ -53,6 +53,8 @@ function VendedoresPage() {
     monthlySalary: "",
     dependents: "0",
     issRate: "",
+    storeId: null as number | null,
+    isActive: true,
   });
   const [sellerFilter, setSellerFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pendente");
@@ -129,6 +131,8 @@ function VendedoresPage() {
         monthlySalary: s.monthly_salary ? String(s.monthly_salary) : "",
         dependents: String(s.dependents ?? 0),
         issRate: s.iss_rate != null ? String(s.iss_rate) : "",
+        storeId: s.store_id ?? null,
+        isActive: s.is_active !== false,
       });
     } else {
       setForm({
@@ -142,6 +146,8 @@ function VendedoresPage() {
         monthlySalary: "",
         dependents: "0",
         issRate: "",
+        storeId: null,
+        isActive: true,
       });
     }
     setOpen(true);
@@ -254,6 +260,11 @@ function VendedoresPage() {
               <tr key={s.id} className="border-b border-border last:border-0">
                 <Td className="font-medium">
                   <span>{s.name}</span>
+                  {s.is_active === false ? (
+                    <Badge variant="muted" className="ml-2">
+                      Inativo
+                    </Badge>
+                  ) : null}
                   {s.document ? (
                     <span className="mt-0.5 block text-xs text-muted-foreground">{formatDoc(s.document)}</span>
                   ) : null}
@@ -488,6 +499,21 @@ function VendedoresPage() {
               ) : null}
             </div>
           ) : null}
+          {form.id ? (
+            <label className="mt-block flex items-start gap-2 text-sm">
+              <NativeCheckbox
+                className="mt-0.5"
+                checked={form.isActive}
+                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+              />
+              <span>
+                Vendedor ativo
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Desmarque quando sair da empresa: some do seletor do PDV. As vendas e as comissões pendentes continuam no histórico.
+                </span>
+              </span>
+            </label>
+          ) : null}
           <Button
             className="mt-4"
             onClick={async () => {
@@ -505,6 +531,8 @@ function VendedoresPage() {
                   monthlySalary: Number(form.monthlySalary) || 0,
                   dependents: Number(form.dependents) || 0,
                   issRate: form.issRate === "" ? null : clampIss(form.issRate),
+                  storeId: form.storeId,
+                  isActive: form.isActive,
                 },
               });
               toast.success(form.id ? "Vendedor atualizado." : "Vendedor salvo.");

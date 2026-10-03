@@ -1611,6 +1611,62 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     `npm run typecheck` + `npm run lint` + `npm test` (423) limpos.
 
+53. **Não havia como desligar um funcionário nem um vendedor que saiu da
+    empresa** (`configuracoes.tsx` aba Usuários, `vendedores.tsx`). O
+    backend já tinha `isActive` nos dois (`updateMemberFn` com as travas
+    "não desativar a si mesmo" e "manter ao menos um administrador";
+    `saveSellerFn`, e `listActiveSellerNamesFn` filtrando `is_active`), mas
+    NENHUMA tela o enviava: a aba Usuários só tinha o seletor de papel e o
+    formulário de vendedor não tinha o campo. Na prática, quem saía da
+    empresa mantinha login com o papel que tinha (`requireTenant` só barra
+    `memberships.is_active = false`) e o vendedor continuava aparecendo no
+    seletor do PDV, recebendo venda e comissão, para sempre.
+
+    Junto, três defeitos de "campo não enviado vira padrão" no servidor:
+    - `updateMemberFn` gravava `is_active = data.isActive ?? true` e
+      `discount_limit` = padrão do papel sempre que o limite não vinha — ou
+      seja, toda troca de papel reativava quem estivesse desativado e
+      apagava um limite de desconto personalizado, mesmo sem o papel mudar.
+    - A trava "mantenha ao menos um administrador" comparava `nextRole !==
+      "admin"` com `nextRole` indefinido quando só se alternava o ativo:
+      acusava erro à toa (e contava o admin já inativo como se valesse).
+    - `saveSellerFn` (formulário de vendedor) não reenviava `storeId` nem
+      `isActive`, então todo "Salvar" de um vendedor com loja (os do seed
+      têm) zerava `store_id` e reativava quem estivesse inativo. No piloto
+      real não havia vendedor algum, então nada foi perdido ainda.
+
+    Fix: aba Usuários ganhou Desativar/Reativar por pessoa (escondido no
+    próprio usuário e para quem não tem `users.write`), selo "Inativo" e
+    seletor de papel travado nos inativos; `getSettingsFn` passou a listar
+    inativos (só a aba Usuários consome `members`). `updateMemberFn` agora
+    preserva `is_active` e o limite quando não vêm no pedido (o limite só
+    vai ao padrão do novo papel quando o papel muda) e a trava de último
+    admin olha o papel resultante e só conta quem está ativo; a auditoria
+    guarda `isActive` antes/depois. O formulário de vendedor ganhou "Vendedor
+    ativo" (só na edição), reenvia `storeId`/`isActive` e a lista mostra
+    "Inativo".
+
+    Verificado ao vivo contra o Postgres real, com membro (id 8, papel
+    gerente, limite 7) e vendedor (id 25) descartáveis: Desativar →
+    `is_active=false` com limite 7.00 preservado (o código antigo o levaria
+    a 25); Reativar → volta, limite 7.00; trocar o papel para vendedor →
+    limite 5.00 (padrão do novo papel) e `is_active` intacto; botão de
+    desativar ausente na linha do admin logado. Vendedor com `store_id=7`
+    editado pela tela (só o telefone) manteve a loja 7; desmarcar "ativo" →
+    `is_active=false`, selo "Inativo" na lista e o seletor real do PDV
+    ficou só com "Sem vendedor"; remarcar → volta a ativo. Dados de teste
+    (membro, usuário, vendedor e 4 linhas de `audit_logs`) removidos numa
+    transação; contagem final zero.
+
+    NÃO verificado ao vivo: o caminho que RECUSA ("Mantenha ao menos um
+    administrador"), porque exigiria rebaixar o único admin real do piloto.
+    A lógica foi revisada por leitura: membro ativo e admin, papel
+    resultante diferente de admin (ou desativação), e contagem de admins
+    ativos ≤ 1 → erro. Se alguém for testar, faça num tenant descartável.
+
+    `npm run typecheck` + `npm run lint` (0 erros, 7 avisos antigos) +
+    `npm test` (423) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

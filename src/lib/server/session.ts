@@ -380,14 +380,15 @@ export const getSettingsFn = createServerFn({ method: "GET" })
       user_id: string;
       role: string;
       discount_limit: string | number | null;
+      is_active: boolean;
       name: string | null;
       email: string | null;
     }>`
-      select m.id, m.user_id, m.role, m.discount_limit, u.name, u.email
+      select m.id, m.user_id, m.role, m.discount_limit, m.is_active, u.name, u.email
       from memberships m
       left join "user" u on u.id = m.user_id
-      where m.company_id = ${tenant.companyId} and m.is_active = true
-      order by m.id
+      where m.company_id = ${tenant.companyId}
+      order by m.is_active desc, m.id
     `;
     const invites = !podeVerEquipe
       ? []
@@ -410,6 +411,7 @@ export const getSettingsFn = createServerFn({ method: "GET" })
         user_id: m.user_id,
         role: m.role,
         discount_limit: m.discount_limit == null ? null : num(m.discount_limit),
+        is_active: m.is_active,
         name: m.name,
         email: m.email,
       })),
@@ -717,32 +719,53 @@ export const updateMemberFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "users.write");
-    const [member] = await sql<{ id: number; user_id: string; role: string }>`
-      select id, user_id, role from memberships
+    const [member] = await sql<{
+      id: number;
+      user_id: string;
+      role: string;
+      is_active: boolean;
+      discount_limit: string | number | null;
+    }>`
+      select id, user_id, role, is_active, discount_limit from memberships
       where id = ${data.id} and company_id = ${tenant.companyId}
     `;
     if (!member) throw new Error("Usuário não encontrado.");
     if (data.isActive === false && member.user_id === tenant.userId) {
       throw new Error("Você não pode desativar a si mesmo.");
     }
-    const nextRole = data.role && isRole(data.role) ? data.role : undefined;
-    if (member.role === "admin" && (nextRole !== "admin" || data.isActive === false)) {
+    // O que nao veio no pedido fica como esta. Antes `isActive ?? true`
+    // reativava quem estivesse desativado a cada troca de papel, e o limite de
+    // desconto voltava ao padrao do papel mesmo sem o papel mudar.
+    const role = data.role && isRole(data.role) ? data.role : member.role;
+    const isActive = data.isActive ?? member.is_active;
+    if (member.is_active && member.role === "admin" && (role !== "admin" || !isActive)) {
       const [admins] = await sql<{ n: number }>`
         select count(*)::int as n from memberships
         where company_id = ${tenant.companyId} and is_active = true and role = 'admin'
       `;
       if (num(admins?.n) <= 1) throw new Error("Mantenha ao menos um administrador.");
     }
-    const role = nextRole ?? member.role;
     const limit =
-      data.discountLimit == null ? DEFAULT_DISCOUNT_LIMIT[role as Role] : data.discountLimit;
+      data.discountLimit != null
+        ? data.discountLimit
+        : role === member.role && member.discount_limit != null
+          ? member.discount_limit
+          : DEFAULT_DISCOUNT_LIMIT[role as Role];
     await sql`
       update memberships
          set role = ${role},
              discount_limit = ${limit},
-             is_active = ${data.isActive ?? true}
+             is_active = ${isActive}
        where id = ${member.id}
     `;
-    await audit(sql, tenant, "update", "membership", member.id, { role: member.role }, { role, limit });
+    await audit(
+      sql,
+      tenant,
+      "update",
+      "membership",
+      member.id,
+      { role: member.role, isActive: member.is_active },
+      { role, limit, isActive },
+    );
     return { ok: true };
   });

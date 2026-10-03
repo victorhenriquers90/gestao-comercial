@@ -7,6 +7,7 @@ import { CardRatesPanel } from "@/components/card-rates-panel";
 import { IssSettingsPanel } from "@/components/iss-rate";
 import { InvitePanel } from "@/components/invite-panel";
 import { ImageField } from "@/components/image-editor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/input";
@@ -435,29 +436,63 @@ function ConfigPage() {
         <TabsContent value="equipe">
           <Card className="max-w-xl space-y-block p-5">
             {(settings.data?.members ?? []).map((m) => (
-              <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <div
+                key={m.id}
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm ${m.is_active ? "" : "opacity-70"}`}
+              >
                 <div>
-                  <p className="font-medium">{m.name || m.email || m.user_id}</p>
+                  <p className="font-medium">
+                    {m.name || m.email || m.user_id}
+                    {m.is_active ? null : (
+                      <Badge variant="muted" className="ml-2">
+                        Inativo
+                      </Badge>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">{m.email}</p>
                 </div>
-                <Select
-                  value={m.role}
-                  className="w-40"
-                  onChange={(e) => {
-                    void updateMemberFn({ data: { id: m.id, role: e.target.value } })
-                      .then(() => {
-                        toast.success("Papel atualizado.");
-                        void qc.invalidateQueries({ queryKey: ["settings"] });
-                      })
-                      .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
-                  }}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={m.role}
+                    className="w-40"
+                    disabled={!m.is_active}
+                    onChange={(e) => {
+                      void updateMemberFn({ data: { id: m.id, role: e.target.value } })
+                        .then(() => {
+                          toast.success("Papel atualizado.");
+                          void qc.invalidateQueries({ queryKey: ["settings"] });
+                        })
+                        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                    }}
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </Select>
+                  {papel && can(papel, "users.write") && m.user_id !== tenant.data?.userId ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const desativar = m.is_active;
+                        void updateMemberFn({ data: { id: m.id, isActive: !desativar } })
+                          .then(() => {
+                            toast.success(
+                              desativar
+                                ? `${m.name || m.email || "Usuário"} desativado: não consegue mais entrar.`
+                                : `${m.name || m.email || "Usuário"} reativado.`,
+                            );
+                            void qc.invalidateQueries({ queryKey: ["settings"] });
+                          })
+                          .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                      }}
+                    >
+                      {m.is_active ? "Desativar" : "Reativar"}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ))}
             {papel && can(papel, "users.write") ? (
