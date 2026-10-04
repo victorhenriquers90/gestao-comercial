@@ -104,6 +104,7 @@ const EVENT_FIELDS: Record<string, { label: string; kind: FieldKind }> = {
   category: { label: "categoria", kind: "text" },
   method: { label: "forma", kind: "method" },
   status: { label: "situação", kind: "text" },
+  cashReversal: { label: "devolvido ao caixa", kind: "money" },
   reason: { label: "motivo", kind: "text" },
 };
 

@@ -89,7 +89,7 @@ export const savePayableFn = createServerFn({ method: "POST" })
       const id = data.id;
       return sql.transaction(async (sql) => {
         const [cur] = await sql<Row>`
-          select description, category, due_date, amount, paid_amount, status, supplier_id, store_id
+          select description, category, due_date, amount, paid_amount, status, supplier_id, store_id, purchase_id
             from accounts_payable
            where id = ${id} and company_id = ${tenant.companyId} and deleted_at is null
            for update
@@ -102,6 +102,17 @@ export const savePayableFn = createServerFn({ method: "POST" })
         // sempre, com saldo negativo, e a baixa seguinte nunca fecharia.
         if (data.amount < num(cur.paid_amount)) {
           throw new Error("O valor não pode ficar abaixo do que já foi pago.");
+        }
+        // Conta que nasceu do recebimento de uma compra: vencimento, descrição
+        // e categoria são do financeiro, mas valor, fornecedor e loja são da
+        // compra — mexer neles aqui desencontra a conta do pedido.
+        if (
+          cur.purchase_id != null &&
+          (Math.abs(data.amount - num(cur.amount)) > 0.005 ||
+            (data.supplierId ?? null) !== (cur.supplier_id == null ? null : num(cur.supplier_id)) ||
+            (data.storeId ?? null) !== (cur.store_id == null ? null : num(cur.store_id)))
+        ) {
+          throw new Error("Conta gerada por uma compra: só descrição, categoria e vencimento podem mudar.");
         }
         await sql`
           update accounts_payable set description = ${data.description}, category = ${data.category},
@@ -180,11 +191,13 @@ export const settlePayableFn = createServerFn({ method: "POST" })
         paid_amount: string | number;
         store_id: number | null;
         description: string | null;
+        status: string;
       }>`
-        select amount, paid_amount, store_id, description from accounts_payable
+        select amount, paid_amount, store_id, description, status from accounts_payable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
+      if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
 
       /*
         Mesma correcao de settleReceivableFn, no sentido contrario: pagar um
@@ -380,11 +393,13 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
         received_amount: string | number;
         store_id: number | null;
         description: string | null;
+        status: string;
       }>`
-        select amount, received_amount, store_id, description from accounts_receivable
+        select amount, received_amount, store_id, description, status from accounts_receivable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
+      if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
 
       /*
         Parcela paga em DINHEIRO no balcao entra na gaveta. Antes a baixa nao
@@ -670,9 +685,14 @@ async function loadOpenRegister(
   // conta aqui pro fechamento (expectedCash so soma cash_movements), mas
   // NAO em cashflowFn (que ja soma esse mesmo valor via `expenses`/`paid`;
   // somar os dois ali duplicava o valor em "Saidas").
-  const sangria = byMethod
-    .filter((m) => m.type === "sangria" || m.type === "sangria_liquidacao")
-    .reduce((a, m) => a + num(m.total), 0);
+  // 'estorno_liquidacao' e o dinheiro de uma despesa cancelada voltando pra
+  // gaveta: entra COM SINAL NEGATIVO aqui, entao o esperado volta ao que era
+  // antes do pagamento sem mexer na formula do fechamento.
+  const sangria = byMethod.reduce((a, m) => {
+    if (m.type === "sangria" || m.type === "sangria_liquidacao") return a + num(m.total);
+    if (m.type === "estorno_liquidacao") return a - num(m.total);
+    return a;
+  }, 0);
   const suprimento = byMethod.filter((m) => m.type === "suprimento").reduce((a, m) => a + num(m.total), 0);
   const refunds = byMethod
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
@@ -1269,6 +1289,7 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
         despesa ja esta em `expenses`, que o `cashflowFn` ja soma em
         "Saidas" -- uma `sangria` normal duplicaria o valor la.
       */
+      let cashMovementId: number | null = null;
       if (data.method === "dinheiro") {
         if (!data.storeId) throw new Error("Selecione a loja para lançar a despesa em dinheiro.");
         await assertStore(sql, tenant.companyId, data.storeId);
@@ -1278,15 +1299,17 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
            limit 1
         `;
         if (!reg) throw new Error("Abra o caixa desta loja para lançar a despesa em dinheiro.");
-        await sql`
+        const [mov] = await sql<{ id: number }>`
           insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
           values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro',
                   ${data.amount}, ${`Despesa: ${data.description}`})
+          returning id
         `;
+        cashMovementId = mov!.id;
       }
       const [exp] = await sql<{ id: number }>`
-        insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
-        values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category}, ${data.amount}, ${data.spentAt}, ${data.accountKind}, ${tenant.userId})
+        insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id, method, cash_movement_id)
+        values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category}, ${data.amount}, ${data.spentAt}, ${data.accountKind}, ${tenant.userId}, ${data.method}, ${cashMovementId})
         returning id
       `;
       await audit(sql, tenant, "create", "expense", exp!.id, null, {
@@ -1297,6 +1320,171 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
       });
     });
     return { ok: true };
+  });
+
+/*
+  Cancelamento de lançamentos do financeiro.
+
+  Até aqui um lançamento errado (valor digitado com zero a mais, despesa em
+  duplicidade, conta a pagar de fornecedor trocado) não tinha saída: ficava
+  no fluxo de caixa para sempre. Cancelar NÃO apaga: a conta vira
+  'cancelado' (some dos totais em aberto, que filtram por status) e a despesa
+  recebe `deleted_at` (some de "Saídas"); a linha continua no banco e o
+  cancelamento fica na Auditoria com quem fez e por quê.
+
+  Só cancela o que ainda não teve dinheiro andando: conta com pagamento ou
+  recebimento registrado teria de estornar a baixa, e essa reversão (caixa,
+  cartão, fluxo) é outra operação — fica recusada aqui, com a mensagem dizendo
+  por quê.
+*/
+function parseCancelReason(raw: unknown): string {
+  return requireLine(raw, "Motivo", 200);
+}
+
+export const cancelPayableFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.write");
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select description, amount, paid_amount, due_date, status, purchase_id
+          from accounts_payable
+         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+         for update
+      `;
+      if (!cur) throw new Error("Conta a pagar não encontrada.");
+      if (cur.status === "cancelado") throw new Error("Esta conta já foi cancelada.");
+      if (cur.status === "pago" || num(cur.paid_amount) > 0.009) {
+        throw new Error("Conta com pagamento registrado não pode ser cancelada.");
+      }
+      if (cur.purchase_id != null) {
+        throw new Error("Conta gerada pelo recebimento de uma compra não pode ser cancelada aqui.");
+      }
+      await sql`
+        update accounts_payable set status = 'cancelado'
+         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "cancel", "accounts_payable", data.id, null, {
+        description: String(cur.description),
+        amount: num(cur.amount),
+        dueDate: String(cur.due_date).slice(0, 10),
+        reason: data.reason,
+      });
+      return { ok: true };
+    });
+  });
+
+export const cancelReceivableFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.write");
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select description, amount, received_amount, due_date, status, origin
+          from accounts_receivable
+         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+         for update
+      `;
+      if (!cur) throw new Error("Conta a receber não encontrada.");
+      if (cur.status === "cancelado") throw new Error("Esta conta já foi cancelada.");
+      // Parcela de crediário/cartão nasce da venda; quem a desfaz é o cancelamento
+      // ou a devolução da venda, que também acerta estoque, caixa e comissão.
+      if (cur.origin !== "manual") {
+        throw new Error("Título gerado por venda não pode ser cancelado aqui.");
+      }
+      if (cur.status === "pago" || num(cur.received_amount) > 0.009) {
+        throw new Error("Conta com recebimento registrado não pode ser cancelada.");
+      }
+      await sql`
+        update accounts_receivable set status = 'cancelado'
+         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "cancel", "accounts_receivable", data.id, null, {
+        description: String(cur.description),
+        amount: num(cur.amount),
+        dueDate: String(cur.due_date).slice(0, 10),
+        reason: data.reason,
+      });
+      return { ok: true };
+    });
+  });
+
+export const cancelExpenseFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.write");
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select description, category, amount, method, cash_movement_id
+          from expenses
+         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+         for update
+      `;
+      if (!cur) throw new Error("Despesa não encontrada ou já cancelada.");
+      const amount = num(cur.amount);
+      let devolvidoAoCaixa = 0;
+
+      if (cur.cash_movement_id != null) {
+        // Despesa paga em dinheiro: o valor saiu da gaveta e o esperado do
+        // fechamento já o descontou. Cancelar sem devolver deixaria o caixa
+        // com SOBRA igual ao valor. `for update` no caixa serializa com o
+        // fechamento: sem isso o caixa podia fechar entre a checagem e o estorno.
+        const [mov] = await sql<Row>`
+          select m.store_id, m.register_id, r.status as register_status
+            from cash_movements m
+            join cash_registers r on r.id = m.register_id
+           where m.id = ${num(cur.cash_movement_id)} and m.company_id = ${tenant.companyId}
+           for update of r
+        `;
+        if (!mov) throw new Error("Não foi possível localizar o pagamento desta despesa no caixa.");
+        if (mov.register_status !== "open") {
+          throw new Error(
+            "Esta despesa foi paga em dinheiro num caixa que já fechou, então o cancelamento não consegue devolver o dinheiro à gaveta. Se o dinheiro voltou, lance um suprimento no caixa aberto explicando o motivo.",
+          );
+        }
+        await sql`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+          values (${tenant.companyId}, ${num(mov.store_id)}, ${num(mov.register_id)}, ${tenant.userId},
+                  'estorno_liquidacao', 'dinheiro', ${amount}, ${`Estorno: ${String(cur.description)}`})
+        `;
+        devolvidoAoCaixa = amount;
+      } else if (cur.method == null) {
+        // Despesa anterior ao vínculo com o caixa: não dá para saber se foi em
+        // dinheiro. Se existe saída de caixa com a mesma descrição e valor,
+        // cancelar deixaria essa saída órfã — melhor recusar do que adivinhar.
+        const [orfa] = await sql<{ id: number }>`
+          select id from cash_movements
+           where company_id = ${tenant.companyId} and type = 'sangria_liquidacao'
+             and description = ${`Despesa: ${String(cur.description)}`} and amount = ${amount}
+           limit 1
+        `;
+        if (orfa) {
+          throw new Error(
+            "Esta despesa é anterior ao vínculo com o caixa e foi paga em dinheiro; o sistema não consegue devolver esse dinheiro à gaveta automaticamente.",
+          );
+        }
+      }
+
+      await sql`
+        update expenses set deleted_at = now()
+         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "cancel", "expense", data.id, null, {
+        description: String(cur.description),
+        amount,
+        category: cur.category == null ? null : String(cur.category),
+        method: cur.method == null ? null : String(cur.method),
+        cashReversal: devolvidoAoCaixa > 0 ? devolvidoAoCaixa : null,
+        reason: data.reason,
+      });
+      return { ok: true, cashReversal: devolvidoAoCaixa };
+    });
   });
 
 export const listTargetsFn = createServerFn({ method: "GET" })

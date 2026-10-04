@@ -157,6 +157,8 @@ export const CASH_MOVE_LABELS: Record<string, string> = {
   sangria: "Sangria",
   /** Sangria automatica de pagar comissao/fornecedor em dinheiro (settleSellerBatch/settlePayableFn). */
   sangria_liquidacao: "Pagamento",
+  /** Dinheiro de uma despesa cancelada voltando pra gaveta (cancelExpenseFn). */
+  estorno_liquidacao: "Estorno de pagamento",
   suprimento: "Suprimento",
   cancelamento: "Cancelamento",
   abertura: "Abertura",

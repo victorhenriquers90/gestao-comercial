@@ -1881,6 +1881,92 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     também ainda sem auditoria; o serviço instalado só recebe isto quando
     for atualizado.
 
+59. **Não dava para desfazer um lançamento errado do financeiro — agora dá,
+    com motivo obrigatório, auditoria e devolução do dinheiro ao caixa.**
+    Item 58 deixou a lacuna: despesa lançada errada ficava para sempre
+    (nem edição), conta a pagar/receber manual errada só podia ser editada
+    ou paga. `cancelExpenseFn`, `cancelPayableFn` e `cancelReceivableFn`
+    (`finance.ts`) rodam em `sql.transaction` com `select ... for update`,
+    exigem `reason` (`requireLine`, até 200 caracteres), marcam o lançamento
+    (despesa: `deleted_at = now()`; conta: `status = 'cancelado'`) e gravam
+    `audit(..., "cancel", ...)` com `{ description, amount, ..., reason }`.
+    Como todo agregado (relatórios, fluxo, DRE, crédito do cliente, sessão
+    de caixa) já filtrava `deleted_at is null` / `status in
+    ('pendente','parcial','vencido')`, o lançamento cancelado sai dos totais
+    sem mexer em nenhuma query.
+
+    O ponto delicado é o dinheiro. Despesa paga em dinheiro tira o valor da
+    gaveta (`sangria_liquidacao`, item 47) — cancelar sem devolver deixaria o
+    caixa "faltando" no fechamento. A migração `0032_expense_cash_link.sql`
+    adiciona `expenses.method` e `expenses.cash_movement_id`; `saveExpenseFn`
+    passa a guardar os dois. Cancelar uma despesa em dinheiro cria um
+    movimento novo `estorno_liquidacao` ("Estorno de pagamento") no MESMO
+    caixa, e `loadOpenRegister` o desconta da sangria líquida
+    (`esperado = abertura + vendas + recebimentos + suprimento - sangria`
+    continua valendo). O movimento original nunca é apagado: o histórico do
+    caixa mostra os dois.
+
+    O que o sistema RECUSA (mensagem própria em cada caso):
+    - cancelar duas vezes; motivo em branco; id inexistente/de outra empresa;
+    - conta com pagamento/recebimento já registrado (`paid_amount`/
+      `received_amount > 0.009`) ou `pago` — não há "estorno de baixa" ainda;
+    - conta a pagar gerada por compra (`purchase_id`) e conta a receber que
+      não é `origin = 'manual'` (parcela de crediário/venda): o dono
+      desfaz pela compra/venda, não aqui;
+    - despesa em dinheiro cujo caixa já FECHOU: não há gaveta aberta para
+      receber o dinheiro de volta; a mensagem manda lançar um suprimento no
+      caixa aberto explicando o motivo (nenhum estorno é gravado e a despesa
+      continua viva);
+    - despesa LEGADA (anterior à migração, `method` nulo) quando existe um
+      `sangria_liquidacao` "Despesa: <descrição>" do mesmo valor: o vínculo
+      se perdeu e o sistema não adivinha — recusa. Legada sem movimento
+      correspondente (PIX etc.) cancela normalmente.
+
+    Dois furos achados no caminho e fechados: `settlePayableFn` e
+    `settleReceivableFn` aceitavam baixa em título já `cancelado` (agora
+    "Este título foi cancelado e não aceita baixa."); `savePayableFn`
+    deixava mudar valor, fornecedor e loja de conta gerada por compra,
+    descolando o título da compra — agora só descrição, categoria e
+    vencimento mudam nela.
+
+    Tela (`financeiro.tsx`): botão "Cancelar conta" nas linhas de pagar/
+    receber só quando cancelável (sem pagamento, aberta, não gerada por
+    compra/venda) e "Cancelar despesa" na aba Despesas; um diálogo pede o
+    motivo (botão Confirmar desabilitado em branco), avisa "o valor volta
+    para o caixa aberto da loja" quando a despesa foi em dinheiro e os
+    toasts dizem o que aconteceu. `audit-label.ts` ganhou "devolvido ao
+    caixa" e "motivo"; `CASH_MOVE_LABELS` ganhou `estorno_liquidacao`.
+
+    Verificado ao vivo contra o Postgres real (empresa 4, loja 8), pelas
+    server functions e pela tela: despesa em dinheiro de 30 cancelada →
+    caixa esperado 70 → 100, sangria líquida 0, Saídas 50 → 0; segunda
+    tentativa recusada; PIX cancelada sem movimento; conta a pagar/receber
+    canceladas somem de "em aberto" e passam a recusar baixa e edição; com
+    pagamento parcial/total recusadas; parcela `origin='crediario'` e conta
+    com `purchase_id` recusadas (preparadas por SQL, a empresa 4 não tem
+    compras) — nesta última, editar vencimento passou e valor/loja foram
+    recusados; caixa fechado recusado sem efeito colateral e depois
+    reaberto; legada com e sem movimento casada recusada/aceita. Na tela:
+    botões só nas linhas certas, diálogo com e sem aviso de dinheiro, toasts
+    "Conta cancelada." e "Despesa cancelada e dinheiro devolvido ao caixa.",
+    e a aba Auditoria mostrando "Victor cancelou despesa “…” — valor ·
+    categoria · forma: Dinheiro · devolvido ao caixa · motivo". Dados de
+    teste (24 linhas de auditoria, caixa, 5 movimentos, 5 despesas, 4
+    contas a pagar, 3 a receber) removidos em uma transação; empresa 4
+    voltou às 13 linhas de antes e zero caixa/movimento/lançamento.
+    `typecheck` + `lint` (0 erros, 7 avisos antigos) + `npm test` (443)
+    limpos; teste novo em `audit-label.test.ts`.
+
+    IMPORTANTE para o serviço instalado: a migração 0032 precisa rodar
+    (`npm run db:migrate`, já parte do `build`) — sem as colunas novas,
+    lançar despesa quebra. Isto só chega ao serviço depois de atualizado.
+
+    Lacunas que continuam: não existe "estorno de baixa" (desfazer um
+    pagamento/recebimento já feito — hoje conta paga não cancela); despesas
+    em dinheiro anteriores à migração não devolvem a gaveta sozinhas (a
+    saída é um suprimento manual); metas, promoções e regras de comissão
+    ainda sem auditoria.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

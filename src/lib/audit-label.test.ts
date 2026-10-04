@@ -114,6 +114,47 @@ describe("mudancas da auditoria", () => {
     assert.equal(out[2], "forma: PIX");
   });
 
+  it("cancelamento de lancamento mostra o valor, o dinheiro devolvido e o motivo", () => {
+    assert.equal(
+      auditTitle({
+        user_name: "Ana",
+        action: "cancel",
+        entity: "expense",
+        entity_id: 7,
+        after_data: { description: "Motoboy" },
+      }),
+      "Ana cancelou despesa “Motoboy”",
+    );
+    const out = auditChanges({
+      action: "cancel",
+      entity: "expense",
+      before_data: null,
+      after_data: {
+        description: "Motoboy",
+        amount: 25,
+        category: null,
+        method: "dinheiro",
+        cashReversal: 25,
+        reason: "Lançada em duplicidade",
+      },
+    });
+    assert.equal(out.length, 4);
+    assert.match(out[0]!, /^valor: R\$\s?25,00$/);
+    assert.equal(out[1], "forma: Dinheiro");
+    assert.match(out[2]!, /^devolvido ao caixa: R\$\s?25,00$/);
+    assert.equal(out[3], "motivo: Lançada em duplicidade");
+
+    const conta = auditChanges({
+      action: "cancel",
+      entity: "accounts_payable",
+      before_data: null,
+      after_data: { description: "Luz", amount: 200, dueDate: "2026-10-05", reason: "Fornecedor errado" },
+    });
+    assert.equal(conta.length, 3);
+    assert.equal(conta[1], "vencimento: 05/10/2026");
+    assert.equal(conta[2], "motivo: Fornecedor errado");
+  });
+
   it("sangria e suprimento mostram valor e motivo", () => {
     assert.equal(
       auditTitle({ user_name: "Rui", action: "sangria", entity: "cash_register", entity_id: 3, after_data: { amount: 80 } }),

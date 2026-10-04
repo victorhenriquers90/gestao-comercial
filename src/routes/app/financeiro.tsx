@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +26,9 @@ import { CardSettlementPanel } from "@/components/card-settlement-panel";
 import { formatBRL, formatDate } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import {
+  cancelExpenseFn,
+  cancelPayableFn,
+  cancelReceivableFn,
   cashflowFn,
   listExpensesFn,
   listPayablesFn,
@@ -40,6 +43,14 @@ import { listCustomersFn, listSuppliersFn } from "@/lib/server/party";
 import { cn, num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
+
+type CancelTarget = {
+  kind: "pagar" | "receber" | "despesa";
+  id: number;
+  label: string;
+  /** Despesa paga em dinheiro: o cancelamento devolve o valor ao caixa aberto. */
+  dinheiro?: boolean;
+};
 
 function FinanceiroPage() {
   const loc = useLocation();
@@ -91,6 +102,10 @@ function FinanceiroPage() {
   const [due, setDue] = useState("");
   const [partyId, setPartyId] = useState("");
   const [category, setCategory] = useState("Compras");
+  /** Lancamento que a pessoa esta cancelando e o motivo (obrigatorio: vai pra Auditoria). */
+  const [cancelando, setCancelando] = useState<CancelTarget | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false);
 
   const pay = useQuery({
     queryKey: ["ap", storeId],
@@ -113,6 +128,44 @@ function FinanceiroPage() {
 
   if (pay.isPending) return <PageSkeleton />;
   if (pay.error) return <QueryError error={pay.error} fallback="Erro ao carregar o financeiro." />;
+
+  function pedirCancelamento(alvo: CancelTarget) {
+    setMotivo("");
+    setCancelando(alvo);
+  }
+
+  async function confirmarCancelamento() {
+    if (!cancelando || confirmandoCancelamento) return;
+    if (!motivo.trim()) return toast.error("Informe o motivo do cancelamento.");
+    const alvo = cancelando;
+    setConfirmandoCancelamento(true);
+    try {
+      const data = { id: alvo.id, reason: motivo };
+      const ok = await runAction(
+        () =>
+          alvo.kind === "pagar"
+            ? cancelPayableFn({ data })
+            : alvo.kind === "receber"
+              ? cancelReceivableFn({ data })
+              : cancelExpenseFn({ data }),
+        {
+          sucesso:
+            alvo.kind === "despesa" && alvo.dinheiro
+              ? "Despesa cancelada e dinheiro devolvido ao caixa."
+              : alvo.kind === "despesa"
+                ? "Despesa cancelada."
+                : "Conta cancelada.",
+        },
+      );
+      if (!ok) return;
+      setCancelando(null);
+      for (const key of ["ap", "ar", "expenses", "flow", "register"]) {
+        void qc.invalidateQueries({ queryKey: [key] });
+      }
+    } finally {
+      setConfirmandoCancelamento(false);
+    }
+  }
 
   const overduePay = (pay.data ?? []).filter((r) => String(r.status) === "vencido").length;
   const overdueRec = (rec.data ?? []).filter((r) => String(r.status) === "vencido").length;
@@ -210,6 +263,7 @@ function FinanceiroPage() {
                     </Badge>
                   </Td>
                   <Td>
+                    <div className="flex items-center gap-2">
                     {r.status !== "pago" && r.status !== "cancelado" ? (
                       pagandoId === num(r.id) ? (
                         // Mesma pergunta do recebimento: em dinheiro (comum
@@ -277,6 +331,19 @@ function FinanceiroPage() {
                         </Button>
                       )
                     ) : null}
+                    {pagandoId !== num(r.id) &&
+                    num(r.paid_amount) < 0.01 &&
+                    (r.status === "pendente" || r.status === "vencido") &&
+                    r.purchase_id == null ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => pedirCancelamento({ kind: "pagar", id: num(r.id), label: String(r.description) })}
+                      >
+                        Cancelar conta
+                      </Button>
+                    ) : null}
+                    </div>
                   </Td>
                 </tr>
               );
@@ -347,6 +414,7 @@ function FinanceiroPage() {
                     </Badge>
                   </Td>
                   <Td>
+                    <div className="flex items-center gap-2">
                     {r.status !== "pago" && r.status !== "cancelado" ? (
                       recebendoId === num(r.id) ? (
                         // Pergunta COMO foi pago antes de dar baixa: em dinheiro
@@ -413,6 +481,21 @@ function FinanceiroPage() {
                         </Button>
                       )
                     ) : null}
+                    {recebendoId !== num(r.id) &&
+                    num(r.received_amount) < 0.01 &&
+                    (r.status === "pendente" || r.status === "vencido") &&
+                    r.origin === "manual" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          pedirCancelamento({ kind: "receber", id: num(r.id), label: String(r.description) })
+                        }
+                      >
+                        Cancelar conta
+                      </Button>
+                    ) : null}
+                    </div>
                   </Td>
                 </tr>
               );
@@ -518,6 +601,7 @@ function FinanceiroPage() {
                 <Th>Descrição</Th>
                 <Th>Categoria</Th>
                 <Th className="col-num">Valor</Th>
+                <Th></Th>
               </tr>
             }
           >
@@ -527,6 +611,22 @@ function FinanceiroPage() {
                 <Td>{String(e.description)}</Td>
                 <Td>{String(e.category ?? "—")}</Td>
                 <Td className="tabular col-num">{formatBRL(num(e.amount))}</Td>
+                <Td>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      pedirCancelamento({
+                        kind: "despesa",
+                        id: num(e.id),
+                        label: String(e.description),
+                        dinheiro: e.cash_movement_id != null,
+                      })
+                    }
+                  >
+                    Cancelar despesa
+                  </Button>
+                </Td>
               </tr>
             ))}
           </DataTable>
@@ -534,6 +634,43 @@ function FinanceiroPage() {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={cancelando != null} onOpenChange={(o) => (o ? null : setCancelando(null))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{cancelando?.kind === "despesa" ? "Cancelar despesa" : "Cancelar conta"}</DialogTitle>
+            <DialogDescription>
+              {cancelando ? `“${cancelando.label}”. ` : ""}
+              O lançamento deixa de contar nos totais e fica registrado na Auditoria com o seu nome e o motivo.
+              {cancelando?.kind === "despesa" && cancelando.dinheiro
+                ? " Como foi paga em dinheiro, o valor volta para o caixa aberto da loja."
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <Field label="Motivo do cancelamento">
+            <Input
+              value={motivo}
+              maxLength={200}
+              autoFocus
+              onChange={(e) => setMotivo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void confirmarCancelamento();
+              }}
+            />
+          </Field>
+          <div className="mt-4 flex gap-2">
+            <Button
+              variant="destructive"
+              disabled={!motivo.trim() || confirmandoCancelamento}
+              onClick={() => void confirmarCancelamento()}
+            >
+              {confirmandoCancelamento ? "Cancelando…" : "Confirmar cancelamento"}
+            </Button>
+            <Button variant="ghost" onClick={() => setCancelando(null)}>
+              Voltar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={openPay} onOpenChange={setOpenPay}>
         <DialogContent>
           <DialogHeader>
