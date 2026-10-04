@@ -1781,6 +1781,38 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     numeric(14,2) o banco devolve erro cru; o serviço instalado só recebe
     isto quando for atualizado.
 
+57. **A aba Auditoria parava nas 40 mais recentes.** O dono não via nada
+    além disso: a tela chamava `listAuditFn` sem página e não havia como
+    pedir a seguinte. Com o item 56 gravando cliente, fornecedor e vendedor,
+    as 40 linhas passam a durar poucos dias de uso.
+
+    Correção: `listAuditFn` (`session.ts`) trocou `page`/offset por cursor
+    (`before` = último id recebido). Offset repetiria ou pularia linhas se
+    entrasse registro novo enquanto o dono navega; o cursor não. Busca 41
+    para saber se há mais e devolve `{ rows, nextBefore }` (`nextBefore` nulo
+    na última página, então o botão nunca leva a uma página vazia). A ordem
+    passou a ser só por `id desc` — conferido no Postgres real que `id` e
+    `created_at` andam juntos (0 linhas fora de ordem). `parseCursor`
+    (`sanitize.ts`) transforma lixo (texto, negativo, 0, 1.5, NaN) em
+    "primeira página" em vez de erro cru do banco. Na tela
+    (`configuracoes.tsx`) a aba usa `useInfiniteQuery` com botão "Carregar
+    mais", só consulta se o papel tem `audit.read` (antes disparava para
+    qualquer papel) e passou a mostrar "Carregando...", erro e "Nenhuma
+    alteração registrada ainda." — antes a lista vazia era um card em branco.
+
+    Verificado ao vivo contra o Postgres real: fornecedor ZZTESTE editado 48
+    vezes pelo próprio app (48 linhas de auditoria, 61 no total da empresa).
+    Aba: 40 linhas + botão → clique → 61 linhas, botão some. Pela função, ids
+    únicos e decrescentes, páginas [40, 21], total igual ao `count(*)` do
+    banco; cursor -3/"abc"/0/1.5/null devolve a primeira página. Dados de
+    teste removidos (48 linhas + fornecedor); empresa 4 voltou às 13 linhas
+    de antes. `typecheck` + `lint` (0 erros, 7 avisos antigos) + `npm test`
+    (436) limpos; 2 testes novos em `sanitize.test.ts`.
+
+    Lacunas que continuam: a aba não filtra por tipo (produto, cliente...)
+    nem por pessoa; outras telas de cadastro ainda não auditam (loja,
+    cartões/taxas, metas, regras de comissão — conferir antes de afirmar).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

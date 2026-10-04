@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -74,7 +74,17 @@ function ConfigPage() {
       ? tabPedida
       : (CONFIG_TABS.find((t) => abaPermitida[t]) ?? tabPedida);
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
-  const audit = useQuery({ queryKey: ["audit"], queryFn: () => listAuditFn({ data: {} }) });
+  const audit = useInfiniteQuery({
+    queryKey: ["audit"],
+    queryFn: ({ pageParam }) => listAuditFn({ data: { before: pageParam } }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (ultima) => ultima.nextBefore ?? undefined,
+    enabled: podeVerAuditoria,
+  });
+  const auditRows = (audit.data?.pages.flatMap((p) => p.rows) ?? []) as (AuditRow & {
+    id: number;
+    created_at: string;
+  })[];
   const nfceStatus = useQuery({ queryKey: ["nfce-status"], queryFn: () => nfceStatusFn() });
   const [form, setForm] = useState({
     name: "",
@@ -585,7 +595,14 @@ function ConfigPage() {
         <TabsContent value="audit">
           <Card className="p-5">
             <div className="space-y-2 text-sm">
-              {(audit.data as (AuditRow & { id: number; created_at: string })[] | undefined)?.map((a) => {
+              {audit.isError ? (
+                <p className="py-2 text-destructive">Não foi possível carregar a auditoria.</p>
+              ) : audit.isPending ? (
+                <p className="py-2 text-muted-foreground">Carregando...</p>
+              ) : auditRows.length === 0 ? (
+                <p className="py-2 text-muted-foreground">Nenhuma alteração registrada ainda.</p>
+              ) : null}
+              {auditRows.map((a) => {
                 const mudancas = auditChanges(a);
                 return (
                   <div key={a.id} className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
@@ -600,6 +617,13 @@ function ConfigPage() {
                 );
               })}
             </div>
+            {audit.hasNextPage ? (
+              <div className="mt-3 flex justify-center">
+                <Button variant="outline" disabled={audit.isFetchingNextPage} onClick={() => audit.fetchNextPage()}>
+                  {audit.isFetchingNextPage ? "Carregando..." : "Carregar mais"}
+                </Button>
+              </div>
+            ) : null}
           </Card>
         </TabsContent>
       </Tabs>

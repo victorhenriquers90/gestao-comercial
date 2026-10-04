@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   optionalLine,
+  parseCursor,
   parseUf,
   requireLine,
   requireRange,
@@ -66,5 +67,18 @@ describe("UF e faixa numerica", () => {
     assert.throws(() => requireRange("", "Comissão", 0, 100), /entre 0 e 100/);
     assert.throws(() => requireRange(Number.NaN, "Comissão", 0, 100), /entre 0 e 100/);
     assert.throws(() => requireRange(Infinity, "Comissão", 0, 100), /entre 0 e 100/);
+  });
+});
+
+describe("parseCursor", () => {
+  it("aceita inteiro positivo, inclusive vindo como texto", () => {
+    assert.equal(parseCursor(120), 120);
+    assert.equal(parseCursor("120"), 120);
+  });
+
+  it("lixo vira undefined (primeira pagina) em vez de erro de banco", () => {
+    for (const ruim of [undefined, null, "", "  ", "abc", 0, -5, 1.5, Number.NaN, Infinity, 2 ** 60, {}, []]) {
+      assert.equal(parseCursor(ruim), undefined, String(ruim));
+    }
   });
 });

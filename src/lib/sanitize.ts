@@ -68,6 +68,12 @@ export function requireRange(raw: unknown, label: string, min: number, max: numb
   return Math.round(n * 100) / 100;
 }
 
+/** Cursor de paginação: inteiro positivo seguro; lixo (NaN, negativo, texto) vira undefined = primeira página. */
+export function parseCursor(raw: unknown): number | undefined {
+  const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
+  return typeof n === "number" && Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
 /** http(s) or same-origin path. Rejects javascript:/data:. */
 export function sanitizeHttpUrl(raw: unknown, max = 2000): string | null {
   const s = String(raw ?? "").replace(CTRL, "").trim().slice(0, max);

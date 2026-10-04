@@ -18,12 +18,15 @@ import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime } from "@/lib/nfce";
 import {
   optionalLine,
+  parseCursor,
   parseUf,
   requireLine,
   sanitizeCode,
   sanitizeImageUrl,
   sanitizeMultiline,
 } from "@/lib/sanitize";
+
+const AUDIT_PAGE_SIZE = 40;
 
 export const getTenantFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -711,21 +714,25 @@ export const acceptInviteFn = createServerFn({ method: "POST" })
 
 export const listAuditFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { page?: number }) => d)
+  .validator((d: { before?: number }) => ({ before: parseCursor(d.before) }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "audit.read");
-    const page = data.page ?? 1;
-    const offset = (page - 1) * 40;
-    return dump(await sql<Row>`
+    // Cursor por id (não offset): registro novo entrando enquanto o dono
+    // navega não repete nem pula linha. Busca 41 para saber se há mais.
+    const rows = await sql<Row>`
       select a.id, a.user_id, u.name as user_name, a.action, a.entity, a.entity_id,
              a.before_data, a.after_data, a.created_at
       from audit_logs a
       left join "user" u on u.id = a.user_id
       where a.company_id = ${tenant.companyId}
-      order by a.created_at desc, a.id desc
-      limit 40 offset ${offset}
-    `);
+        and (${data.before ?? null}::bigint is null or a.id < ${data.before ?? null}::bigint)
+      order by a.id desc
+      limit ${AUDIT_PAGE_SIZE + 1}
+    `;
+    const page = rows.slice(0, AUDIT_PAGE_SIZE);
+    const hasMore = rows.length > AUDIT_PAGE_SIZE;
+    return dump({ rows: page, nextBefore: hasMore ? Number(page[page.length - 1]!.id) : null });
   });
 
 export const markNotificationReadFn = createServerFn({ method: "POST" })
