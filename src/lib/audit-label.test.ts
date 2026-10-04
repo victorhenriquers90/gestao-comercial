@@ -155,6 +155,48 @@ describe("mudancas da auditoria", () => {
     assert.equal(conta[2], "motivo: Fornecedor errado");
   });
 
+  it("estorno de baixa diz o que voltou, o dinheiro do caixa e o motivo", () => {
+    assert.equal(
+      auditTitle({
+        user_name: "Ana",
+        action: "reverse-pay",
+        entity: "accounts_payable",
+        entity_id: 4,
+        after_data: { description: "Luz" },
+      }),
+      "Ana estornou pagamento de conta a pagar “Luz”",
+    );
+    assert.equal(
+      auditTitle({
+        user_name: "Ana",
+        action: "reverse-receive",
+        entity: "accounts_receivable",
+        entity_id: 9,
+        after_data: { description: "Parcela 2/3" },
+      }),
+      "Ana estornou recebimento de conta a receber “Parcela 2/3”",
+    );
+    const pago = auditChanges({
+      action: "reverse-pay",
+      entity: "accounts_payable",
+      before_data: null,
+      after_data: { description: "Luz", amount: 80, method: "dinheiro", status: "pendente", cashReversal: 80, cashRemoved: null, reason: "Fornecedor errado" },
+    });
+    assert.equal(pago.length, 5);
+    assert.match(pago[0]!, /^valor: R\$\s?80,00$/);
+    assert.equal(pago[1], "forma: Dinheiro");
+    assert.equal(pago[2], "situação: pendente");
+    assert.match(pago[3]!, /^devolvido ao caixa: R\$\s?80,00$/);
+    assert.equal(pago[4], "motivo: Fornecedor errado");
+    const recebido = auditChanges({
+      action: "reverse-receive",
+      entity: "accounts_receivable",
+      before_data: null,
+      after_data: { amount: 50, method: "dinheiro", cashReversal: null, cashRemoved: 50, reason: "Valor errado" },
+    });
+    assert.match(recebido[2]!, /^retirado do caixa: R\$\s?50,00$/);
+  });
+
   it("sangria e suprimento mostram valor e motivo", () => {
     assert.equal(
       auditTitle({ user_name: "Rui", action: "sangria", entity: "cash_register", entity_id: 3, after_data: { amount: 80 } }),

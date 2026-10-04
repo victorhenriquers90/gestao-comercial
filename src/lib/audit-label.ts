@@ -47,6 +47,8 @@ const ACTION: Record<string, string> = {
   discount: "aplicou desconto em",
   receive: "recebeu",
   pay: "pagou",
+  "reverse-receive": "estornou recebimento de",
+  "reverse-pay": "estornou pagamento de",
   emit: "emitiu",
   open: "abriu",
   close: "fechou",
@@ -105,6 +107,7 @@ const EVENT_FIELDS: Record<string, { label: string; kind: FieldKind }> = {
   method: { label: "forma", kind: "method" },
   status: { label: "situação", kind: "text" },
   cashReversal: { label: "devolvido ao caixa", kind: "money" },
+  cashRemoved: { label: "retirado do caixa", kind: "money" },
   reason: { label: "motivo", kind: "text" },
 };
 

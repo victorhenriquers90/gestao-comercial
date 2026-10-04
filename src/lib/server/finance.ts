@@ -12,6 +12,7 @@ import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
 import { optionalLine, requireIsoDate, requireLine, requireMoney, requireMultiline } from "@/lib/sanitize";
+import { planReversal, planSettlement } from "@/lib/settlement";
 import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
@@ -36,9 +37,16 @@ export const listPayablesFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
     const rows = await sql.query<Row>(
-      `select ap.*, s.legal_name as supplier_name
+      `select ap.*, s.legal_name as supplier_name,
+              ls.amount as last_settlement_amount, ls.method as last_settlement_method
          from accounts_payable ap
          left join suppliers s on s.id = ap.supplier_id
+         left join lateral (
+           select st.amount, st.method from account_settlements st
+            where st.company_id = ap.company_id and st.kind = 'payable' and st.account_id = ap.id
+              and st.reversed_at is null
+            order by st.id desc limit 1
+         ) ls on true
         where ap.company_id = $1 and ap.deleted_at is null
           and ($2::int is null or ap.store_id = $2)
         order by ap.due_date asc`,
@@ -189,15 +197,30 @@ export const settlePayableFn = createServerFn({ method: "POST" })
       const [row] = await sql<{
         amount: string | number;
         paid_amount: string | number;
+        interest: string | number;
+        discount: string | number;
         store_id: number | null;
         description: string | null;
         status: string;
       }>`
-        select amount, paid_amount, store_id, description, status from accounts_payable
+        select amount, paid_amount, interest, discount, store_id, description, status from accounts_payable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
       if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
+      // Juros/desconto omitidos mantêm o que o título já tinha: uma baixa parcial
+      // sem eles não pode zerar o que a anterior combinou.
+      const interest = baixa.interest ?? num(row.interest);
+      const discount = baixa.discount ?? num(row.discount);
+      const plano = planSettlement({
+        amount: num(row.amount),
+        paid: num(row.paid_amount),
+        interest,
+        discount,
+        payment: baixa.amount,
+        status: row.status,
+      });
+      let movimentoId: number | null = null;
 
       /*
         Mesma correcao de settleReceivableFn, no sentido contrario: pagar um
@@ -221,28 +244,36 @@ export const settlePayableFn = createServerFn({ method: "POST" })
            limit 1
         `;
         if (!reg) throw new Error("Abra o caixa desta loja para pagar em dinheiro.");
-        await sql`
+        const [mov] = await sql<{ id: number }>`
           insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
           values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'sangria_liquidacao', 'dinheiro',
                   ${baixa.amount}, ${`Pagamento: ${row.description ?? `título ${data.id}`}`})
+          returning id
         `;
+        movimentoId = mov!.id;
       }
-      const paid = Number((num(row.paid_amount) + baixa.amount).toFixed(2));
-      const target = num(row.amount) + baixa.interest - baixa.discount;
-      const status = paid + 0.05 >= target ? "pago" : "parcial";
       await sql`
-        update accounts_payable set paid_amount = ${paid}, interest = ${baixa.interest},
-          discount = ${baixa.discount}, status = ${status},
-          paid_at = ${status === "pago" ? new Date().toISOString() : null}
+        update accounts_payable set paid_amount = ${plano.paid}, interest = ${interest},
+          discount = ${discount}, status = ${plano.status},
+          paid_at = ${plano.status === "pago" ? new Date().toISOString() : null}
         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await sql`
+        insert into account_settlements (
+          company_id, kind, account_id, amount, interest, discount, prev_interest, prev_discount,
+          method, cash_movement_id, user_id
+        ) values (
+          ${tenant.companyId}, 'payable', ${data.id}, ${baixa.amount}, ${interest}, ${discount},
+          ${num(row.interest)}, ${num(row.discount)}, ${metodo}, ${movimentoId}, ${tenant.userId}
+        )
       `;
       await audit(sql, tenant, "pay", "accounts_payable", data.id, null, {
         description: row.description,
         amount: baixa.amount,
-        status,
+        status: plano.status,
         method: metodo,
       });
-      return status;
+      return plano.status;
     });
     return { status };
   });
@@ -254,9 +285,16 @@ export const listReceivablesFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
     const rows = await sql.query<Row>(
-      `select ar.*, c.name as customer_name
+      `select ar.*, c.name as customer_name,
+              ls.amount as last_settlement_amount, ls.method as last_settlement_method
          from accounts_receivable ar
          left join customers c on c.id = ar.customer_id
+         left join lateral (
+           select st.amount, st.method from account_settlements st
+            where st.company_id = ar.company_id and st.kind = 'receivable' and st.account_id = ar.id
+              and st.reversed_at is null
+            order by st.id desc limit 1
+         ) ls on true
         where ar.company_id = $1 and ar.deleted_at is null
           and ($2::int is null or ar.store_id = $2)
         order by ar.due_date asc`,
@@ -391,15 +429,28 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
       const [row] = await sql<{
         amount: string | number;
         received_amount: string | number;
+        interest: string | number;
+        discount: string | number;
         store_id: number | null;
         description: string | null;
         status: string;
       }>`
-        select amount, received_amount, store_id, description, status from accounts_receivable
+        select amount, received_amount, interest, discount, store_id, description, status from accounts_receivable
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
       if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
+      const interest = baixa.interest ?? num(row.interest);
+      const discount = baixa.discount ?? num(row.discount);
+      const plano = planSettlement({
+        amount: num(row.amount),
+        paid: num(row.received_amount),
+        interest,
+        discount,
+        payment: baixa.amount,
+        status: row.status,
+      });
+      let movimentoId: number | null = null;
 
       /*
         Parcela paga em DINHEIRO no balcao entra na gaveta. Antes a baixa nao
@@ -419,20 +470,28 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
            limit 1
         `;
         if (!reg) throw new Error("Abra o caixa desta loja para receber em dinheiro.");
-        await sql`
+        const [mov] = await sql<{ id: number }>`
           insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
           values (${tenant.companyId}, ${lojaId}, ${reg.id}, ${tenant.userId}, 'recebimento', 'dinheiro',
                   ${baixa.amount}, ${`Recebimento: ${row.description ?? `título ${data.id}`}`})
+          returning id
         `;
+        movimentoId = mov!.id;
       }
-      const rec = Number((num(row.received_amount) + baixa.amount).toFixed(2));
-      const target = num(row.amount) + baixa.interest - baixa.discount;
-      const status = rec + 0.05 >= target ? "pago" : "parcial";
       await sql`
-        update accounts_receivable set received_amount = ${rec}, interest = ${baixa.interest},
-          discount = ${baixa.discount}, status = ${status},
-          received_at = ${status === "pago" ? new Date().toISOString() : null}
+        update accounts_receivable set received_amount = ${plano.paid}, interest = ${interest},
+          discount = ${discount}, status = ${plano.status},
+          received_at = ${plano.status === "pago" ? new Date().toISOString() : null}
         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await sql`
+        insert into account_settlements (
+          company_id, kind, account_id, amount, interest, discount, prev_interest, prev_discount,
+          method, cash_movement_id, user_id
+        ) values (
+          ${tenant.companyId}, 'receivable', ${data.id}, ${baixa.amount}, ${interest}, ${discount},
+          ${num(row.interest)}, ${num(row.discount)}, ${metodo}, ${movimentoId}, ${tenant.userId}
+        )
       `;
       // Auditoria que faltava: dar baixa em recebimento nao deixava rastro
       // nenhum, enquanto o pagamento deixava. Era justamente o lado que some
@@ -440,12 +499,140 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
       await audit(sql, tenant, "receive", "accounts_receivable", data.id, null, {
         description: row.description,
         amount: baixa.amount,
-        status,
+        status: plano.status,
         method: metodo,
       });
-      return status;
+      return plano.status;
     });
     return { status };
+  });
+
+/**
+ * Desfaz a ULTIMA baixa de um titulo (pagou o fornecedor errado, recebeu do
+ * cliente errado, digitou o valor errado).
+ *
+ * So a ultima, e so quando o razao (account_settlements) explica 100% do total
+ * baixado: baixa anterior ao razao, baixa feita pelo servico antigo ou parcela
+ * de cartao conciliada nao tem como ser desfeita sem adivinhar -- o estorno
+ * recusa em vez de inventar.
+ *
+ * Baixa em dinheiro mexe na gaveta de novo: pagamento a fornecedor devolve o
+ * dinheiro (estorno_liquidacao) e recebimento tira (estorno_recebimento), no
+ * caixa ABERTO da loja -- e la que o dinheiro realmente volta a se mover, mesmo
+ * que o caixa da baixa original ja tenha fechado (esse fechamento nao muda).
+ */
+export const reverseSettlementFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { kind: string; id: number; reason: string }) => {
+    if (d.kind !== "payable" && d.kind !== "receivable") throw new Error("Tipo de título inválido.");
+    return { kind: d.kind, id: d.id, reason: parseCancelReason(d.reason) };
+  })
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "finance.write");
+    const pagar = data.kind === "payable";
+    return sql.transaction(async (sql) => {
+      const [t] = pagar
+        ? await sql<Row>`
+            select amount, paid_amount as paid, description, status from accounts_payable
+             where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null for update
+          `
+        : await sql<Row>`
+            select amount, received_amount as paid, description, status from accounts_receivable
+             where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null for update
+          `;
+      if (!t) throw new Error("Título não encontrado.");
+      if (t.status === "cancelado") throw new Error("Título cancelado não tem baixa a estornar.");
+      const abertas = await sql<Row>`
+        select id, amount, method, cash_movement_id, prev_interest, prev_discount from account_settlements
+         where company_id = ${tenant.companyId} and kind = ${data.kind} and account_id = ${data.id}
+           and reversed_at is null
+         order by id desc for update
+      `;
+      const ultima = abertas[0];
+      if (!ultima) {
+        throw new Error(
+          num(t.paid) > 0.009
+            ? "Esta baixa é anterior ao registro de estornos, então o sistema não consegue desfazê-la sozinho."
+            : "Este título não tem baixa a estornar.",
+        );
+      }
+      const registrado = abertas.reduce((a, r) => a + num(r.amount), 0);
+      if (Math.abs(registrado - num(t.paid)) > 0.011) {
+        throw new Error(
+          "O total baixado deste título não bate com o registro das baixas (há baixa anterior ao registro de estornos), então o sistema não consegue desfazê-la sozinho.",
+        );
+      }
+      const valor = num(ultima.amount);
+
+      let estornoId: number | null = null;
+      if (ultima.cash_movement_id != null) {
+        const [orig] = await sql<Row>`
+          select store_id from cash_movements
+           where id = ${num(ultima.cash_movement_id)} and company_id = ${tenant.companyId}
+        `;
+        if (!orig) throw new Error("Não foi possível localizar a movimentação de caixa desta baixa.");
+        // `for update` serializa com o fechamento: o caixa não fecha entre a checagem e o estorno.
+        const [reg] = await sql<{ id: number }>`
+          select id from cash_registers
+           where company_id = ${tenant.companyId} and store_id = ${num(orig.store_id)} and status = 'open'
+           limit 1 for update
+        `;
+        if (!reg) {
+          throw new Error(
+            pagar
+              ? "Abra o caixa desta loja para estornar um pagamento feito em dinheiro: o dinheiro volta para a gaveta."
+              : "Abra o caixa desta loja para estornar um recebimento feito em dinheiro: o dinheiro sai da gaveta.",
+          );
+        }
+        const [mov] = await sql<{ id: number }>`
+          insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+          values (${tenant.companyId}, ${num(orig.store_id)}, ${reg.id}, ${tenant.userId},
+                  ${pagar ? "estorno_liquidacao" : "estorno_recebimento"}, 'dinheiro', ${valor},
+                  ${`${pagar ? "Estorno de pagamento" : "Estorno de recebimento"}: ${String(t.description ?? `título ${data.id}`)}`})
+          returning id
+        `;
+        estornoId = mov!.id;
+      }
+
+      const novo = planReversal({ paid: num(t.paid), amount: valor });
+      if (pagar) {
+        await sql`
+          update accounts_payable set paid_amount = ${novo.paid}, interest = ${num(ultima.prev_interest)},
+            discount = ${num(ultima.prev_discount)}, status = ${novo.status}, paid_at = null
+           where id = ${data.id} and company_id = ${tenant.companyId}
+        `;
+      } else {
+        await sql`
+          update accounts_receivable set received_amount = ${novo.paid}, interest = ${num(ultima.prev_interest)},
+            discount = ${num(ultima.prev_discount)}, status = ${novo.status}, received_at = null
+           where id = ${data.id} and company_id = ${tenant.companyId}
+        `;
+      }
+      await sql`
+        update account_settlements set reversed_at = now(), reversed_by = ${tenant.userId},
+          reverse_reason = ${data.reason}, reverse_movement_id = ${estornoId}
+         where id = ${num(ultima.id)}
+      `;
+      await audit(
+        sql,
+        tenant,
+        pagar ? "reverse-pay" : "reverse-receive",
+        pagar ? "accounts_payable" : "accounts_receivable",
+        data.id,
+        null,
+        {
+          description: String(t.description ?? ""),
+          amount: valor,
+          method: String(ultima.method),
+          status: novo.status,
+          cashReversal: estornoId != null && pagar ? valor : null,
+          cashRemoved: estornoId != null && !pagar ? valor : null,
+          reason: data.reason,
+        },
+      );
+      return { status: novo.status, paid: novo.paid };
+    });
   });
 
 export const cashflowFn = createServerFn({ method: "POST" })
@@ -483,19 +670,19 @@ export const cashflowFn = createServerFn({ method: "POST" })
       daqui em vez da linha resumo.
     */
     const rec = await sql.query<{ total: string | number }>(
-      `select coalesce(sum((al.after_data->>'amount')::numeric),0) as total
+      `select coalesce(sum(case when al.action = 'receive' then 1 else -1 end * (al.after_data->>'amount')::numeric),0) as total
          from audit_logs al
          join accounts_receivable ar on ar.id = al.entity_id::int
-        where al.company_id = $1 and al.entity = 'accounts_receivable' and al.action = 'receive'
+        where al.company_id = $1 and al.entity = 'accounts_receivable' and al.action in ('receive', 'reverse-receive')
           and al.created_at >= $2::date and al.created_at < ($3::date + interval '1 day')
           and ($4::int is null or ar.store_id = $4)`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
     );
     const paid = await sql.query<{ total: string | number }>(
-      `select coalesce(sum((al.after_data->>'amount')::numeric),0) as total
+      `select coalesce(sum(case when al.action = 'pay' then 1 else -1 end * (al.after_data->>'amount')::numeric),0) as total
          from audit_logs al
          join accounts_payable ap on ap.id = al.entity_id::int
-        where al.company_id = $1 and al.entity = 'accounts_payable' and al.action = 'pay'
+        where al.company_id = $1 and al.entity = 'accounts_payable' and al.action in ('pay', 'reverse-pay')
           and al.created_at >= $2::date and al.created_at < ($3::date + interval '1 day')
           and ($4::int is null or ap.store_id = $4)`,
       [tenant.companyId, data.from, data.to, data.storeId ?? null],
@@ -698,9 +885,12 @@ async function loadOpenRegister(
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
     .reduce((a, m) => a + num(m.total), 0);
   // Parcela de crediario/titulo paga em especie no balcao: entra na gaveta.
-  const recebimentos = byMethod
-    .filter((m) => m.type === "recebimento" && m.method === "dinheiro")
-    .reduce((a, m) => a + num(m.total), 0);
+  // 'estorno_recebimento' e um recebimento em dinheiro desfeito: sai da soma.
+  const recebimentos = byMethod.reduce((a, m) => {
+    if (m.type === "recebimento" && m.method === "dinheiro") return a + num(m.total);
+    if (m.type === "estorno_recebimento") return a - num(m.total);
+    return a;
+  }, 0);
   const expectedCash = num(reg.opening_amount) + cashSales + recebimentos + suprimento - sangria - refunds;
 
   return {
@@ -839,15 +1029,16 @@ export const revealExpectedCashFn = createServerFn({ method: "POST" })
  */
 function parseSettlement(data: { amount: number; interest?: number; discount?: number }): {
   amount: number;
-  interest: number;
-  discount: number;
+  /** undefined = nao informado: a baixa mantem o que o titulo ja tem. */
+  interest: number | undefined;
+  discount: number | undefined;
 } {
   const amount = Number(data.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Informe um valor maior que zero.");
   }
   const naoNegativo = (v: unknown, rotulo: string) => {
-    if (v == null || v === "") return 0;
+    if (v == null || v === "") return undefined;
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0) throw new Error(`Valor de ${rotulo} inválido.`);
     return n;

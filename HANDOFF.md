@@ -1962,10 +1962,108 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     lançar despesa quebra. Isto só chega ao serviço depois de atualizado.
 
     Lacunas que continuam: não existe "estorno de baixa" (desfazer um
-    pagamento/recebimento já feito — hoje conta paga não cancela); despesas
+    pagamento/recebimento já feito — hoje conta paga não cancela; resolvido
+    no item 61); despesas
     em dinheiro anteriores à migração não devolvem a gaveta sozinhas (a
     saída é um suprimento manual); metas, promoções e regras de comissão
     ainda sem auditoria.
+
+60. **Dava para pagar duas vezes o mesmo título (e pagar mais que o saldo) —
+    o servidor agora recusa.** Achado ao vivo ao preparar o item 61:
+    `settlePayableFn`/`settleReceivableFn` somavam o valor recebido ao que o
+    título já tinha, sem olhar o saldo. Reproduzido contra o Postgres real:
+    título de R$ 100 terminou com R$ 1.100 recebidos / R$ 200 pagos e, em
+    dinheiro, o lançamento no caixa duplicou (sobra fantasma no fechamento).
+    O guard de duplo-clique da tela (item 58) só protegia o mesmo diálogo;
+    nada impedia a segunda aba, o segundo operador ou uma chamada direta.
+
+    A regra virou função pura em `src/lib/settlement.ts` (`planSettlement`,
+    `SETTLEMENT_TOLERANCE = 0.05`), usada pelas duas server functions dentro
+    da transação que já tinha `for update`: título já quitado →
+    "Este título já está quitado."; valor acima do saldo →
+    "Valor maior que o saldo do título (R$ X)." (tolerância de 5 centavos
+    para arredondamento). Juros/desconto agora são "grudentos": baixa parcial
+    que não informa juros/desconto mantém os do título (antes zerava), e o
+    saldo é `valor + juros − desconto − já pago`. Desconto que cobre o título
+    inteiro quita. 10 testes novos em `settlement.test.ts`.
+
+61. **Não existia "estorno de baixa" — agora dá para desfazer o último
+    pagamento/recebimento, com razão auditável.** Item 59 deixou conta paga
+    sem saída (nem cancelar, nem desfazer); item 60 fechou a baixa dupla, mas
+    baixa feita por engano (valor errado, PIX que não caiu) ficava para
+    sempre. A migração `0033_account_settlements.sql` cria o razão
+    `account_settlements` (uma linha por baixa: valor, juros, desconto,
+    juros/desconto de ANTES, forma, `cash_movement_id`, quem/quando e, se
+    estornada, `reversed_at/by`, motivo e `reverse_movement_id`). As duas
+    funções de baixa passaram a gravar a linha (e a devolver `returning id`
+    do movimento de caixa); `reverseSettlementFn({ kind, id, reason })`
+    (`finance.ts`) desfaz SÓ A ÚLTIMA baixa não estornada: devolve
+    `paid_amount`/`received_amount`, restaura juros/desconto de antes,
+    recalcula o status (`pendente`/`parcial`) e, se a baixa foi em dinheiro,
+    cria o movimento inverso (`estorno_liquidacao` para pagamento — dinheiro
+    volta à gaveta; `estorno_recebimento` para recebimento — sai da gaveta).
+    O movimento original nunca é apagado.
+
+    Decisão deliberada: o estorno em dinheiro lança no caixa ABERTO da loja
+    HOJE, não no caixa original (o dinheiro anda hoje). Se não há caixa
+    aberto, recusa: "Abra o caixa desta loja para estornar um pagamento feito
+    em dinheiro: o dinheiro volta para a gaveta." (idem recebimento). Efeito
+    colateral conhecido: estorno de baixa de turno anterior aparece com
+    sinal NEGATIVO em "recebimentos"/"sangria" do turno novo (esperado da
+    gaveta continua certo: a conta é `abertura + vendas + recebimentos +
+    suprimento − sangria`).
+
+    Recusas (mensagem própria em cada uma): motivo em branco; tipo
+    inválido; título inexistente/de outra empresa/cancelado; título sem baixa
+    a estornar; baixa ANTERIOR ao razão (feita pelo serviço antigo, antes da
+    0033) ou quitada pelo repasse de cartão (`card-settlement.ts` põe
+    `received_amount = amount` sem linha no razão) — o sistema não adivinha o
+    que desfazer; e total baixado que não bate com a soma do razão. Fluxo de
+    caixa (`cashflowFn`) e `loadOpenRegister` descontam os estornos
+    (`reverse-pay`/`reverse-receive` na auditoria; `estorno_recebimento` no
+    caixa). `audit-label.ts` ganhou "estornou pagamento de/recebimento de",
+    "retirado do caixa" e `CASH_MOVE_LABELS.estorno_recebimento`.
+
+    Tela (`financeiro.tsx`): botão "Estornar último pagamento/recebimento"
+    nas linhas cuja última baixa tem razão (coluna `last_settlement_*` por
+    `left join lateral`); reaproveita o diálogo de cancelamento com título e
+    texto próprios (valor da baixa, aviso de dinheiro), motivo obrigatório e
+    toasts "Pagamento estornado e dinheiro devolvido ao caixa." /
+    "Recebimento estornado e dinheiro retirado do caixa.".
+
+    Verificado ao vivo contra o Postgres real (empresa 4, loja 8): baixa
+    parcial 40 + 60 em dinheiro, 3ª recusada (quitado), excedente recusado
+    com o saldo certo; estorno só da última (60) → `parcial`, paid 40, caixa
+    +60 devolvido (movimento 88 no caixa 72); recebimento 30 dinheiro + 70
+    PIX, PIX estornado primeiro (sem movimento de caixa), depois o dinheiro;
+    terceira tentativa recusada; juros 6 com baixa de 66 estornada → juros
+    voltam a 0; desconto 20 grudento na baixa seguinte e `prev_discount`
+    gravado; fluxo de caixa 1.200/300 → 1.100/240 e esperado do caixa
+    fechando em 960 (= 100 + 1.150 − 290, estornos já líquidos); caixa
+    fechado → ambos estornos em dinheiro recusados; caixa novo aberto →
+    estornos lançados nele (caixa 73, esperado volta aos 10 de abertura);
+    título legado sem razão recusado. Na tela: botão só na linha certa
+    (títulos legados não mostram), diálogo com valor e aviso de dinheiro,
+    toast, título voltou a "Pendente" e Entradas 1.125 → 1.100; Auditoria
+    mostra "Victor estornou recebimento de conta a receber “…” — valor ·
+    forma · situação · retirado do caixa · motivo". Dados de teste (10
+    linhas de razão, 30 de auditoria, 15 movimentos, 2 caixas, 3 pagar, 3
+    receber) removidos em uma transação; empresa 4 voltou às 13 linhas de
+    antes e zero caixa/movimento/lançamento/razão. `typecheck` + `lint` (0
+    erros, 7 avisos antigos) + `npm test` (454) limpos.
+
+    IMPORTANTE para o serviço instalado: a migração 0033 precisa rodar
+    (`npm run db:migrate`, parte do `build`; já aplicada ao banco local
+    piloto, que é o mesmo do serviço). O serviço instalado só ganha o guard
+    de baixa e o estorno depois de atualizado, e baixas feitas pelo serviço
+    antigo NÃO geram linha no razão — ficam sem estorno automático (a tela
+    nem mostra o botão). Conta de crediário (`crediario-panel.tsx`) não ganhou
+    botão de estorno: os mesmos títulos aparecem na aba Contas a receber.
+
+    Lacunas que continuam: despesa em dinheiro anterior à migração 0032 não
+    devolve a gaveta sozinha; `cancelExpenseFn` com caixa fechado ainda
+    recusa (o estorno de baixa já lança no caixa aberto de hoje — dá para
+    alinhar); metas, promoções e regras de comissão sem auditoria.
 
 ## Como a próxima IA deve trabalhar
 

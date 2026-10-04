@@ -33,6 +33,7 @@ import {
   listExpensesFn,
   listPayablesFn,
   listReceivablesFn,
+  reverseSettlementFn,
   saveExpenseFn,
   savePayableFn,
   saveReceivableFn,
@@ -45,11 +46,13 @@ import { cn, num } from "@/lib/utils";
 export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
 
 type CancelTarget = {
-  kind: "pagar" | "receber" | "despesa";
+  kind: "pagar" | "receber" | "despesa" | "estorno-pagar" | "estorno-receber";
   id: number;
   label: string;
-  /** Despesa paga em dinheiro: o cancelamento devolve o valor ao caixa aberto. */
+  /** Pago/recebido em dinheiro: o cancelamento ou estorno mexe no caixa aberto. */
   dinheiro?: boolean;
+  /** Valor da baixa que o estorno desfaz. */
+  valor?: number;
 };
 
 function FinanceiroPage() {
@@ -84,10 +87,10 @@ function FinanceiroPage() {
    * recebimento e os dois dialogos de "Salvar" so tinham `disabled={!x}`,
    * que nao cobre o clique duplo -- o pedido em voo ainda le a condicao como
    * satisfeita. "Pagar"/"Confirmar" duplicado grava a baixa duas vezes
-   * (settlePayableFn/settleReceivableFn somam no que ja existe, sem checar
-   * se o titulo ja foi baixado a mais); no recebimento em dinheiro tambem
-   * duplica o lancamento no caixa, inflando a gaveta com uma "sobra"
-   * fantasma no fechamento. "Salvar" duplicado cria a conta/titulo duas
+   * (o servidor agora recusa baixa acima do saldo, mas o segundo pedido ainda
+   * chegaria a ser enviado e o operador veria um erro depois de um sucesso);
+   * no recebimento em dinheiro o duplicado lancaria o dinheiro duas vezes no
+   * caixa, inflando a gaveta com uma "sobra" fantasma no fechamento. "Salvar" duplicado cria a conta/titulo duas
    * vezes.
    */
   const [pagandoId, setPagandoId] = useState<number | null>(null);
@@ -142,24 +145,40 @@ function FinanceiroPage() {
     try {
       const data = { id: alvo.id, reason: motivo };
       const ok = await runAction(
-        () =>
-          alvo.kind === "pagar"
-            ? cancelPayableFn({ data })
-            : alvo.kind === "receber"
-              ? cancelReceivableFn({ data })
-              : cancelExpenseFn({ data }),
+        () => {
+          switch (alvo.kind) {
+            case "pagar":
+              return cancelPayableFn({ data });
+            case "receber":
+              return cancelReceivableFn({ data });
+            case "estorno-pagar":
+              return reverseSettlementFn({ data: { kind: "payable", ...data } });
+            case "estorno-receber":
+              return reverseSettlementFn({ data: { kind: "receivable", ...data } });
+            default:
+              return cancelExpenseFn({ data });
+          }
+        },
         {
           sucesso:
-            alvo.kind === "despesa" && alvo.dinheiro
-              ? "Despesa cancelada e dinheiro devolvido ao caixa."
-              : alvo.kind === "despesa"
-                ? "Despesa cancelada."
-                : "Conta cancelada.",
+            alvo.kind === "despesa"
+              ? alvo.dinheiro
+                ? "Despesa cancelada e dinheiro devolvido ao caixa."
+                : "Despesa cancelada."
+              : alvo.kind === "estorno-pagar"
+                ? alvo.dinheiro
+                  ? "Pagamento estornado e dinheiro devolvido ao caixa."
+                  : "Pagamento estornado."
+                : alvo.kind === "estorno-receber"
+                  ? alvo.dinheiro
+                    ? "Recebimento estornado e dinheiro retirado do caixa."
+                    : "Recebimento estornado."
+                  : "Conta cancelada.",
         },
       );
       if (!ok) return;
       setCancelando(null);
-      for (const key of ["ap", "ar", "expenses", "flow", "register"]) {
+      for (const key of ["ap", "ar", "expenses", "flow", "register", "crediario", "customers"]) {
         void qc.invalidateQueries({ queryKey: [key] });
       }
     } finally {
@@ -167,6 +186,7 @@ function FinanceiroPage() {
     }
   }
 
+  const ehEstorno = cancelando?.kind === "estorno-pagar" || cancelando?.kind === "estorno-receber";
   const overduePay = (pay.data ?? []).filter((r) => String(r.status) === "vencido").length;
   const overdueRec = (rec.data ?? []).filter((r) => String(r.status) === "vencido").length;
 
@@ -331,6 +351,23 @@ function FinanceiroPage() {
                         </Button>
                       )
                     ) : null}
+                    {pagandoId !== num(r.id) && r.last_settlement_amount != null && r.status !== "cancelado" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          pedirCancelamento({
+                            kind: "estorno-pagar",
+                            id: num(r.id),
+                            label: String(r.description),
+                            dinheiro: String(r.last_settlement_method) === "dinheiro",
+                            valor: num(r.last_settlement_amount),
+                          })
+                        }
+                      >
+                        Estornar último pagamento
+                      </Button>
+                    ) : null}
                     {pagandoId !== num(r.id) &&
                     num(r.paid_amount) < 0.01 &&
                     (r.status === "pendente" || r.status === "vencido") &&
@@ -480,6 +517,23 @@ function FinanceiroPage() {
                           Receber
                         </Button>
                       )
+                    ) : null}
+                    {recebendoId !== num(r.id) && r.last_settlement_amount != null && r.status !== "cancelado" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          pedirCancelamento({
+                            kind: "estorno-receber",
+                            id: num(r.id),
+                            label: String(r.description),
+                            dinheiro: String(r.last_settlement_method) === "dinheiro",
+                            valor: num(r.last_settlement_amount),
+                          })
+                        }
+                      >
+                        Estornar último recebimento
+                      </Button>
                     ) : null}
                     {recebendoId !== num(r.id) &&
                     num(r.received_amount) < 0.01 &&
@@ -637,16 +691,32 @@ function FinanceiroPage() {
       <Dialog open={cancelando != null} onOpenChange={(o) => (o ? null : setCancelando(null))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{cancelando?.kind === "despesa" ? "Cancelar despesa" : "Cancelar conta"}</DialogTitle>
+            <DialogTitle>
+              {cancelando?.kind === "estorno-pagar"
+                ? "Estornar último pagamento"
+                : cancelando?.kind === "estorno-receber"
+                  ? "Estornar último recebimento"
+                  : cancelando?.kind === "despesa"
+                    ? "Cancelar despesa"
+                    : "Cancelar conta"}
+            </DialogTitle>
             <DialogDescription>
               {cancelando ? `“${cancelando.label}”. ` : ""}
-              O lançamento deixa de contar nos totais e fica registrado na Auditoria com o seu nome e o motivo.
+              {ehEstorno
+                ? `Desfaz a última baixa (${formatBRL(cancelando?.valor ?? 0)}): o título volta a ficar em aberto pelo saldo de antes. O estorno fica registrado na Auditoria com o seu nome e o motivo.`
+                : "O lançamento deixa de contar nos totais e fica registrado na Auditoria com o seu nome e o motivo."}
               {cancelando?.kind === "despesa" && cancelando.dinheiro
                 ? " Como foi paga em dinheiro, o valor volta para o caixa aberto da loja."
                 : ""}
+              {cancelando?.kind === "estorno-pagar" && cancelando.dinheiro
+                ? " Como foi pago em dinheiro, o valor volta para o caixa aberto da loja."
+                : ""}
+              {cancelando?.kind === "estorno-receber" && cancelando.dinheiro
+                ? " Como foi recebido em dinheiro, o valor sai do caixa aberto da loja."
+                : ""}
             </DialogDescription>
           </DialogHeader>
-          <Field label="Motivo do cancelamento">
+          <Field label={ehEstorno ? "Motivo do estorno" : "Motivo do cancelamento"}>
             <Input
               value={motivo}
               maxLength={200}
@@ -663,7 +733,13 @@ function FinanceiroPage() {
               disabled={!motivo.trim() || confirmandoCancelamento}
               onClick={() => void confirmarCancelamento()}
             >
-              {confirmandoCancelamento ? "Cancelando…" : "Confirmar cancelamento"}
+              {confirmandoCancelamento
+                ? ehEstorno
+                  ? "Estornando…"
+                  : "Cancelando…"
+                : ehEstorno
+                  ? "Confirmar estorno"
+                  : "Confirmar cancelamento"}
             </Button>
             <Button variant="ghost" onClick={() => setCancelando(null)}>
               Voltar

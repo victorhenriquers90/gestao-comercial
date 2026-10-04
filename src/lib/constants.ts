@@ -159,6 +159,8 @@ export const CASH_MOVE_LABELS: Record<string, string> = {
   sangria_liquidacao: "Pagamento",
   /** Dinheiro de uma despesa cancelada voltando pra gaveta (cancelExpenseFn). */
   estorno_liquidacao: "Estorno de pagamento",
+  /** Recebimento em dinheiro desfeito: o dinheiro sai da gaveta (reverseSettlementFn). */
+  estorno_recebimento: "Estorno de recebimento",
   suprimento: "Suprimento",
   cancelamento: "Cancelamento",
   abertura: "Abertura",
