@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { UNITS } from "@/lib/constants";
@@ -28,6 +29,8 @@ import { listSuppliersFn } from "@/lib/server/party";
 import { parseBarcode } from "@/lib/check-digit";
 
 export const Route = createFileRoute("/app/produtos")({ component: ProdutosPage });
+
+const PAGE_SIZE = 100;
 
 const empty = {
   name: "",
@@ -55,6 +58,7 @@ function ProdutosPage() {
   const qc = useQueryClient();
   const searchId = useSearchId();
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
   const [ncmOpen, setNcmOpen] = useState(false);
   const [form, setForm] = useState(empty);
@@ -79,10 +83,26 @@ function ProdutosPage() {
     queryKey: ["ncm-pending"],
     queryFn: () => listNcmPendingFn(),
   });
+  // Sem keepPreviousData, cada letra digitada trocava a chave da consulta, a
+  // pagina virava PageSkeleton (isPending) e o campo de busca era desmontado:
+  // o foco caia no <body> e a segunda letra se perdia. Com ele a pagina (e o
+  // campo) continua montada e a lista antiga fica na tela ate a nova chegar.
+  const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["products", q, storeId],
-    queryFn: () => listProductsFn({ data: { q: q || undefined, storeId: storeId ?? undefined } }),
+    queryKey: ["products", termo, storeId, page],
+    queryFn: () =>
+      listProductsFn({
+        data: { q: termo || undefined, storeId: storeId ?? undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const items = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
+  const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
+  useEffect(() => {
+    // Produtos apagados/filtrados com a pagina N aberta: volta pro comeco em vez de mostrar "vazio".
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
 
   const [tagsFor, setTagsFor] = useState<number | null>(null);
   const tagsProduct = useQuery({
@@ -210,6 +230,7 @@ function ProdutosPage() {
       setForm(empty);
       setEditId(undefined);
       void qc.invalidateQueries({ queryKey: ["products"] });
+      void qc.invalidateQueries({ queryKey: ["product-picker"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar");
     } finally {
@@ -259,10 +280,35 @@ function ProdutosPage() {
           </div>
         }
       />
-      <Input className="mb-4 max-w-sm" placeholder="Buscar nome, SKU ou código" value={q} onChange={(e) => setQ(e.target.value)} />
-      {!list.data?.length ? (
-        <EmptyState title="Você ainda não possui produtos cadastrados." description="Cadastre o primeiro item para vender no PDV." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro produto</Button>} />
+      <Input
+        className="mb-4 max-w-sm"
+        placeholder="Buscar nome, SKU ou código"
+        aria-label="Buscar produto por nome, SKU ou código"
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setPage(0);
+        }}
+      />
+      {!items.length ? (
+        // Antes qualquer lista vazia dizia "Você ainda não possui produtos
+        // cadastrados" -- inclusive uma busca sem resultado, o que fazia
+        // parecer que o catalogo tinha sumido.
+        termo ? (
+          <EmptyState
+            title={`Nenhum produto encontrado para “${termo}”.`}
+            description="Confira a grafia ou busque pelo SKU ou código de barras."
+            action={
+              <Button variant="outline" onClick={() => setQ("")}>
+                Limpar busca
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title="Você ainda não possui produtos cadastrados." description="Cadastre o primeiro item para vender no PDV." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro produto</Button>} />
+        )
       ) : (
+        <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable
           headers={
             <tr>
@@ -278,7 +324,7 @@ function ProdutosPage() {
             </tr>
           }
         >
-          {list.data.map((p) => (
+          {items.map((p) => (
             <tr
               key={p.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
@@ -324,6 +370,8 @@ function ProdutosPage() {
             </tr>
           ))}
         </DataTable>
+        <Pager page={page} pageSize={PAGE_SIZE} shown={items.length} total={total} onPage={setPage} />
+        </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

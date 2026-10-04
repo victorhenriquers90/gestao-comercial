@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { pageRangeLabel } from "@/lib/paging";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -181,6 +182,44 @@ export function QueryError({ error, fallback }: { error: unknown; fallback: stri
     <p className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
       {error instanceof Error ? error.message : fallback}
     </p>
+  );
+}
+
+/**
+ * Rodape de listagem paginada ("101–200 de 250", Anterior/Próxima). Some
+ * quando tudo cabe numa pagina. `offset` e `shown` descrevem a janela atual.
+ */
+export function Pager({
+  page,
+  pageSize,
+  shown,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageSize: number;
+  shown: number;
+  total: number;
+  onPage: (page: number) => void;
+}) {
+  if (total <= pageSize) return null;
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+      <span aria-live="polite">{pageRangeLabel(page * pageSize, shown, total)}</span>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={page === 0} onClick={() => onPage(Math.max(0, page - 1))}>
+          Anterior
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={(page + 1) * pageSize >= total}
+          onClick={() => onPage(page + 1)}
+        >
+          Próxima
+        </Button>
+      </div>
+    </div>
   );
 }
 

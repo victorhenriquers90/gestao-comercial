@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ProductPicker, type PickedProduct } from "@/components/product-picker";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
@@ -15,22 +16,26 @@ import { listPromotionsFn, savePromotionFn, setPromotionActiveFn } from "@/lib/s
 
 export const Route = createFileRoute("/app/promocoes")({ component: PromocoesPage });
 
+const emptyForm = {
+  name: "",
+  kind: "percent",
+  percent: "10",
+  minQty: "3",
+  amount: "",
+  promoPrice: "",
+  buyQty: "3",
+  payQty: "2",
+  scope: "all" as "all" | "category" | "product",
+  categoryId: "",
+  startsAt: "",
+  endsAt: "",
+};
+
 function PromocoesPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    kind: "percent",
-    percent: "10",
-    minQty: "3",
-    amount: "",
-    promoPrice: "",
-    buyQty: "3",
-    payQty: "2",
-    categoryId: "",
-    startsAt: "",
-    endsAt: "",
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [product, setProduct] = useState<PickedProduct | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [alternando, setAlternando] = useState<number | null>(null);
   const list = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
@@ -195,16 +200,36 @@ function PromocoesPage() {
               </Field>
             </div>
           ) : null}
+          {/* O servidor ja aceitava promocao por produto (e a lista mostra o
+              nome dele), mas o formulario so oferecia categoria -- uma promocao
+              de UM item so podia ser criada por fora da tela. */}
           <Field label="Aplica a" className="mt-block">
-            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-              <option value="">Todos os produtos</option>
-              {(cats.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  Categoria: {c.name}
-                </option>
-              ))}
+            <Select
+              value={form.scope}
+              onChange={(e) => setForm({ ...form, scope: e.target.value as typeof form.scope })}
+            >
+              <option value="all">Todos os produtos</option>
+              <option value="category">Uma categoria</option>
+              <option value="product">Um produto</option>
             </Select>
           </Field>
+          {form.scope === "category" ? (
+            <Field label="Categoria" className="mt-block">
+              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                <option value="">Escolha a categoria</option>
+                {(cats.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {form.scope === "product" ? (
+            <Field label="Produto" className="mt-block">
+              <ProductPicker activeOnly ariaLabel="Produto da promoção" value={product} onChange={setProduct} />
+            </Field>
+          ) : null}
           <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
               <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
@@ -273,6 +298,14 @@ function PromocoesPage() {
                   return;
                 }
               }
+              if (form.scope === "category" && !form.categoryId) {
+                toast.error("Escolha a categoria da promoção.");
+                return;
+              }
+              if (form.scope === "product" && !product) {
+                toast.error("Escolha o produto da promoção.");
+                return;
+              }
               setSalvando(true);
               try {
                 await savePromotionFn({
@@ -285,13 +318,17 @@ function PromocoesPage() {
                     promoPrice,
                     buyQty,
                     payQty,
-                    categoryId: form.categoryId ? Number(form.categoryId) : null,
+                    categoryId: form.scope === "category" ? Number(form.categoryId) : null,
+                    productId: form.scope === "product" ? product!.id : null,
                     startsAt: form.startsAt,
                     endsAt: form.endsAt,
                   },
                 });
                 toast.success("Promoção criada.");
                 setOpen(false);
+                // Sem isto o formulario reabria com a promocao anterior preenchida.
+                setForm(emptyForm);
+                setProduct(null);
                 void qc.invalidateQueries({ queryKey: ["promos"] });
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Falha ao criar a promoção.");

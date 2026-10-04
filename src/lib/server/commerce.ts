@@ -19,6 +19,7 @@ import { checkCreditLimit, parseCrediarioInstallments, splitCrediario } from "@/
 import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan, can } from "@/lib/permissions";
+import { parsePaging } from "@/lib/paging";
 import { bestPromo, parsePromoInput, type Promo } from "@/lib/promo";
 import { cancelWindow, pendenciaForReturn, pendenciaText } from "@/lib/nfce-cancel";
 import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
@@ -930,14 +931,20 @@ export const listSalesFn = createServerFn({ method: "POST" })
       to?: string;
       q?: string;
       status?: string;
-    }) => d,
+      /** Padrão 100, máximo 200. */
+      limit?: number;
+      offset?: number;
+    }) => ({ ...d, page: parsePaging(d) }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sales.read");
-    return dump(
-      await sql.query<Row>(
-        `select s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
+    // Antes: `limit 200` fixo e sem total -- a partir da 201a venda o historico
+    // simplesmente nao mostrava as mais antigas (a nao ser que alguem filtrasse
+    // por data), sem nenhum aviso de que havia mais.
+    const rows = await sql.query<Row>(
+        `select count(*) over() as total,
+              s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
               c.name as customer_name, sl.name as seller_name, st.name as store_name
          from sales s
          left join customers c on c.id = s.customer_id
@@ -952,8 +959,11 @@ export const listSalesFn = createServerFn({ method: "POST" })
           and ($7::text is null or cast(s.number as text) = $7 or lower(c.name) like $8
                or to_tsvector('simple', coalesce(c.name,'')) @@ to_tsquery('simple', $9)
                or c.name ilike ('%' || $7 || '%'))
-        order by s.sold_at desc
-        limit 200`,
+        -- Numero digitado exato vem primeiro: a devolucao localiza a venda por
+        -- numero e so aceita o match exato, entao ele nao pode ficar atras de
+        -- vendas de clientes cujo nome casa com o mesmo texto.
+        order by coalesce(cast(s.number as text) = $7, false) desc, s.sold_at desc, s.id desc
+        limit $10 offset $11`,
         [
           tenant.companyId,
           data.storeId ?? null,
@@ -964,9 +974,12 @@ export const listSalesFn = createServerFn({ method: "POST" })
           data.q?.trim() || null,
           data.q?.trim() ? prefixLike(data.q) : null,
           data.q?.trim() ? ftsPrefix(data.q) : "__none__:*",
+          data.page.limit,
+          data.page.offset,
         ],
-      ),
-    );
+      );
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    return { items: dump(rows.map(({ total: _t, ...r }) => r)), total };
   });
 
 export const getSaleFn = createServerFn({ method: "POST" })

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical, Layers, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { DataTable, EmptyState, KpiCard, QueryError, Td, Th } from "@/components/shared";
+import { ProductPicker, type PickedProduct } from "@/components/product-picker";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { COMMISSION_KIND_LABELS, PAYMENT_LABELS, TIER_BASIS_LABELS, type PaymentMethod } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
-import { listCategoriesFn, listProductsFn } from "@/lib/server/catalog";
+import { listCategoriesFn } from "@/lib/server/catalog";
 import {
   deleteCommissionRuleFn,
   listCommissionRulesFn,
@@ -38,6 +39,7 @@ const emptyForm = {
   sellerId: "",
   categoryId: "",
   productId: "",
+  productName: "",
   paymentMethod: "",
   minAmount: "",
   skipPromo: false,
@@ -89,10 +91,6 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
   const qc = useQueryClient();
   const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => listCommissionRulesFn() });
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
-  const products = useQuery({
-    queryKey: ["products", "rules"],
-    queryFn: () => listProductsFn({ data: { active: true } }),
-  });
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   /** Regra aguardando confirmacao de exclusao (muda quanto o vendedor recebe). */
@@ -118,6 +116,7 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
       sellerId: r.sellerId != null ? String(r.sellerId) : "",
       categoryId: r.categoryId != null ? String(r.categoryId) : "",
       productId: r.productId != null ? String(r.productId) : "",
+      productName: r.productName ?? "",
       paymentMethod: r.paymentMethod ?? "",
       minAmount: r.minAmount ? String(r.minAmount) : "",
       skipPromo: r.skipPromo,
@@ -510,14 +509,13 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
               </Select>
             </Field>
             <Field label="Produto">
-              <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}>
-                <option value="">Todos</option>
-                {(products.data ?? []).map((p) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+              <ProductPicker
+                activeOnly
+                placeholder="Todos os produtos"
+                ariaLabel="Produto da regra"
+                value={form.productId ? { id: Number(form.productId), name: form.productName || `Produto nº ${form.productId}` } : null}
+                onChange={(p) => setForm({ ...form, productId: p ? String(p.id) : "", productName: p?.name ?? "" })}
+              />
             </Field>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
@@ -599,16 +597,11 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
 export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
   const [sellerId, setSellerId] = useState(sellers[0] ? String(sellers[0].id) : "");
   const [payment, setPayment] = useState("pix");
-  const [productId, setProductId] = useState("");
+  const [picked, setPicked] = useState<PickedProduct | null>(null);
   const [qty, setQty] = useState("1");
   const [discount, setDiscount] = useState("");
   const [monthOverride, setMonthOverride] = useState("");
   const [items, setItems] = useState<{ productId: number; name: string; quantity: number; discount: number }[]>([]);
-
-  const products = useQuery({
-    queryKey: ["products", "sim"],
-    queryFn: () => listProductsFn({ data: { active: true } }),
-  });
 
   const seller = sellers.find((s) => String(s.id) === sellerId);
   const monthRevenue = monthOverride === "" ? seller?.month_revenue : Number(monthOverride) || 0;
@@ -631,24 +624,21 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
     enabled: Boolean(sellerId) && items.length > 0,
   });
 
-  const productMap = useMemo(() => new Map((products.data ?? []).map((p) => [p.id, p])), [products.data]);
-
   function addItem() {
-    const id = Number(productId);
-    const p = productMap.get(id);
-    if (!p) {
+    if (!picked) {
       toast.error("Escolha um produto.");
       return;
     }
     setItems((prev) => [
       ...prev,
       {
-        productId: id,
-        name: p.name,
+        productId: picked.id,
+        name: picked.name,
         quantity: Math.max(1, Number(qty) || 1),
         discount: Math.max(0, Number(discount) || 0),
       },
     ]);
+    setPicked(null);
     setDiscount("");
   }
 
@@ -698,15 +688,14 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
       <p className="mt-1 text-xs text-muted-foreground">
         Faturamento considerado: {formatBRL(monthRevenue ?? 0)}. Deixe em branco para usar o real do mês.
       </p>
+      {sellers.length === 0 ? (
+        // Sem vendedor a simulacao nunca roda e a tabela ficava com "…" para sempre, sem explicar.
+        <p className="mt-2 text-sm text-destructive" role="status">
+          Nenhum vendedor cadastrado — cadastre um para simular a comissão.
+        </p>
+      ) : null}
       <Field label="Produto" className="mt-3 min-w-0">
-        <Select value={productId} onChange={(e) => setProductId(e.target.value)} className="max-w-full">
-          <option value="">Selecione</option>
-          {(products.data ?? []).map((p) => (
-            <option key={p.id} value={String(p.id)}>
-              {p.name} · {formatBRL(p.price)}
-            </option>
-          ))}
-        </Select>
+        <ProductPicker activeOnly ariaLabel="Produto da venda simulada" value={picked} onChange={setPicked} />
       </Field>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <Field label="Quantidade" className="w-28">

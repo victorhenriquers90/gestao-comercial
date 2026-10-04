@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { IdCard, Search } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { useDebounced } from "@/hooks/use-debounced";
 import { maskBrDoc, parseBrDocument } from "@/lib/document";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { listCustomersFn } from "@/lib/server/party";
@@ -28,11 +29,13 @@ export function CustomerDialog(p: Props) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<"" | "pf" | "pj">("");
   const [debit, setDebit] = useState(false);
+  const termo = useDebounced(q.trim(), 250);
   const customers = useQuery({
-    queryKey: ["customers", q, kind, debit],
+    queryKey: ["customers", termo, kind, debit],
     queryFn: () =>
-      listCustomersFn({ data: { q: q.trim() || undefined, kind: kind || undefined, debit: debit || undefined } }),
+      listCustomersFn({ data: { q: termo || undefined, kind: kind || undefined, debit: debit || undefined } }),
     enabled: p.open,
+    placeholderData: keepPreviousData,
   });
 
   function confirmar(e?: FormEvent) {

@@ -2140,6 +2140,107 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     anterior à migração 0032 não devolve a gaveta sozinha; `cancelExpenseFn`
     com caixa fechado ainda recusa.
 
+63. **Listas cortavam em silêncio (200/400 linhas), filtros eram aplicados
+    depois do corte, e toda letra digitada na busca derrubava a página.**
+    Achado revisando as telas que o operador mais usa (Produtos, Estoque,
+    Vendas, Clientes, diálogo de cliente do PDV, Promoções, Comissões).
+    Pontos reais, todos reproduzidos antes de corrigir:
+    - **Busca perdia o foco a cada tecla** (Produtos, Estoque, Vendas,
+      Clientes, diálogo de cliente do PDV): a chave da consulta mudava, o
+      react-query caía para o esqueleto de página inteira e o `<input>` era
+      desmontado — dava para digitar uma letra por vez.
+    - **Estado vazio mentia**: busca ou filtro sem resultado mostrava "Você
+      ainda não possui produtos/clientes/vendas…" (como se o cadastro
+      estivesse vazio) e levava ao botão de cadastrar.
+    - **Teto silencioso**: `listProductsFn` e `listCustomersFn` cortavam em
+      200, `listStockFn` em 400 e `listSalesFn` em 200, sem aviso. Com
+      catálogo maior o produto simplesmente não existia para o `<select>` da
+      regra de comissão e do simulador (ordem alfabética, sem busca).
+    - **Filtro depois do corte**: em `listStockFn`, "Baixo / Zerado / Parado"
+      filtrava no cliente as 400 primeiras linhas — um item zerado além da
+      linha 400 nunca aparecia no filtro "Zerado".
+    - **Promoções**: o servidor já aceitava promoção por produto (e a lista
+      mostra o nome dele), mas o formulário só oferecia categoria; e o
+      formulário reabria com a promoção anterior preenchida depois de salvar.
+    - **Escape fechava o diálogo inteiro**: num seletor de produto dentro de
+      um `Dialog`, Esc com a lista aberta fechava o diálogo e perdia o
+      formulário (ver "pegadinha" abaixo).
+    - Simulador de comissão sem vendedor cadastrado ficava com "…" na tabela
+      para sempre, sem explicar (a simulação exige vendedor) — agora diz.
+
+    Correção:
+    - **Paginação no servidor** (`src/lib/paging.ts`, `parsePaging`): `limit`
+      padrão 100, máximo 200, `offset`; `listProductsFn`, `listStockFn` e
+      `listSalesFn` passam a devolver `{ items, total }` (`count(*) over()`).
+      Os filtros de estoque (baixo/zerado/parado) agora rodam em SQL. Número
+      de venda digitado exato vem primeiro em `listSalesFn` (a devolução
+      localiza a venda por número e só aceita o match exato — não pode ficar
+      atrás de vendas cujo cliente casa com o mesmo texto). Componente
+      `Pager` em `components/shared.tsx` ("Mostrando 1–100 de 340", anterior/
+      próxima), voltando à página 0 ao mudar busca/filtro e quando a página
+      atual volta vazia.
+    - **Busca sem perder o foco**: `useDebounced` (`hooks/use-debounced.ts`) +
+      `placeholderData: keepPreviousData`; o esqueleto de página só aparece na
+      primeira carga, e o conteúdo antigo fica esmaecido (`opacity-60`,
+      `aria-busy`) enquanto a nova consulta volta.
+    - **Estados vazios honestos** com "Limpar busca/filtros" e `aria-label` nas
+      buscas.
+    - **`ProductPicker`** (`components/product-picker.tsx`): combobox por
+      busca digitada (200 ms, 8 resultados, ↑/↓/Enter, "Mostrando N de TOTAL —
+      digite para refinar.", botão "Trocar produto"). Substitui os dois
+      `<select>` de produto da regra de comissão e do simulador
+      (`commission-panel.tsx`) e é o seletor novo de "Um produto" em Promoções
+      (escopo Todos / Uma categoria / Um produto, com validação e toasts).
+      A lista de resultados fica no fluxo da página, não flutuante (dentro de
+      diálogo com rolagem um painel absoluto seria cortado).
+    - Devoluções passou a usar o formato `{ items }` (`recent` com limit 8 e
+      busca por número com limit 50). Clientes ganhou o aviso "Mostrando os
+      primeiros 200…" quando atinge o teto de `listCustomersFn`.
+
+    **Pegadinha (não repetir)**: o Radix Dialog escuta Escape numa captura no
+    `document`, antes de qualquer handler do React — `stopPropagation` no
+    `onKeyDown` do input chega tarde. Para um campo dentro de diálogo
+    consumir o Esc (fechar a própria lista, limpar o texto) é preciso um
+    `window.addEventListener("keydown", …, true)` (a captura em `window` roda
+    antes da do `document`); o `ProductPicker` faz isso só enquanto há lista
+    aberta ou texto digitado e só se o foco está no próprio input.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 3 produtos
+    descartáveis "ZZTESTE" (e estoque, promoção de 2020 e regra de comissão
+    inativa): digitar várias letras seguidas em Produtos/Estoque/Vendas/
+    Clientes mantém o foco; busca sem resultado e filtro "Zerado" mostram a
+    mensagem específica; chamadas diretas com `limit` pequeno devolvem
+    `{items,total}` corretos (limite acima de 200 é limitado a 200); no
+    formulário de promoção o seletor "Um produto" busca, escolhe por ↓/Enter,
+    troca, recusa salvar sem produto, salva com `product_id` e o formulário
+    reabre limpo; na regra de comissão o picker mostra "Todos os produtos"
+    vazio, escolhe, salva como regra pausada, e "Editar" reabre mostrando o
+    nome do produto; no simulador o produto escolhido entra na venda fictícia
+    e o campo limpa; Esc com a lista aberta só fecha a lista (diálogo
+    continua), um segundo Esc fecha o diálogo. Dados de teste removidos numa
+    transação; empresa 4 voltou a zero produto/variação/estoque/movimento/
+    promoção/regra e às 13 linhas de auditoria. `typecheck` + `lint` (0
+    erros, 6 avisos antigos; saiu um import `Select` sem uso em `vendas.tsx`)
+    + `npm test` (477, com 8 novos de `paging.ts`) limpos.
+
+    Não verificado na tela: o `Pager` só aparece com mais de 100 linhas e a
+    empresa piloto ainda não tem esse volume — está coberto pelos testes de
+    `paging.ts` e pelas chamadas diretas com `limit` pequeno. O simulador só
+    calcula com vendedor cadastrado (o piloto ainda não tem), então a coluna
+    "Regra aplicada" com resultado real não foi exercitada.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
+    Lacunas que continuam: `listCustomersFn` (`lib/server/party.ts`) ainda
+    corta em 200 sem total e devolve array — usado pelo kanban do CRM e pelo
+    `<select>` de cliente do Financeiro (o aviso de Clientes só cobre a tela
+    de Clientes); `count(*) over()` devolve total 0 quando o `offset` passa do
+    fim (por isso a tela volta à página 0 ao receber página vazia); metas sem
+    desativar/excluir na tela; despesa em dinheiro anterior à migração 0032
+    não devolve a gaveta sozinha; `cancelExpenseFn` com caixa fechado ainda
+    recusa.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

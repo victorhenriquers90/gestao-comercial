@@ -9,6 +9,7 @@ import { parseBarcode } from "@/lib/check-digit";
 import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
+import { parsePaging } from "@/lib/paging";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
   optionalLine,
@@ -54,7 +55,17 @@ export const listBrandsFn = createServerFn({ method: "GET" })
 
 export const listProductsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string; categoryId?: number; active?: boolean; storeId?: number }) => d)
+  .validator(
+    (d: {
+      q?: string;
+      categoryId?: number;
+      active?: boolean;
+      storeId?: number;
+      /** Padrão 100, máximo 200. */
+      limit?: number;
+      offset?: number;
+    }) => ({ ...d, page: parsePaging(d) }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.read");
@@ -94,8 +105,12 @@ export const listProductsFn = createServerFn({ method: "POST" })
     stockJoin += `
             group by v.product_id
          ) st on st.product_id = p.id`;
+    params.push(data.page.limit, data.page.offset);
+    const limitAt = params.length - 1;
+    const offsetAt = params.length;
     const rows = await sql.query<Row>(
-      `select p.id, p.internal_code, p.barcode, p.sku, p.name, p.unit, p.cost, p.price, p.promo_price,
+      `select count(*) over() as total,
+              p.id, p.internal_code, p.barcode, p.sku, p.name, p.unit, p.cost, p.price, p.promo_price,
               p.min_stock, p.is_active, p.has_variants, p.location, p.image_url, p.ncm, p.cfop,
               c.name as category, b.name as brand,
               coalesce(st.stock, 0) as stock
@@ -105,11 +120,16 @@ export const listProductsFn = createServerFn({ method: "POST" })
          ${stockJoin}
         where p.company_id = $1 and p.deleted_at is null
           ${extra}
-        order by p.name
-        limit 200`,
+        order by p.name, p.id
+        limit $${limitAt} offset $${offsetAt}`,
       params,
     );
-    return rows.map((r) => ({
+    // Antes o corte em 200 era silencioso: o 201o produto (em ordem alfabetica)
+    // nao aparecia na lista nem em nenhum seletor, sem aviso. `total` deixa a
+    // tela dizer "de quantos" e paginar; o desempate por id mantem a ordem
+    // estavel entre paginas quando dois produtos tem o mesmo nome.
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    const items = rows.map((r) => ({
       id: num(r.id),
       internalCode: strN(r.internal_code),
       barcode: strN(r.barcode),
@@ -130,6 +150,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
       brand: strN(r.brand),
       stock: num(r.stock),
     }));
+    return { items, total };
   });
 
 function strN(v: unknown): string | null {
@@ -478,7 +499,15 @@ export const searchPosFn = createServerFn({ method: "POST" })
 
 export const listStockFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; q?: string; filter?: "all" | "low" | "zero" | "stale" }) => d)
+  .validator(
+    (d: {
+      storeId?: number;
+      q?: string;
+      filter?: "all" | "low" | "zero" | "stale";
+      limit?: number;
+      offset?: number;
+    }) => ({ ...d, page: parsePaging(d) }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.read");
@@ -499,8 +528,21 @@ export const listStockFn = createServerFn({ method: "POST" })
         or p.name ilike ('%' || $${params.length - 2} || '%')
       )`;
     }
+    // O filtro roda no SQL, antes do corte da pagina. Antes ele rodava em JS
+    // DEPOIS de um `limit 400`: com mais de 400 variantes, "Abaixo do minimo"
+    // e "Zerados" so olhavam as 400 primeiras em ordem alfabetica e nunca
+    // mostravam o resto -- justamente o alerta que precisa enxergar tudo.
+    const minSql = "greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0))";
+    let filterSql = "";
+    if (data.filter === "low") filterSql = ` and ${minSql} > 0 and coalesce(i.quantity, 0) <= ${minSql}`;
+    else if (data.filter === "zero") filterSql = " and coalesce(i.quantity, 0) <= 0";
+    else if (data.filter === "stale") filterSql = " and (lm.last_move is null or lm.last_move < now() - interval '45 days')";
+    params.push(data.page.limit, data.page.offset);
+    const limitAt = params.length - 1;
+    const offsetAt = params.length;
     const rows = await sql.query<Row>(
-      `select v.id as variant_id, p.id as product_id, p.name, v.color, v.size, p.sku,
+      `select count(*) over() as total,
+              v.id as variant_id, p.id as product_id, p.name, v.color, v.size, p.sku,
               -- MESMA definicao do painel: o maior entre o minimo daquela
               -- loja e o do produto. Antes esta tela olhava so p.min_stock,
               -- entao o filtro "abaixo do minimo" daqui discordava do
@@ -523,11 +565,13 @@ export const listStockFn = createServerFn({ method: "POST" })
         where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null
           ${storeSql}
           ${qSql}
-        order by p.name, v.id
-        limit 400`,
+          ${filterSql}
+        order by p.name, v.id, i.store_id
+        limit $${limitAt} offset $${offsetAt}`,
       params,
     );
-    let list = rows.map((r) => ({
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    const items = rows.map((r) => ({
       variantId: num(r.variant_id),
       productId: num(r.product_id),
       name: String(r.name),
@@ -543,13 +587,7 @@ export const listStockFn = createServerFn({ method: "POST" })
       price: num(r.price),
       lastMove: r.last_move ? String(r.last_move) : null,
     }));
-    if (data.filter === "low") list = list.filter((r) => r.quantity <= r.minStock && r.minStock > 0);
-    if (data.filter === "zero") list = list.filter((r) => r.quantity <= 0);
-    if (data.filter === "stale") {
-      const cut = Date.now() - 1000 * 60 * 60 * 24 * 45;
-      list = list.filter((r) => !r.lastMove || new Date(r.lastMove).getTime() < cut);
-    }
-    return list;
+    return { items, total };
   });
 
 export const listMovementsFn = createServerFn({ method: "POST" })

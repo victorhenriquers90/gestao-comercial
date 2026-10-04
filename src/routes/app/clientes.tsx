@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { CustomerPanel } from "@/components/customer-panel";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { CRM_STAGE_LABELS, type CrmStage } from "@/lib/constants";
 import { formatBRL, formatDoc } from "@/lib/format";
@@ -16,6 +17,9 @@ import { parseBrDocument, maskCnpj, maskCpf } from "@/lib/document";
 import { listCustomersFn, saveCustomerFn } from "@/lib/server/party";
 
 export const Route = createFileRoute("/app/clientes")({ component: ClientesPage });
+
+// Teto da listagem no servidor (listCustomersFn). Atingi-lo significa que pode haver mais clientes.
+const CUSTOMER_LIST_CAP = 200;
 
 function ClientesPage() {
   const qc = useQueryClient();
@@ -29,9 +33,13 @@ function ClientesPage() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [form, setForm] = useState({ kind: "pf", name: "", document: "", phone: "", email: "", city: "", creditLimit: 0, notes: "" });
 
+  // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
+  // para o esqueleto e o campo de busca perdia o foco.
+  const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["customers", q],
-    queryFn: () => listCustomersFn({ data: { q: q || undefined } }),
+    queryKey: ["customers", termo],
+    queryFn: () => listCustomersFn({ data: { q: termo || undefined } }),
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -48,10 +56,30 @@ function ClientesPage() {
         description="Pessoa física, jurídica e histórico comercial."
         actions={<Button onClick={() => setOpen(true)}>Novo cliente</Button>}
       />
-      <Input className="mb-4 max-w-sm" placeholder="Nome, documento ou telefone" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Input
+        className="mb-4 max-w-sm"
+        placeholder="Nome, documento ou telefone"
+        aria-label="Buscar cliente por nome, documento ou telefone"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
       {!list.data?.length ? (
-        <EmptyState title="Você ainda não possui clientes cadastrados." description="Cadastre o primeiro cliente para vender a prazo e usar o CRM." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro cliente</Button>} />
+        // Busca sem resultado nao e "nenhum cliente cadastrado".
+        termo ? (
+          <EmptyState
+            title={`Nenhum cliente encontrado para “${termo}”.`}
+            description="Confira a grafia ou busque pelo documento ou telefone."
+            action={
+              <Button variant="outline" onClick={() => setQ("")}>
+                Limpar busca
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title="Você ainda não possui clientes cadastrados." description="Cadastre o primeiro cliente para vender a prazo e usar o CRM." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro cliente</Button>} />
+        )
       ) : (
+        <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable
           headers={
             <tr>
@@ -83,6 +111,12 @@ function ClientesPage() {
             </tr>
           ))}
         </DataTable>
+        {list.data.length >= CUSTOMER_LIST_CAP ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Mostrando os primeiros {CUSTOMER_LIST_CAP} clientes em ordem alfabética — use a busca para achar os demais.
+          </p>
+        ) : null}
+        </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

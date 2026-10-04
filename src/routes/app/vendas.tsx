@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -6,10 +6,10 @@ import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { SALE_STATUS_LABELS, ACCOUNT_STATUS_LABELS, NFCE_STATUS_LABELS } from "@/lib/constants";
@@ -29,23 +29,43 @@ export const Route = createFileRoute("/app/vendas")({
   component: VendasPage,
 });
 
+const PAGE_SIZE = 100;
+
 function VendasPage() {
   const storeId = useSelection((s) => s.storeId);
   const qc = useQueryClient();
   const searchId = useSearchId();
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
 
+  // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
+  // para o esqueleto e o campo de busca perdia o foco.
+  const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["sales", storeId, q, from, to],
+    queryKey: ["sales", storeId, termo, from, to, page],
     queryFn: () =>
       listSalesFn({
-        data: { storeId: storeId ?? undefined, q: q || undefined, from: from || undefined, to: to || undefined },
+        data: {
+          storeId: storeId ?? undefined,
+          q: termo || undefined,
+          from: from || undefined,
+          to: to || undefined,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
       }),
+    placeholderData: keepPreviousData,
   });
+  const items = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
+  const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
+  useEffect(() => {
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
   const detail = useQuery({
     queryKey: ["sale", openId],
     queryFn: () => getSaleFn({ data: { id: openId! } }),
@@ -124,13 +144,39 @@ function VendasPage() {
     <div>
       <PageHeader title="Vendas" description="Histórico, comprovante e cancelamento." />
       <div className="mb-4 flex flex-wrap gap-2">
-        <Input className="max-w-xs" placeholder="Número ou cliente" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <Input
+          className="max-w-xs"
+          placeholder="Número ou cliente"
+          aria-label="Buscar venda por número ou cliente"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
+        />
+        <Input
+          type="date"
+          aria-label="Vendas a partir de"
+          value={from}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            setPage(0);
+          }}
+        />
+        <Input
+          type="date"
+          aria-label="Vendas até"
+          value={to}
+          onChange={(e) => {
+            setTo(e.target.value);
+            setPage(0);
+          }}
+        />
       </div>
-      {!list.data?.length ? (
+      {!items.length ? (
         <EmptyState title="Nenhuma venda neste filtro." description="Ajuste o período ou registre a primeira venda no PDV." />
       ) : (
+        <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable
           headers={
             <tr>
@@ -145,7 +191,7 @@ function VendasPage() {
             </tr>
           }
         >
-          {(list.data as Record<string, unknown>[]).map((s) => (
+          {(items as Record<string, unknown>[]).map((s) => (
             <tr
               key={String(s.id)}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
@@ -166,6 +212,8 @@ function VendasPage() {
             </tr>
           ))}
         </DataTable>
+        <Pager page={page} pageSize={PAGE_SIZE} shown={items.length} total={total} onPage={setPage} />
+        </div>
       )}
 
       <Dialog open={openId != null} onOpenChange={() => setOpenId(null)}>

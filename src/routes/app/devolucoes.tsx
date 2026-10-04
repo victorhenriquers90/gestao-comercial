@@ -42,7 +42,7 @@ function DevolucoesPage() {
   const list = useQuery({ queryKey: ["returns"], queryFn: () => listReturnsFn() });
   const recent = useQuery({
     queryKey: ["sales", "returns-pick"],
-    queryFn: () => listSalesFn({ data: { status: "finalizada" } }),
+    queryFn: () => listSalesFn({ data: { status: "finalizada", limit: 8 } }),
     enabled: open,
   });
 
@@ -78,7 +78,7 @@ function DevolucoesPage() {
       // `?? sales[0]` que existia aqui pegava esse resultado por engano --
       // devolucao processada contra a venda ERRADA, silenciosamente. So
       // aceita match exato no numero; sem isso, e erro, nao chute.
-      const sales = await listSalesFn({ data: { q: saleNumber.trim() } });
+      const { items: sales } = await listSalesFn({ data: { q: saleNumber.trim(), limit: 50 } });
       const match = sales.find((s) => String((s as { number?: number }).number) === saleNumber.trim());
       if (!match) throw new Error("Venda não encontrada com esse número.");
       const s = match as { id: number; number: number; customer_name?: string };
@@ -159,10 +159,10 @@ function DevolucoesPage() {
             </div>
           </Field>
           {saleLabel ? <p className="mt-2 text-sm text-muted-foreground">{saleLabel}</p> : null}
-          {!saleId && (recent.data ?? []).length ? (
+          {!saleId && (recent.data?.items ?? []).length ? (
             <div className="mt-block max-h-40 space-y-1 overflow-y-auto text-sm">
               <p className="text-xs text-muted-foreground">Ou escolha uma venda recente</p>
-              {(recent.data as Record<string, unknown>[]).slice(0, 8).map((s) => (
+              {(recent.data!.items as Record<string, unknown>[]).map((s) => (
                 <button
                   key={String(s.id)}
                   type="button"

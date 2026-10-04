@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { StockCountPanel } from "@/components/stock-count-panel";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
 import { STOCK_TYPE_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
@@ -19,10 +20,13 @@ import { num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/estoque")({ component: EstoquePage });
 
+const PAGE_SIZE = 100;
+
 function EstoquePage() {
   const storeId = useSelection((s) => s.storeId);
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<"all" | "low" | "zero" | "stale">("all");
   const [adj, setAdj] = useState<{ variantId: number; name: string } | null>(null);
   const [type, setType] = useState<"entrada" | "saida" | "ajuste" | "perda">("entrada");
@@ -32,11 +36,29 @@ function EstoquePage() {
   const [registrando, setRegistrando] = useState(false);
 
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
+  // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
+  // para o esqueleto e o campo de busca perdia o foco.
+  const termo = useDebounced(q.trim(), 250);
   const stock = useQuery({
-    queryKey: ["stock", storeId, q, filter],
+    queryKey: ["stock", storeId, termo, filter, page],
     queryFn: () =>
-      listStockFn({ data: { storeId: storeId ?? undefined, q: q || undefined, filter } }),
+      listStockFn({
+        data: {
+          storeId: storeId ?? undefined,
+          q: termo || undefined,
+          filter,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const items = stock.data?.items ?? [];
+  const total = stock.data?.total ?? 0;
+  const paginaVazia = !stock.isPlaceholderData && stock.data != null && items.length === 0 && page > 0;
+  useEffect(() => {
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
   const moves = useQuery({
     queryKey: ["moves", storeId],
     queryFn: () => listMovementsFn({ data: { storeId: storeId ?? undefined } }),
@@ -56,17 +78,58 @@ function EstoquePage() {
         </TabsList>
         <TabsContent value="saldo">
           <div className="mb-4 flex flex-wrap gap-2">
-            <Input className="max-w-xs" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
-            <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
+            <Input
+              className="max-w-xs"
+              placeholder="Buscar"
+              aria-label="Buscar no estoque"
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(0);
+              }}
+            />
+            <Select
+              aria-label="Filtro de estoque"
+              value={filter}
+              onChange={(e) => {
+                setFilter(e.target.value as typeof filter);
+                setPage(0);
+              }}
+            >
               <option value="all">Todos</option>
               <option value="low">Abaixo do mínimo</option>
               <option value="zero">Zerados</option>
               <option value="stale">Sem giro (45 dias)</option>
             </Select>
           </div>
-          {!stock.data?.length ? (
-            <EmptyState title="Nenhum item em estoque." description="Cadastre produtos e dê entrada para ver os saldos." />
+          {!items.length ? (
+            // Filtro ou busca sem resultado nao e "estoque vazio".
+            termo || filter !== "all" ? (
+              <EmptyState
+                title="Nenhum item neste filtro."
+                description={
+                  termo
+                    ? `Nada encontrado para “${termo}” com o filtro escolhido.`
+                    : "Nenhum item atende a este filtro agora."
+                }
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setQ("");
+                      setFilter("all");
+                      setPage(0);
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState title="Nenhum item em estoque." description="Cadastre produtos e dê entrada para ver os saldos." />
+            )
           ) : (
+            <div className={stock.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={stock.isPlaceholderData}>
             <DataTable
               headers={
                 <tr>
@@ -79,7 +142,7 @@ function EstoquePage() {
                 </tr>
               }
             >
-              {stock.data.map((r) => (
+              {items.map((r) => (
                 <tr key={`${r.variantId}-${r.storeId}`} className="border-b border-border last:border-0">
                   <Td>
                     <p className="font-medium">{r.name}</p>
@@ -105,6 +168,8 @@ function EstoquePage() {
                 </tr>
               ))}
             </DataTable>
+            <Pager page={page} pageSize={PAGE_SIZE} shown={items.length} total={total} onPage={setPage} />
+            </div>
           )}
         </TabsContent>
         <TabsContent value="mov">
