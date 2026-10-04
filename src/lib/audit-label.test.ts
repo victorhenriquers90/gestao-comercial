@@ -226,6 +226,117 @@ describe("mudancas da auditoria", () => {
     assert.equal(out[2], "fornecedor: vazio → nº 3");
   });
 
+  it("promocao: titulo, criacao completa e desativacao", () => {
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "update", entity: "promotion", entity_id: 5, after_data: { name: "Liquida verao" } }),
+      "Ana alterou promoção “Liquida verao”",
+    );
+    const criada = auditChanges({
+      action: "create",
+      entity: "promotion",
+      before_data: null,
+      after_data: {
+        name: "Liquida verao",
+        kind: "percent",
+        percent: 15,
+        amount: null,
+        promoPrice: null,
+        buyQty: null,
+        payQty: null,
+        minQty: null,
+        productId: null,
+        categoryId: 3,
+        startsAt: "2026-10-01",
+        endsAt: "2026-10-31",
+        isActive: true,
+      },
+    });
+    assert.deepEqual(criada, [
+      "nome: Liquida verao",
+      "tipo: Desconto percentual",
+      "percentual: 15%",
+      "categoria: nº 3",
+      "início: 01/10/2026",
+      "fim: 31/10/2026",
+      "situação: ativo",
+    ]);
+    assert.deepEqual(
+      auditChanges({
+        action: "update",
+        entity: "promotion",
+        before_data: { name: "Liquida verao", kind: "percent", percent: 15, isActive: true, endsAt: "2026-10-31" },
+        after_data: { name: "Liquida verao", kind: "percent", percent: 15, isActive: false, endsAt: "2026-10-31" },
+      }),
+      ["situação: ativo → inativo"],
+    );
+  });
+
+  it("regra de comissao: faixas, valor por peca e exclusao", () => {
+    assert.equal(
+      auditTitle({ user_name: "Rui", action: "delete", entity: "commission_rule", entity_id: 2, before_data: { name: "Geral" }, after_data: null }),
+      "Rui excluiu regra de comissão “Geral”",
+    );
+    const out = auditChanges({
+      action: "update",
+      entity: "commission_rule",
+      before_data: { name: "Geral", kind: "percent_sales", percent: 5, tierBasis: "none", tiers: [], paymentMethod: null, skipPromo: false },
+      after_data: {
+        name: "Geral",
+        kind: "percent_sales",
+        percent: 5,
+        tierBasis: "month",
+        tiers: [
+          { min: 0, percent: 5 },
+          { min: 8000, percent: 7 },
+        ],
+        paymentMethod: "crediario",
+        skipPromo: true,
+      },
+    });
+    assert.equal(out.length, 4);
+    assert.equal(out[0], "base da faixa: Percentual único → Faixa sobre o faturamento do mês");
+    assert.match(out[1]!, /^faixas: nenhuma → R\$\s?0,00\+ → 5% · R\$\s?8\.000,00\+ → 7%$/);
+    assert.equal(out[2], "pagamento: vazio → Crediário");
+    assert.equal(out[3], "ignora itens em promoção: não → sim");
+    const porPeca = auditChanges({
+      action: "update",
+      entity: "commission_rule",
+      before_data: { kind: "fixed_unit", percent: 2 },
+      after_data: { kind: "fixed_unit", percent: 3 },
+    });
+    assert.match(porPeca[0]!, /^valor por peça: R\$\s?2,00 → R\$\s?3,00$/);
+  });
+
+  it("meta: criacao omite bonus desligado e bonus segue a unidade do tipo", () => {
+    const criada = auditChanges({
+      action: "create",
+      entity: "target",
+      before_data: null,
+      after_data: {
+        name: "Meta outubro",
+        amount: 20000,
+        periodStart: "2026-10-01",
+        periodEnd: "2026-10-31",
+        storeId: null,
+        sellerId: 4,
+        categoryId: null,
+        bonusKind: "none",
+        bonusValue: 0,
+      },
+    });
+    assert.equal(criada.length, 5);
+    assert.equal(criada[0], "nome: Meta outubro");
+    assert.match(criada[1]!, /^meta: R\$\s?20\.000,00$/);
+    assert.equal(criada[4], "vendedor: nº 4");
+    const edit = auditChanges({
+      action: "update",
+      entity: "target",
+      before_data: { bonusKind: "extra_percent", bonusValue: 1 },
+      after_data: { bonusKind: "extra_percent", bonusValue: 2 },
+    });
+    assert.deepEqual(edit, ["valor do bônus: 1% → 2%"]);
+  });
+
   it("sem antes (criacao) ou com payload estranho nao quebra", () => {
     assert.deepEqual(auditChanges({ action: "create", entity: "store", before_data: null, after_data: { name: "X" } }), []);
     assert.deepEqual(auditChanges({ action: "x", entity: "y", before_data: [1], after_data: "z" }), []);

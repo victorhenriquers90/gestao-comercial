@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   computeCommission,
+  parseCommissionRuleInput,
   pickRule,
   pickTier,
   ruleMatches,
@@ -396,5 +397,100 @@ describe("target bonuses", () => {
     assert.equal(out.lines[1]?.amount, 8);
     assert.equal(out.lines[2]?.amount, 6);
     assert.equal(out.amount, 21);
+  });
+});
+
+describe("parseCommissionRuleInput", () => {
+  const ok = { name: "  Geral  ", kind: "percent_sales", percent: 5 };
+
+  it("regra simples: normaliza nome e preenche os padroes sem tierBasis nem tiers", () => {
+    // Bug real: tierBasis omitido virava undefined e o banco devolvia
+    // "o valor nulo na coluna tier_basis" em vez de salvar ou explicar.
+    assert.deepEqual(parseCommissionRuleInput(ok), {
+      id: undefined,
+      name: "Geral",
+      kind: "percent_sales",
+      percent: 5,
+      sellerId: null,
+      categoryId: null,
+      productId: null,
+      paymentMethod: null,
+      minAmount: 0,
+      skipPromo: false,
+      onlyPromo: false,
+      priority: 0,
+      isActive: undefined,
+      tiers: [],
+      tierBasis: "none",
+    });
+  });
+
+  it("recusa nome em branco, tipo desconhecido e base de faixa desconhecida", () => {
+    assert.throws(() => parseCommissionRuleInput({ ...ok, name: "  " }), /Nome da regra obrigat/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, kind: "magica" }), /Tipo de regra inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, kind: undefined }), /Tipo de regra inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, tierBasis: "ano" }), /Base da faixa inválida/);
+  });
+
+  it("percentual: negativo, NaN e acima de 100 sao erro; valor por peca vai ate 10000", () => {
+    assert.throws(() => parseCommissionRuleInput({ ...ok, percent: -1 }), /Percentual inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, percent: Number.NaN }), /Percentual inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, percent: 101 }), /Percentual inválido/);
+    assert.equal(parseCommissionRuleInput({ ...ok, kind: "fixed_unit", percent: 2500 }).percent, 2500);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, kind: "fixed_unit", percent: 10001 }), /Valor por peça/);
+  });
+
+  it("regra de exclusao e valor por peca nao carregam faixa nem percentual indevido", () => {
+    const ex = parseCommissionRuleInput({
+      ...ok,
+      kind: "exclude",
+      percent: 9,
+      tierBasis: "sale",
+      tiers: [{ min: 0, percent: 5 }],
+    });
+    assert.equal(ex.percent, 0);
+    assert.equal(ex.tierBasis, "none");
+    assert.deepEqual(ex.tiers, []);
+    const fx = parseCommissionRuleInput({ ...ok, kind: "fixed_unit", percent: 3, tierBasis: "month", tiers: [{ min: 1, percent: 1 }] });
+    assert.equal(fx.tierBasis, "none");
+    assert.deepEqual(fx.tiers, []);
+  });
+
+  it("faixas sao ordenadas e as invalidas descartadas", () => {
+    const r = parseCommissionRuleInput({
+      ...ok,
+      tierBasis: "month",
+      tiers: [
+        { min: 8000, percent: 7 },
+        { min: 0, percent: 5 },
+        { min: -1, percent: 3 },
+        { min: 100, percent: Number.NaN },
+      ],
+    });
+    assert.equal(r.tierBasis, "month");
+    assert.deepEqual(r.tiers, [
+      { min: 0, percent: 5 },
+      { min: 8000, percent: 7 },
+    ]);
+  });
+
+  it("forma de pagamento, valor minimo e prioridade", () => {
+    assert.equal(parseCommissionRuleInput({ ...ok, paymentMethod: "pix" }).paymentMethod, "pix");
+    assert.equal(parseCommissionRuleInput({ ...ok, paymentMethod: "" }).paymentMethod, null);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, paymentMethod: "fiado" }), /Forma de pagamento inválida/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, minAmount: -5 }), /Valor mínimo inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, minAmount: Number.POSITIVE_INFINITY }), /Valor mínimo inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, priority: 1.5 }), /Prioridade deve ser um número inteiro/);
+    assert.equal(parseCommissionRuleInput({ ...ok, priority: -2 }).priority, -2);
+  });
+
+  it("ids de escopo precisam ser inteiros positivos; so-promo vence pula-promo", () => {
+    assert.throws(() => parseCommissionRuleInput({ ...ok, sellerId: "x" }), /Vendedor inválido/);
+    assert.throws(() => parseCommissionRuleInput({ ...ok, productId: 0 }), /Produto inválido/);
+    assert.equal(parseCommissionRuleInput({ ...ok, categoryId: 4 }).categoryId, 4);
+    const r = parseCommissionRuleInput({ ...ok, skipPromo: true, onlyPromo: true, isActive: false });
+    assert.equal(r.skipPromo, false);
+    assert.equal(r.onlyPromo, true);
+    assert.equal(r.isActive, false);
   });
 });

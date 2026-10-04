@@ -1,4 +1,6 @@
+import { PROMO_KINDS } from "./constants.ts";
 import { ymdLocal } from "./local-date.ts";
+import { requireIsoDate, requireLine } from "./sanitize.ts";
 export type Promo = {
   id: number;
   name: string;
@@ -98,4 +100,88 @@ export function bestPromo(
     }
   }
   return best;
+}
+
+export type PromoInput = {
+  name: string;
+  kind: (typeof PROMO_KINDS)[number];
+  percent: number | null;
+  amount: number | null;
+  promoPrice: number | null;
+  buyQty: number | null;
+  payQty: number | null;
+  minQty: number | null;
+  startsAt: string;
+  endsAt: string;
+};
+
+type RawPromoInput = {
+  name?: unknown;
+  kind?: unknown;
+  percent?: unknown;
+  amount?: unknown;
+  promoPrice?: unknown;
+  buyQty?: unknown;
+  payQty?: unknown;
+  minQty?: unknown;
+  startsAt?: unknown;
+  endsAt?: unknown;
+};
+
+function promoNumber(raw: unknown, label: string, max: number): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) throw new Error(`Valor de ${label} inválido.`);
+  if (n > max) throw new Error(`Valor de ${label} alto demais.`);
+  return n;
+}
+
+/**
+ * Valida e normaliza o cadastro de promocao no servidor. A tela ja barra
+ * estes casos, mas quem chama savePromotionFn direto gravava nome em branco,
+ * fim antes do inicio, tipo inexistente e promocao "percentual" sem
+ * percentual (ficava "Ativa" e nunca dava desconto). Campos que o tipo
+ * escolhido nao usa viram null, pra um percentual esquecido de uma tentativa
+ * anterior nao ficar guardado numa promocao de preco fixo.
+ */
+export function parsePromoInput(raw: RawPromoInput): PromoInput {
+  const name = requireLine(raw.name, "Nome", 120);
+  const kind = typeof raw.kind === "string" ? (PROMO_KINDS as readonly string[]).find((k) => k === raw.kind) : undefined;
+  if (!kind) throw new Error("Tipo de promoção inválido.");
+  const startsAt = requireIsoDate(raw.startsAt, "Início");
+  const endsAt = requireIsoDate(raw.endsAt, "Fim");
+  if (endsAt < startsAt) throw new Error("O fim da promoção não pode ser antes do início.");
+
+  const percent = promoNumber(raw.percent, "percentual", 1_000_000);
+  const amount = promoNumber(raw.amount, "desconto", 999_999_999);
+  const promoPrice = promoNumber(raw.promoPrice, "preço promocional", 999_999_999);
+  const buyQty = promoNumber(raw.buyQty, "quantidade (compre)", 1_000_000);
+  const payQty = promoNumber(raw.payQty, "quantidade (pague)", 1_000_000);
+  const minQty = promoNumber(raw.minQty, "quantidade mínima", 1_000_000);
+
+  const base = { name, startsAt, endsAt };
+  const none = { percent: null, amount: null, promoPrice: null, buyQty: null, payQty: null, minQty: null };
+  const needPercent = () => {
+    if (percent == null || percent <= 0 || percent > 100) throw new Error("Percentual deve ficar entre 0 e 100 (maior que zero).");
+    return percent;
+  };
+
+  switch (kind as (typeof PROMO_KINDS)[number]) {
+    case "percent":
+      return { ...base, ...none, kind: "percent", percent: needPercent() };
+    case "fixed":
+      if (amount == null || amount <= 0) throw new Error("Desconto deve ser maior que zero.");
+      return { ...base, ...none, kind: "fixed", amount };
+    case "promo_price":
+      if (promoPrice == null || promoPrice <= 0) throw new Error("Preço promocional deve ser maior que zero.");
+      return { ...base, ...none, kind: "promo_price", promoPrice };
+    case "qty":
+      if (minQty == null || minQty <= 0) throw new Error("Quantidade mínima deve ser maior que zero.");
+      return { ...base, ...none, kind: "qty", minQty, percent: needPercent() };
+    case "bxgy":
+      if (buyQty == null || buyQty <= 0) throw new Error("Quantidade (compre) deve ser maior que zero.");
+      if (payQty == null || payQty <= 0) throw new Error("Quantidade (pague) deve ser maior que zero.");
+      if (payQty >= buyQty) throw new Error('Em "leve X pague Y", pague deve ser menor que leve.');
+      return { ...base, ...none, kind: "bxgy", buyQty, payQty };
+  }
 }

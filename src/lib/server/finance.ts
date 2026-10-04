@@ -1794,12 +1794,13 @@ export const saveTargetFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
     await assertOwned(sql, tenant.companyId, "stores", data.storeId);
-    const name = data.name.trim();
-    if (!name) throw new Error("Informe o nome da meta.");
-    const amount = Number(data.amount);
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da meta inválido.");
-    if (!data.periodStart || !data.periodEnd) throw new Error("Informe o período.");
-    if (data.periodEnd < data.periodStart) throw new Error("O fim do período deve ser depois do início.");
+    // Nome em branco, valor alem do numeric(14,2) e data inexistente (31/02)
+    // chegavam ao banco e voltavam como erro cru do Postgres.
+    const name = requireLine(data.name, "Nome da meta", 120);
+    const amount = requireMoney(data.amount, "Valor da meta");
+    const periodStart = requireIsoDate(data.periodStart, "Início do período");
+    const periodEnd = requireIsoDate(data.periodEnd, "Fim do período");
+    if (periodEnd < periodStart) throw new Error("O fim do período deve ser depois do início.");
     const bonusKind: TargetBonusKind = isTargetBonusKind(data.bonusKind ?? "none")
       ? (data.bonusKind as TargetBonusKind)
       : "none";
@@ -1817,37 +1818,62 @@ export const saveTargetFn = createServerFn({ method: "POST" })
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;
     const categoryId = data.categoryId ?? null;
-    if (data.id) {
-      const updated = await sql<{ id: number }>`
-        update targets set
-          name = ${name},
-          amount = ${amount},
-          period_start = ${data.periodStart},
-          period_end = ${data.periodEnd},
-          store_id = ${storeId},
-          seller_id = ${sellerId},
-          category_id = ${categoryId},
-          bonus_kind = ${bonusKind},
-          bonus_value = ${bonusValue}
-        where id = ${data.id} and company_id = ${tenant.companyId}
+    const after = { name, amount, periodStart, periodEnd, storeId, sellerId, categoryId, bonusKind, bonusValue };
+    return sql.transaction(async (sql) => {
+      if (data.id) {
+        const [cur] = await sql<Row>`
+          select name, amount, period_start, period_end, store_id, seller_id, category_id, bonus_kind, bonus_value
+            from targets where id = ${data.id} and company_id = ${tenant.companyId} for update
+        `;
+        if (!cur) throw new Error("Meta não encontrada.");
+        await sql`
+          update targets set
+            name = ${name},
+            amount = ${amount},
+            period_start = ${periodStart},
+            period_end = ${periodEnd},
+            store_id = ${storeId},
+            seller_id = ${sellerId},
+            category_id = ${categoryId},
+            bonus_kind = ${bonusKind},
+            bonus_value = ${bonusValue}
+          where id = ${data.id} and company_id = ${tenant.companyId}
+        `;
+        await auditUpdate(
+          sql,
+          tenant,
+          "target",
+          data.id,
+          {
+            name: String(cur.name),
+            amount: num(cur.amount),
+            periodStart: String(cur.period_start).slice(0, 10),
+            periodEnd: String(cur.period_end).slice(0, 10),
+            storeId: cur.store_id == null ? null : num(cur.store_id),
+            sellerId: cur.seller_id == null ? null : num(cur.seller_id),
+            categoryId: cur.category_id == null ? null : num(cur.category_id),
+            bonusKind: String(cur.bonus_kind ?? "none"),
+            bonusValue: num(cur.bonus_value),
+          },
+          after,
+        );
+        return { id: data.id };
+      }
+      const [row] = await sql<{ id: number }>`
+        insert into targets (
+          company_id, store_id, seller_id, category_id, name, period_start, period_end, amount,
+          bonus_kind, bonus_value
+        )
+        values (
+          ${tenant.companyId}, ${storeId}, ${sellerId}, ${categoryId},
+          ${name}, ${periodStart}, ${periodEnd}, ${amount},
+          ${bonusKind}, ${bonusValue}
+        )
         returning id
       `;
-      if (!updated.length) throw new Error("Meta não encontrada.");
-      return { id: data.id };
-    }
-    const [row] = await sql<{ id: number }>`
-      insert into targets (
-        company_id, store_id, seller_id, category_id, name, period_start, period_end, amount,
-        bonus_kind, bonus_value
-      )
-      values (
-        ${tenant.companyId}, ${storeId}, ${sellerId}, ${categoryId},
-        ${name}, ${data.periodStart}, ${data.periodEnd}, ${amount},
-        ${bonusKind}, ${bonusValue}
-      )
-      returning id
-    `;
-    return { id: row!.id };
+      await audit(sql, tenant, "create", "target", row!.id, null, after);
+      return { id: row!.id };
+    });
   });
 
 export const listCommissionsFn = createServerFn({ method: "POST" })

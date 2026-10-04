@@ -2,21 +2,20 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import {
   computeCommission,
-  isCommissionKind,
   isTierBasis,
   normalizeTiers,
+  parseCommissionRuleInput,
   type CommissionLineOut,
   type CommissionRule,
   type CommissionTier,
   type TargetBonusIn,
-  type TierBasis,
 } from "@/lib/commission";
 import { clampIss, computeNetCommission, ISS_DEFAULT, resolveTaxProfile, taxToJson, type TaxResult } from "@/lib/tax";
 import type { Sql } from "@/lib/db";
 import { type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertOwned, requireTenant } from "./context";
+import { assertOwned, audit, auditUpdate, requireTenant } from "./context";
 
 export function parseBreakdown(raw: unknown): CommissionLineOut[] {
   const src = typeof raw === "string" ? (() => {
@@ -294,107 +293,126 @@ export type SaveCommissionRuleIn = {
   skipPromo?: boolean;
   onlyPromo?: boolean;
   priority?: number;
+  /** Omitido: nasce ativa; na edição mantém a situação atual. */
   isActive?: boolean;
   tiers?: CommissionTier[];
   tierBasis?: string;
 };
 
-function normalizeRule(data: SaveCommissionRuleIn): SaveCommissionRuleIn & {
-  tiers: CommissionTier[];
-  tierBasis: TierBasis;
-} {
-  const kind = isCommissionKind(data.kind) ? data.kind : "percent_sales";
-  const name = data.name.trim();
-  const percent = kind === "exclude" ? 0 : Math.max(0, Number(data.percent) || 0);
-  let tierBasis: TierBasis = isTierBasis(data.tierBasis ?? "none") ? (data.tierBasis as TierBasis) : "none";
-  let tiers = normalizeTiers(data.tiers);
-  if (kind === "exclude" || kind === "fixed_unit") {
-    tierBasis = "none";
-    tiers = [];
-  }
-  if (tierBasis === "none") tiers = [];
-  return { ...data, kind, name, percent, tiers, tierBasis };
+function ruleSnapshot(r: CommissionRule) {
+  return {
+    name: r.name,
+    kind: r.kind,
+    percent: r.percent,
+    sellerId: r.sellerId,
+    categoryId: r.categoryId,
+    productId: r.productId,
+    paymentMethod: r.paymentMethod,
+    minAmount: r.minAmount,
+    skipPromo: r.skipPromo,
+    onlyPromo: r.onlyPromo,
+    priority: r.priority,
+    isActive: r.isActive,
+    tierBasis: r.tierBasis,
+    tiers: r.tiers,
+  };
 }
 
 export const saveCommissionRuleFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: SaveCommissionRuleIn) => d)
-  .handler(async ({ context, data }) => {
+  .validator((d: SaveCommissionRuleIn) => parseCommissionRuleInput(d))
+  .handler(async ({ context, data: n }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sellers.write");
-    const n = normalizeRule(data);
-    if (n.kind !== "fixed_unit" && n.kind !== "exclude" && n.percent > 100) {
-      throw new Error("Percentual inválido.");
-    }
-    if (n.kind === "fixed_unit" && n.percent > 10000) {
-      throw new Error("Valor por peça inválido.");
-    }
     // Regra de outra empresa nunca bateria com venda daqui, mas o dropdown
     // so oferece o que e desta empresa -- so chega ID de outra por chamada
     // direta a API, e a regra ficaria salva sem NUNCA se aplicar a nada.
     await assertOwned(sql, tenant.companyId, "sellers", n.sellerId);
     await assertOwned(sql, tenant.companyId, "categories", n.categoryId);
     await assertOwned(sql, tenant.companyId, "products", n.productId);
-    const skipPromo = Boolean(n.skipPromo) && !n.onlyPromo;
-    const onlyPromo = Boolean(n.onlyPromo);
     const tiersJson = JSON.stringify(n.tiers);
-    if (n.id) {
-      await sql`
-        update commission_rules set
-          name = ${n.name},
-          kind = ${n.kind},
-          percent = ${n.percent},
-          seller_id = ${n.sellerId ?? null},
-          category_id = ${n.categoryId ?? null},
-          product_id = ${n.productId ?? null},
-          payment_method = ${n.paymentMethod ?? null},
-          min_amount = ${n.minAmount ?? 0},
-          skip_promo = ${skipPromo},
-          only_promo = ${onlyPromo},
-          priority = ${n.priority ?? 0},
-          is_active = ${n.isActive ?? true},
-          tiers = ${tiersJson}::jsonb,
-          tier_basis = ${n.tierBasis},
-          updated_at = now()
-        where id = ${n.id} and company_id = ${tenant.companyId}
+    return sql.transaction(async (sql) => {
+      if (n.id) {
+        const [cur] = await sql<Row>`
+          select * from commission_rules where id = ${n.id} and company_id = ${tenant.companyId} for update
+        `;
+        if (!cur) throw new Error("Regra não encontrada.");
+        const before = mapRule(cur);
+        const isActive = n.isActive ?? before.isActive;
+        await sql`
+          update commission_rules set
+            name = ${n.name},
+            kind = ${n.kind},
+            percent = ${n.percent},
+            seller_id = ${n.sellerId},
+            category_id = ${n.categoryId},
+            product_id = ${n.productId},
+            payment_method = ${n.paymentMethod},
+            min_amount = ${n.minAmount},
+            skip_promo = ${n.skipPromo},
+            only_promo = ${n.onlyPromo},
+            priority = ${n.priority},
+            is_active = ${isActive},
+            tiers = ${tiersJson}::jsonb,
+            tier_basis = ${n.tierBasis},
+            updated_at = now()
+          where id = ${n.id} and company_id = ${tenant.companyId}
+        `;
+        await auditUpdate(sql, tenant, "commission_rule", n.id, ruleSnapshot(before), ruleSnapshot({ ...before, ...n, id: n.id, isActive }));
+        return { id: n.id };
+      }
+      const isActive = n.isActive ?? true;
+      const [row] = await sql<{ id: number }>`
+        insert into commission_rules (
+          company_id, name, kind, percent, seller_id, category_id, product_id,
+          payment_method, min_amount, skip_promo, only_promo, priority, is_active,
+          tiers, tier_basis
+        ) values (
+          ${tenant.companyId}, ${n.name}, ${n.kind}, ${n.percent}, ${n.sellerId},
+          ${n.categoryId}, ${n.productId}, ${n.paymentMethod},
+          ${n.minAmount}, ${n.skipPromo}, ${n.onlyPromo}, ${n.priority}, ${isActive},
+          ${tiersJson}::jsonb, ${n.tierBasis}
+        ) returning id
       `;
-      return { id: n.id };
-    }
-    const [row] = await sql<{ id: number }>`
-      insert into commission_rules (
-        company_id, name, kind, percent, seller_id, category_id, product_id,
-        payment_method, min_amount, skip_promo, only_promo, priority, is_active,
-        tiers, tier_basis
-      ) values (
-        ${tenant.companyId}, ${n.name}, ${n.kind}, ${n.percent}, ${n.sellerId ?? null},
-        ${n.categoryId ?? null}, ${n.productId ?? null}, ${n.paymentMethod ?? null},
-        ${n.minAmount ?? 0}, ${skipPromo}, ${onlyPromo}, ${n.priority ?? 0}, ${n.isActive ?? true},
-        ${tiersJson}::jsonb, ${n.tierBasis}
-      ) returning id
-    `;
-    return { id: row!.id };
+      await audit(sql, tenant, "create", "commission_rule", row!.id, null, ruleSnapshot({ ...n, id: row!.id, isActive }));
+      return { id: row!.id };
+    });
   });
 
 export const deleteCommissionRuleFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number }) => d)
+  .validator((d: { id: number }) => {
+    if (!Number.isSafeInteger(d.id) || d.id <= 0) throw new Error("Regra inválida.");
+    return d;
+  })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sellers.write");
-    const [used] = await sql<{ n: string | number }>`
-      select count(*) as n from commissions where rule_id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (num(used?.n) > 0) {
-      await sql`
-        update commission_rules set is_active = false, updated_at = now()
-         where id = ${data.id} and company_id = ${tenant.companyId}
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select * from commission_rules where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
-      return { ok: true, deactivated: true };
-    }
-    await sql`
-      delete from commission_rules where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    return { ok: true, deactivated: false };
+      if (!cur) throw new Error("Regra não encontrada.");
+      const before = mapRule(cur);
+      const [used] = await sql<{ n: string | number }>`
+        select count(*) as n from commissions where rule_id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      if (num(used?.n) > 0) {
+        if (before.isActive) {
+          await sql`
+            update commission_rules set is_active = false, updated_at = now()
+             where id = ${data.id} and company_id = ${tenant.companyId}
+          `;
+          await auditUpdate(sql, tenant, "commission_rule", data.id, ruleSnapshot(before), ruleSnapshot({ ...before, isActive: false }));
+        }
+        return { ok: true, deactivated: true };
+      }
+      await sql`
+        delete from commission_rules where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "delete", "commission_rule", data.id, ruleSnapshot(before), null);
+      return { ok: true, deactivated: false };
+    });
   });
 
 const DEFAULT_FAIXA: CommissionTier[] = [

@@ -1,4 +1,14 @@
-import { RECEIPT_METHOD_LABELS, type ReceiptMethod } from "./constants.ts";
+import {
+  COMMISSION_KIND_LABELS,
+  PAYMENT_LABELS,
+  PROMO_KIND_LABELS,
+  RECEIPT_METHOD_LABELS,
+  TARGET_BONUS_LABELS,
+  TIER_BASIS_LABELS,
+  type PaymentMethod,
+  type ReceiptMethod,
+  type TargetBonusKind,
+} from "./constants.ts";
 import { formatBRL, formatDoc } from "./format.ts";
 import { ROLE_LABELS, type Role } from "./permissions.ts";
 import { TAX_REGIME_LABELS, type TaxRegime } from "./tax.ts";
@@ -34,11 +44,15 @@ const ENTITY: Record<string, string> = {
   commission: "comissão",
   stock_count: "contagem de estoque",
   settings: "taxas de cartão",
+  promotion: "promoção",
+  commission_rule: "regra de comissão",
+  target: "meta",
 };
 
 const ACTION: Record<string, string> = {
   create: "criou",
   update: "alterou",
+  delete: "excluiu",
   invite: "convidou",
   renew: "renovou",
   revoke: "revogou",
@@ -63,9 +77,27 @@ const ACTION: Record<string, string> = {
   suprimento: "lançou suprimento no",
 };
 
-type FieldKind = "text" | "money" | "bool" | "role" | "percent" | "doc" | "regime" | "date" | "method" | "ref";
+type FieldKind =
+  | "text"
+  | "money"
+  | "bool"
+  | "role"
+  | "percent"
+  | "doc"
+  | "regime"
+  | "date"
+  | "method"
+  | "ref"
+  | "yesno"
+  | "promoKind"
+  | "commissionKind"
+  | "tierBasis"
+  | "bonusKind"
+  | "tiers";
 
-const FIELDS: Record<string, { label: string; kind: FieldKind }> = {
+type FieldDef = { label: string; kind: FieldKind };
+
+const FIELDS: Record<string, FieldDef> = {
   name: { label: "nome", kind: "text" },
   tradeName: { label: "nome fantasia", kind: "text" },
   document: { label: "documento", kind: "doc" },
@@ -99,8 +131,83 @@ const FIELDS: Record<string, { label: string; kind: FieldKind }> = {
   storeId: { label: "loja", kind: "ref" },
 };
 
+/*
+  Cadastros de regra comercial (promocao, regra de comissao, meta): o registro
+  inteiro e o que importa tanto na criacao quanto na edicao, na ordem em que se
+  le a regra -- por isso lista propria em vez de misturar com FIELDS, onde
+  "kind", "percent" e "amount" significam outra coisa em cada entidade.
+*/
+const ENTITY_FIELDS: Record<string, Record<string, FieldDef>> = {
+  promotion: {
+    name: { label: "nome", kind: "text" },
+    kind: { label: "tipo", kind: "promoKind" },
+    percent: { label: "percentual", kind: "percent" },
+    amount: { label: "desconto", kind: "money" },
+    promoPrice: { label: "preço promocional", kind: "money" },
+    buyQty: { label: "leve", kind: "text" },
+    payQty: { label: "pague", kind: "text" },
+    minQty: { label: "quantidade mínima", kind: "text" },
+    productId: { label: "produto", kind: "ref" },
+    categoryId: { label: "categoria", kind: "ref" },
+    startsAt: { label: "início", kind: "date" },
+    endsAt: { label: "fim", kind: "date" },
+    isActive: { label: "situação", kind: "bool" },
+  },
+  commission_rule: {
+    name: { label: "nome", kind: "text" },
+    kind: { label: "tipo", kind: "commissionKind" },
+    percent: { label: "percentual", kind: "percent" },
+    tierBasis: { label: "base da faixa", kind: "tierBasis" },
+    tiers: { label: "faixas", kind: "tiers" },
+    sellerId: { label: "vendedor", kind: "ref" },
+    categoryId: { label: "categoria", kind: "ref" },
+    productId: { label: "produto", kind: "ref" },
+    paymentMethod: { label: "pagamento", kind: "method" },
+    minAmount: { label: "venda mínima", kind: "money" },
+    skipPromo: { label: "ignora itens em promoção", kind: "yesno" },
+    onlyPromo: { label: "só itens em promoção", kind: "yesno" },
+    priority: { label: "prioridade", kind: "text" },
+    isActive: { label: "situação", kind: "bool" },
+  },
+  target: {
+    name: { label: "nome", kind: "text" },
+    amount: { label: "meta", kind: "money" },
+    periodStart: { label: "início", kind: "date" },
+    periodEnd: { label: "fim", kind: "date" },
+    storeId: { label: "loja", kind: "ref" },
+    sellerId: { label: "vendedor", kind: "ref" },
+    categoryId: { label: "categoria", kind: "ref" },
+    bonusKind: { label: "bônus", kind: "bonusKind" },
+    bonusValue: { label: "valor do bônus", kind: "text" },
+  },
+};
+
+/** Alguns campos mudam de unidade conforme o tipo do registro: valor por peça não é percentual. */
+function resolveDef(entity: string, key: string, def: FieldDef, rec: Record<string, unknown>): FieldDef {
+  if (entity === "commission_rule" && key === "percent" && rec.kind === "fixed_unit") {
+    return { label: "valor por peça", kind: "money" };
+  }
+  if (entity === "target" && key === "bonusValue") {
+    if (rec.bonusKind === "extra_percent") return { label: "valor do bônus", kind: "percent" };
+    if (rec.bonusKind === "extra_fixed") return { label: "valor do bônus", kind: "money" };
+  }
+  return def;
+}
+
+/** Na criação, o que está em branco ou desligado só faz ruído. */
+function omitOnCreate(def: FieldDef, value: unknown, rec: Record<string, unknown>, key: string): boolean {
+  if (value == null || value === "") return true;
+  if (def.kind === "yesno" && value === false) return true;
+  if (def.kind === "tiers" && Array.isArray(value) && value.length === 0) return true;
+  if (def.kind === "tierBasis" && value === "none") return true;
+  if ((key === "minAmount" || key === "priority") && Number(value) === 0) return true;
+  if (key === "bonusKind" && value === "none") return true;
+  if (key === "bonusValue" && rec.bonusKind === "none") return true;
+  return false;
+}
+
 // Eventos sem "antes" (lançamento, baixa, sangria): o que o evento carrega, na ordem em que se lê.
-const EVENT_FIELDS: Record<string, { label: string; kind: FieldKind }> = {
+const EVENT_FIELDS: Record<string, FieldDef> = {
   amount: { label: "valor", kind: "money" },
   dueDate: { label: "vencimento", kind: "date" },
   category: { label: "categoria", kind: "text" },
@@ -135,9 +242,28 @@ function show(kind: FieldKind, v: unknown): string {
       return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v);
     }
     case "method":
-      return RECEIPT_METHOD_LABELS[v as ReceiptMethod] ?? String(v);
+      return RECEIPT_METHOD_LABELS[v as ReceiptMethod] ?? PAYMENT_LABELS[v as PaymentMethod] ?? String(v);
     case "ref":
       return `nº ${String(v)}`;
+    case "yesno":
+      return v === true || v === "true" ? "sim" : "não";
+    case "promoKind":
+      return PROMO_KIND_LABELS[String(v)] ?? String(v);
+    case "commissionKind":
+      return COMMISSION_KIND_LABELS[String(v)] ?? String(v);
+    case "tierBasis":
+      return TIER_BASIS_LABELS[String(v)] ?? String(v);
+    case "bonusKind":
+      return TARGET_BONUS_LABELS[v as TargetBonusKind] ?? String(v);
+    case "tiers": {
+      if (!Array.isArray(v) || v.length === 0) return "nenhuma";
+      return v
+        .map((t) => {
+          const row = (t ?? {}) as { min?: unknown; percent?: unknown };
+          return `${formatBRL(Number(row.min))}+ → ${Number(row.percent)}%`;
+        })
+        .join(" · ");
+    }
     default:
       return String(v);
   }
@@ -148,16 +274,26 @@ export function auditChanges(row: AuditRow): string[] {
   const after = asRecord(row.after_data);
   if (!after) return [];
   const out: string[] = [];
+  const own = ENTITY_FIELDS[row.entity];
   if (!before) {
     if (row.before_data != null) return [];
+    if (own) {
+      for (const [key, base] of Object.entries(own)) {
+        if (!(key in after) || omitOnCreate(base, after[key], after, key)) continue;
+        const def = resolveDef(row.entity, key, base, after);
+        out.push(`${def.label}: ${show(def.kind, after[key])}`);
+      }
+      return out;
+    }
     for (const [key, def] of Object.entries(EVENT_FIELDS)) {
       if (after[key] == null || after[key] === "") continue;
       out.push(`${def.label}: ${show(def.kind, after[key])}`);
     }
     return out;
   }
-  for (const [key, def] of Object.entries(FIELDS)) {
+  for (const [key, base] of Object.entries(own ?? FIELDS)) {
     if (!(key in before) || !(key in after)) continue;
+    const def = resolveDef(row.entity, key, base, after);
     const a = show(def.kind, before[key]);
     const b = show(def.kind, after[key]);
     if (a !== b) out.push(`${def.label}: ${a} → ${b}`);

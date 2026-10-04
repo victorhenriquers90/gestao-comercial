@@ -1,3 +1,6 @@
+import { PAYMENT_METHODS } from "./constants.ts";
+import { requireLine } from "./sanitize.ts";
+
 export const COMMISSION_KINDS = ["percent_sales", "percent_profit", "fixed_unit", "exclude"] as const;
 export type CommissionKind = (typeof COMMISSION_KINDS)[number];
 
@@ -100,6 +103,111 @@ export function isCommissionKind(value: string): value is CommissionKind {
 
 export function isTierBasis(value: string): value is TierBasis {
   return (TIER_BASES as readonly string[]).includes(value);
+}
+
+export type CommissionRuleInput = {
+  id?: number;
+  name: string;
+  kind: CommissionKind;
+  percent: number;
+  sellerId: number | null;
+  categoryId: number | null;
+  productId: number | null;
+  paymentMethod: string | null;
+  minAmount: number;
+  skipPromo: boolean;
+  onlyPromo: boolean;
+  priority: number;
+  /** undefined: criar ativa / manter a situacao na edicao. */
+  isActive: boolean | undefined;
+  tiers: CommissionTier[];
+  tierBasis: TierBasis;
+};
+
+type RawRuleInput = {
+  id?: unknown;
+  name?: unknown;
+  kind?: unknown;
+  percent?: unknown;
+  sellerId?: unknown;
+  categoryId?: unknown;
+  productId?: unknown;
+  paymentMethod?: unknown;
+  minAmount?: unknown;
+  skipPromo?: unknown;
+  onlyPromo?: unknown;
+  priority?: unknown;
+  isActive?: unknown;
+  tiers?: unknown;
+  tierBasis?: unknown;
+};
+
+function optionalId(raw: unknown, label: string): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`${label} inválido.`);
+  return n;
+}
+
+/**
+ * Valida e normaliza o cadastro de regra de comissao no servidor. Antes, nome
+ * em branco e tipo desconhecido eram aceitos (tipo caia em silencio para
+ * "sobre o faturamento"), `tierBasis` omitido virava undefined e estourava
+ * como erro cru do banco, e forma de pagamento inexistente salvava uma regra
+ * que nunca batia com nenhuma venda.
+ */
+export function parseCommissionRuleInput(raw: RawRuleInput): CommissionRuleInput {
+  const name = requireLine(raw.name, "Nome da regra", 120);
+  const kindRaw = typeof raw.kind === "string" ? raw.kind : "";
+  if (!isCommissionKind(kindRaw)) throw new Error("Tipo de regra inválido.");
+  const kind = kindRaw;
+
+  const percentRaw = raw.percent == null || raw.percent === "" ? 0 : Number(raw.percent);
+  if (!Number.isFinite(percentRaw) || percentRaw < 0) throw new Error("Percentual inválido.");
+  const percent = kind === "exclude" ? 0 : money(percentRaw);
+  if ((kind === "percent_sales" || kind === "percent_profit") && percent > 100) throw new Error("Percentual inválido.");
+  if (kind === "fixed_unit" && percent > 10000) throw new Error("Valor por peça inválido.");
+
+  const basisRaw = raw.tierBasis == null || raw.tierBasis === "" ? "none" : String(raw.tierBasis);
+  if (!isTierBasis(basisRaw)) throw new Error("Base da faixa inválida.");
+  let tierBasis: TierBasis = basisRaw;
+  let tiers = normalizeTiers(raw.tiers);
+  if (kind === "exclude" || kind === "fixed_unit") tierBasis = "none";
+  if (tierBasis === "none") tiers = [];
+
+  const method = raw.paymentMethod == null || raw.paymentMethod === "" ? null : String(raw.paymentMethod);
+  if (method != null && !(PAYMENT_METHODS as readonly string[]).includes(method)) {
+    throw new Error("Forma de pagamento inválida.");
+  }
+
+  const minAmountRaw = raw.minAmount == null || raw.minAmount === "" ? 0 : Number(raw.minAmount);
+  if (!Number.isFinite(minAmountRaw) || minAmountRaw < 0 || minAmountRaw > 999_999_999) {
+    throw new Error("Valor mínimo inválido.");
+  }
+  const priorityRaw = raw.priority == null || raw.priority === "" ? 0 : Number(raw.priority);
+  if (!Number.isInteger(priorityRaw) || Math.abs(priorityRaw) > 1_000_000) {
+    throw new Error("Prioridade deve ser um número inteiro.");
+  }
+  const id = raw.id == null || raw.id === "" ? undefined : (optionalId(raw.id, "Regra") ?? undefined);
+
+  const onlyPromo = Boolean(raw.onlyPromo);
+  return {
+    id,
+    name,
+    kind,
+    percent,
+    sellerId: optionalId(raw.sellerId, "Vendedor"),
+    categoryId: optionalId(raw.categoryId, "Categoria"),
+    productId: optionalId(raw.productId, "Produto"),
+    paymentMethod: method,
+    minAmount: money(minAmountRaw),
+    skipPromo: Boolean(raw.skipPromo) && !onlyPromo,
+    onlyPromo,
+    priority: priorityRaw,
+    isActive: typeof raw.isActive === "boolean" ? raw.isActive : undefined,
+    tiers,
+    tierBasis,
+  };
 }
 
 export function normalizeTiers(raw: unknown): CommissionTier[] {

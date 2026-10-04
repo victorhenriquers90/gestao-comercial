@@ -19,7 +19,7 @@ import { checkCreditLimit, parseCrediarioInstallments, splitCrediario } from "@/
 import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan, can } from "@/lib/permissions";
-import { bestPromo, type Promo } from "@/lib/promo";
+import { bestPromo, parsePromoInput, type Promo } from "@/lib/promo";
 import { cancelWindow, pendenciaForReturn, pendenciaText } from "@/lib/nfce-cancel";
 import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
 import { num } from "@/lib/utils";
@@ -34,7 +34,7 @@ import {
   taxForSeller,
   taxInsert,
 } from "./commission";
-import { assertOwned, assertStore, audit, nextNumber, requireTenant } from "./context";
+import { assertOwned, assertStore, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { ymdLocal } from "@/lib/local-date";
 
@@ -1701,14 +1701,44 @@ export const discardHeldFn = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export type PromoRow = Promo & { productName: string | null; categoryName: string | null };
+
 export const listPromotionsFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<PromoRow[]> => {
     const { sql, tenant } = await requireTenant(context.userId);
-    const rows =
-      await sql<Row>`select * from promotions where company_id = ${tenant.companyId} order by created_at desc`;
-    return rows.map(mapPromo);
+    const rows = await sql<Row>`
+      select pr.*, p.name as product_name, c.name as category_name
+        from promotions pr
+        left join products p on p.id = pr.product_id
+        left join categories c on c.id = pr.category_id
+       where pr.company_id = ${tenant.companyId}
+       order by pr.created_at desc, pr.id desc
+    `;
+    return rows.map((r) => ({
+      ...mapPromo(r),
+      productName: r.product_name == null ? null : String(r.product_name),
+      categoryName: r.category_name == null ? null : String(r.category_name),
+    }));
   });
+
+function promoSnapshot(p: Promo) {
+  return {
+    name: p.name,
+    kind: p.kind,
+    percent: p.percent,
+    amount: p.amount,
+    promoPrice: p.promoPrice,
+    buyQty: p.buyQty,
+    payQty: p.payQty,
+    minQty: p.minQty,
+    productId: p.productId,
+    categoryId: p.categoryId,
+    startsAt: p.startsAt.slice(0, 10),
+    endsAt: p.endsAt.slice(0, 10),
+    isActive: p.isActive,
+  };
+}
 
 export const savePromotionFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -1723,78 +1753,102 @@ export const savePromotionFn = createServerFn({ method: "POST" })
       buyQty?: number | null;
       payQty?: number | null;
       minQty?: number | null;
+      /** undefined mantém o escopo atual (na edição); null limpa. */
       productId?: number | null;
       categoryId?: number | null;
       startsAt: string;
       endsAt: string;
       isActive?: boolean;
-    }) => d,
+    }) => ({ ...d, parsed: parsePromoInput(d) }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "promotions.write");
+    const v = data.parsed;
     await assertOwned(sql, tenant.companyId, "products", data.productId);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
-    // Mesma classe de bug ja corrigida em saveProductFn: NaN/Infinity do JS
-    // atravessam o driver intactos, o Postgres aceita num numeric, e
-    // computePromo (src/lib/promo.ts) trata qualquer coisa nao-finita como
-    // "sem valor" -- a promocao salvava "Ativa" e nunca dava desconto
-    // nenhum, sem erro nenhum avisando. Validacao de tela (promocoes.tsx)
-    // nao vale pra quem chama o servidor direto.
-    const finite = (value: number | null | undefined, label: string): number | null => {
-      if (value == null) return null;
-      if (!Number.isFinite(value)) throw new Error(`Valor de ${label} inválido.`);
-      return value;
-    };
-    const percent = finite(data.percent, "percentual");
-    const amount = finite(data.amount, "desconto");
-    const promoPrice = finite(data.promoPrice, "preço promocional");
-    const buyQty = finite(data.buyQty, "quantidade (compre)");
-    const payQty = finite(data.payQty, "quantidade (pague)");
-    const minQty = finite(data.minQty, "quantidade mínima");
-    /*
-      finite() barra NaN/Infinity, mas um numero fora da faixa (ex.: 500 no
-      campo percentual, digitado no lugar de 50,0) passava direto: computePromo
-      calculava um desconto MAIOR que a propria linha, e checkoutFn fechava a
-      venda com total de linha negativo (visto ao vivo: 2x R$100 com promo de
-      500% -> linha de -R$800). Corrigido na raiz em promo.ts (teto no calculo,
-      pra qualquer promocao ja existente), e aqui pra avisar quem cadastra.
-    */
-    if (percent != null && (percent < 0 || percent > 100)) {
-      throw new Error("Percentual deve estar entre 0 e 100.");
+    if (data.productId != null && data.categoryId != null) {
+      throw new Error("Escolha um produto ou uma categoria, não os dois.");
     }
-    if (amount != null && amount < 0) throw new Error("Desconto não pode ser negativo.");
-    if (promoPrice != null && promoPrice <= 0)
-      throw new Error("Preço promocional deve ser maior que zero.");
-    if (buyQty != null && buyQty <= 0)
-      throw new Error("Quantidade (compre) deve ser maior que zero.");
-    if (payQty != null && payQty <= 0)
-      throw new Error("Quantidade (pague) deve ser maior que zero.");
-    if (minQty != null && minQty <= 0)
-      throw new Error("Quantidade mínima deve ser maior que zero.");
-    if (data.kind === "bxgy" && buyQty != null && payQty != null && payQty >= buyQty) {
-      throw new Error('Em "leve X pague Y", pague deve ser menor que leve.');
-    }
-    if (data.id) {
-      await sql`
-        update promotions set name = ${data.name}, kind = ${data.kind}, percent = ${percent},
-          amount = ${amount}, promo_price = ${promoPrice},
-          buy_qty = ${buyQty}, pay_qty = ${payQty}, min_qty = ${minQty},
-          product_id = ${data.productId ?? null}, category_id = ${data.categoryId ?? null},
-          starts_at = ${data.startsAt}, ends_at = ${data.endsAt}, is_active = ${data.isActive ?? true}
-        where id = ${data.id} and company_id = ${tenant.companyId}
+    return sql.transaction(async (sql) => {
+      if (data.id) {
+        const [cur] = await sql<Row>`
+          select * from promotions where id = ${data.id} and company_id = ${tenant.companyId} for update
+        `;
+        if (!cur) throw new Error("Promoção não encontrada.");
+        const before = mapPromo(cur);
+        // Escopo omitido na edição mantém o que já estava; só null limpa.
+        // Escolher produto limpa a categoria (e vice-versa): o produto vence
+        // em promoApplies, então manter os dois deixaria a categoria morta.
+        let productId = data.productId === undefined ? before.productId : data.productId;
+        let categoryId = data.categoryId === undefined ? before.categoryId : data.categoryId;
+        if (data.productId != null) categoryId = null;
+        else if (data.categoryId != null) productId = null;
+        const isActive = data.isActive ?? before.isActive;
+        await sql`
+          update promotions set name = ${v.name}, kind = ${v.kind}, percent = ${v.percent},
+            amount = ${v.amount}, promo_price = ${v.promoPrice},
+            buy_qty = ${v.buyQty}, pay_qty = ${v.payQty}, min_qty = ${v.minQty},
+            product_id = ${productId}, category_id = ${categoryId},
+            starts_at = ${v.startsAt}, ends_at = ${v.endsAt}, is_active = ${isActive}
+          where id = ${data.id} and company_id = ${tenant.companyId}
+        `;
+        await auditUpdate(
+          sql,
+          tenant,
+          "promotion",
+          data.id,
+          promoSnapshot(before),
+          promoSnapshot({ ...before, ...v, productId, categoryId, isActive }),
+        );
+        return { id: data.id };
+      }
+      const productId = data.productId ?? null;
+      const categoryId = data.categoryId ?? null;
+      const isActive = data.isActive ?? true;
+      const [row] = await sql<{ id: number }>`
+        insert into promotions (
+          company_id, name, kind, percent, amount, promo_price, buy_qty, pay_qty, min_qty,
+          product_id, category_id, starts_at, ends_at, is_active
+        ) values (
+          ${tenant.companyId}, ${v.name}, ${v.kind}, ${v.percent}, ${v.amount},
+          ${v.promoPrice}, ${v.buyQty}, ${v.payQty}, ${v.minQty},
+          ${productId}, ${categoryId}, ${v.startsAt}, ${v.endsAt}, ${isActive}
+        ) returning id
       `;
-      return { id: data.id };
-    }
-    const [row] = await sql<{ id: number }>`
-      insert into promotions (
-        company_id, name, kind, percent, amount, promo_price, buy_qty, pay_qty, min_qty,
-        product_id, category_id, starts_at, ends_at, is_active
-      ) values (
-        ${tenant.companyId}, ${data.name}, ${data.kind}, ${percent}, ${amount},
-        ${promoPrice}, ${buyQty}, ${payQty}, ${minQty},
-        ${data.productId ?? null}, ${data.categoryId ?? null}, ${data.startsAt}, ${data.endsAt}, ${data.isActive ?? true}
-      ) returning id
-    `;
-    return { id: row!.id };
+      await audit(
+        sql,
+        tenant,
+        "create",
+        "promotion",
+        row!.id,
+        null,
+        promoSnapshot({ id: row!.id, ...v, productId, categoryId, isActive }),
+      );
+      return { id: row!.id };
+    });
+  });
+
+export const setPromotionActiveFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number; isActive: boolean }) => {
+    if (!Number.isSafeInteger(d.id) || d.id <= 0) throw new Error("Promoção inválida.");
+    if (typeof d.isActive !== "boolean") throw new Error("Informe se a promoção fica ativa ou inativa.");
+    return d;
+  })
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "promotions.write");
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select * from promotions where id = ${data.id} and company_id = ${tenant.companyId} for update
+      `;
+      if (!cur) throw new Error("Promoção não encontrada.");
+      const before = mapPromo(cur);
+      if (before.isActive !== data.isActive) {
+        await sql`update promotions set is_active = ${data.isActive} where id = ${data.id} and company_id = ${tenant.companyId}`;
+        await auditUpdate(sql, tenant, "promotion", data.id, promoSnapshot(before), promoSnapshot({ ...before, isActive: data.isActive }));
+      }
+      return { id: data.id, isActive: data.isActive };
+    });
   });

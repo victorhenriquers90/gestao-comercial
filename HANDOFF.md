@@ -2065,6 +2065,81 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     recusa (o estorno de baixa já lança no caixa aberto de hoje — dá para
     alinhar); metas, promoções e regras de comissão sem auditoria.
 
+62. **Promoções, regras de comissão e metas aceitavam qualquer coisa, não
+    deixavam rastro e as promoções não tinham como ser encerradas.** Estas
+    três telas mexem em dinheiro (preço do PDV e comissão paga) e eram as
+    únicas de cadastro sem validação de servidor nem auditoria. Reproduzido
+    ao vivo antes de corrigir: `savePromotionFn` salvava nome em branco, fim
+    antes do início, tipo inexistente e promoção "percentual" sem percentual
+    (ativa, mas nunca dava desconto), e "atualizava" um id inexistente
+    respondendo sucesso; a tela só criava — não havia botão para desativar,
+    então uma promoção errada ficava no preço do PDV até o fim do período.
+    `saveCommissionRuleFn` quebrava com erro cru do banco (`tier_basis`
+    nulo) quando a base da faixa não vinha, "atualizava" regra inexistente,
+    aceitava nome em branco e transformava tipo desconhecido em outro sem
+    avisar. `saveTargetFn` deixava passar data impossível (31/02) e valor
+    acima do `numeric(14,2)` como erro cru do Postgres. Nada disso ia para
+    `audit_logs`.
+
+    Correção:
+    - **Validação pura e testada** (`parsePromoInput` em `src/lib/promo.ts`,
+      `parseCommissionRuleInput` em `src/lib/commission.ts`): cada tipo exige
+      só o número que realmente usa (percentual 0–100 exclusivo de zero,
+      desconto fixo > 0, preço promocional > 0, quantidade mínima + percentual
+      em "por quantidade", leve X pague Y com pague < leve) e zera o que não
+      usa; datas reais e fim ≥ início; tipo, forma de pagamento e base da
+      faixa dentro dos conjuntos conhecidos (antes: coerção silenciosa);
+      NaN/Infinity/valores acima da coluna recusados com mensagem própria.
+      Meta valida nome, valor, datas e fim ≥ início.
+    - **Servidor transacional com `for update`**: editar id inexistente (ou de
+      outra empresa) agora recusa ("Promoção/Regra/Meta não encontrada.");
+      promoção e regra mantêm situação e escopo quando o campo não vem (só
+      `null` limpa) e escolher produto limpa categoria e vice-versa (o produto
+      já vencia em `promoApplies`, a categoria ficaria morta); regra e promoção
+      de outra empresa são recusadas por `assertOwned`.
+    - **Auditoria** (`promotion`, `commission_rule`, `target`): criação grava o
+      registro inteiro, edição e ativar/desativar usam `auditUpdate` (não grava
+      quando nada mudou) e excluir regra grava o antes. Excluir regra já usada
+      em comissão paga continua só desativando (`deactivated: true`) e agora
+      isso também fica auditado. Novo `setPromotionActiveFn`. `audit-label.ts`
+      ganhou rótulos legíveis (tipo, faixas "R$ 1.000,00+ → 5%", "valor por
+      peça" em vez de percentual, bônus da meta na unidade do tipo, sim/não) e
+      o verbo "excluiu".
+    - **Tela de promoções**: botão Ativar/Desativar por linha (toast e
+      recarrega a lista, trava contra clique repetido), coluna "Aplica a"
+      (produto, categoria ou todos) e seletor de categoria no formulário.
+      Escolher um produto específico na tela continua só pela API (sem
+      seletor ainda).
+
+    Verificado ao vivo contra o Postgres real (empresa 4), só com dado de
+    teste inativo ou com data de 2020 (promoção ativa com data atual vira
+    desconto real no PDV do piloto): recusas de nome em branco, fim antes do
+    início, tipo inválido, percentual ausente e 150%, id inexistente
+    (promoção, regra, meta e exclusão), vendedor de outra empresa, data
+    31/02 e valor 1e15; criar/editar/ativar/desativar/trocar tipo e limpar
+    escopo da promoção geraram exatamente 5 linhas de auditoria (edição sem
+    mudança e ativar já ativa não gravam); regra criada sem `tierBasis`,
+    editada (percentual, depois faixas) e excluída → 4 linhas (create,
+    update, update, delete); meta criada e editada → 2 linhas. Na tela:
+    botão Ativar virou "Promoção reativada." / Desativar, "Aplica a" e o
+    seletor de categoria apareceram, e a aba Auditoria mostra, por exemplo,
+    "Victor alterou regra de comissão “…” — base da faixa: Percentual único →
+    Faixa sobre o total da venda · faixas: nenhuma → R$ 1.000,00+ → 5% · …".
+    Dados de teste (promoção, meta, vendedor e categoria descartáveis, 12
+    linhas de auditoria) removidos em uma transação; empresa 4 voltou às 13
+    linhas de antes e zero promoção/regra/meta. `typecheck` + `lint` (0
+    erros, 7 avisos antigos) + `npm test` (469) limpos.
+
+    O serviço instalado só ganha isso depois de atualizado (sem migração
+    nova). Caminho "regra já usada em comissão → só desativa" não foi
+    exercitado ao vivo (empresa 4 ainda não tem comissão paga); está coberto
+    só por leitura do código.
+
+    Lacunas que continuam: seletor de produto específico na tela de
+    promoções; metas sem desativar/excluir na tela; despesa em dinheiro
+    anterior à migração 0032 não devolve a gaveta sozinha; `cancelExpenseFn`
+    com caixa fechado ainda recusa.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

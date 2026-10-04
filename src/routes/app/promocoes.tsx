@@ -10,7 +10,8 @@ import { Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
-import { listPromotionsFn, savePromotionFn } from "@/lib/server/commerce";
+import { listCategoriesFn } from "@/lib/server/catalog";
+import { listPromotionsFn, savePromotionFn, setPromotionActiveFn } from "@/lib/server/commerce";
 
 export const Route = createFileRoute("/app/promocoes")({ component: PromocoesPage });
 
@@ -26,11 +27,31 @@ function PromocoesPage() {
     promoPrice: "",
     buyQty: "3",
     payQty: "2",
+    categoryId: "",
     startsAt: "",
     endsAt: "",
   });
   const [salvando, setSalvando] = useState(false);
+  const [alternando, setAlternando] = useState<number | null>(null);
   const list = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
+  const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
+
+  // Antes nao havia como encerrar uma promocao: ela ficava "Ativa" ate o
+  // fim do periodo e entrava no preco do PDV via bestPromo sem saida.
+  async function alternar(id: number, isActive: boolean) {
+    if (alternando !== null) return;
+    setAlternando(id);
+    try {
+      await setPromotionActiveFn({ data: { id, isActive } });
+      toast.success(isActive ? "Promoção reativada." : "Promoção desativada.");
+      void qc.invalidateQueries({ queryKey: ["promos"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao alterar a promoção.");
+    } finally {
+      setAlternando(null);
+    }
+  }
+
   if (list.isPending) return <PageSkeleton />;
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar promoções." />;
 
@@ -53,8 +74,10 @@ function PromocoesPage() {
             <tr>
               <Th>Nome</Th>
               <Th>Tipo</Th>
+              <Th>Aplica a</Th>
               <Th>Período</Th>
               <Th>Status</Th>
+              <Th className="text-right">Ações</Th>
             </tr>
           }
         >
@@ -63,10 +86,23 @@ function PromocoesPage() {
               <Td className="font-medium">{p.name}</Td>
               <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
               <Td>
+                {p.productName ?? (p.categoryName ? `Categoria: ${p.categoryName}` : "Todos os produtos")}
+              </Td>
+              <Td>
                 {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
               </Td>
               <Td>
                 <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativa" : "Inativa"}</Badge>
+              </Td>
+              <Td className="text-right">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={alternando !== null}
+                  onClick={() => void alternar(p.id, !p.isActive)}
+                >
+                  {p.isActive ? "Desativar" : "Ativar"}
+                </Button>
               </Td>
             </tr>
           ))}
@@ -159,6 +195,16 @@ function PromocoesPage() {
               </Field>
             </div>
           ) : null}
+          <Field label="Aplica a" className="mt-block">
+            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+              <option value="">Todos os produtos</option>
+              {(cats.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  Categoria: {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <div className="mt-block grid grid-cols-2 gap-2">
             <Field label="Início">
               <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
@@ -239,6 +285,7 @@ function PromocoesPage() {
                     promoPrice,
                     buyQty,
                     payQty,
+                    categoryId: form.categoryId ? Number(form.categoryId) : null,
                     startsAt: form.startsAt,
                     endsAt: form.endsAt,
                   },
