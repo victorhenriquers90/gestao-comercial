@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
 import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import {
@@ -40,7 +41,7 @@ import {
   settlePayableFn,
   settleReceivableFn,
 } from "@/lib/server/finance";
-import { listCustomersFn, listSuppliersFn } from "@/lib/server/party";
+import { listSuppliersFn } from "@/lib/server/party";
 import { cn, num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
@@ -104,6 +105,7 @@ function FinanceiroPage() {
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState("");
   const [partyId, setPartyId] = useState("");
+  const [recCustomer, setRecCustomer] = useState<PickedCustomer | null>(null);
   const [category, setCategory] = useState("Compras");
   /** Lancamento que a pessoa esta cancelando e o motivo (obrigatorio: vai pra Auditoria). */
   const [cancelando, setCancelando] = useState<CancelTarget | null>(null);
@@ -127,7 +129,6 @@ function FinanceiroPage() {
     queryFn: () => listExpensesFn({ data: { storeId: storeId ?? undefined } }),
   });
   const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
-  const customers = useQuery({ queryKey: ["customers"], queryFn: () => listCustomersFn({ data: {} }) });
 
   if (pay.isPending) return <PageSkeleton />;
   if (pay.error) return <QueryError error={pay.error} fallback="Erro ao carregar o financeiro." />;
@@ -402,7 +403,7 @@ function FinanceiroPage() {
               setDesc("");
               setAmount("");
               setDue("");
-              setPartyId("");
+              setRecCustomer(null);
               setOpenRec(true);
             }}
           >
@@ -830,14 +831,7 @@ function FinanceiroPage() {
             <DialogTitle>Conta a receber</DialogTitle>
           </DialogHeader>
           <Field label="Cliente">
-            <Select value={partyId} onChange={(e) => setPartyId(e.target.value)}>
-              <option value="">—</option>
-              {(customers.data ?? []).map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <CustomerPicker placeholder="Sem cliente (opcional) — digite para buscar" value={recCustomer} onChange={setRecCustomer} />
           </Field>
           <Field label="Descrição" className="mt-block">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} />
@@ -870,7 +864,7 @@ function FinanceiroPage() {
                         dueDate: due,
                         amount: valor,
                         storeId,
-                        customerId: partyId ? Number(partyId) : null,
+                        customerId: recCustomer?.id ?? null,
                       },
                     }),
                   { sucesso: "Título criado." },

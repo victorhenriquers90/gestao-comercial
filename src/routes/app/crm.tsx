@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { toast } from "sonner";
 import { CustomerPanel } from "@/components/customer-panel";
 import { Card } from "@/components/ui/card";
@@ -9,31 +9,32 @@ import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shar
 import { CRM_STAGE_LABELS, CRM_STAGES } from "@/lib/constants";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
-import { listCrmTasksFn, listCustomersFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
+import { crmBoardFn, listCrmTasksFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
+
+const FUNNEL_STAGES = CRM_STAGES.filter((s) => s !== "venda" && s !== "perdido");
 
 export const Route = createFileRoute("/app/crm")({ component: CrmPage });
 
 function CrmPage() {
   const qc = useQueryClient();
   const [detailId, setDetailId] = useState<number | null>(null);
+  // Contagens e valores vem do servidor sobre TODOS os clientes; so os cartoes
+  // de cada coluna sao limitados (CRM_BOARD_CARDS).
   const list = useQuery({
-    queryKey: ["customers", "crm"],
-    queryFn: () => listCustomersFn({ data: {} }),
+    queryKey: ["customers", "board"],
+    queryFn: () => crmBoardFn(),
   });
   const tasks = useQuery({
     queryKey: ["crm-tasks"],
     queryFn: () => listCrmTasksFn({ data: { openOnly: true } }),
   });
 
-  const rows = list.data ?? [];
-  const pipeline = useMemo(
-    () => rows.filter((c) => c.crm_stage !== "venda" && c.crm_stage !== "perdido"),
-    [rows],
-  );
-  const overdue = (tasks.data ?? []).filter((t) => t.dueAt && new Date(t.dueAt).getTime() < Date.now());
-
   if (list.isPending) return <PageSkeleton />;
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar o CRM." />;
+
+  const { stages, openTasks, overdueTasks } = list.data;
+  const pipelineCount = FUNNEL_STAGES.reduce((a, s) => a + stages[s].count, 0);
+  const pipelineValue = FUNNEL_STAGES.reduce((a, s) => a + stages[s].totalBought, 0);
 
   return (
     <div>
@@ -42,16 +43,13 @@ function CrmPage() {
         description="Funil, follow-ups e ficha completa do cliente."
       />
       <div className="mb-5 kpi-grid">
-        <KpiCard label="No funil" value={String(pipeline.length)} />
-        <KpiCard
-          label="Valor no funil"
-          value={formatBRL(pipeline.reduce((a, c) => a + c.total_bought, 0))}
-        />
-        <KpiCard label="Tarefas abertas" value={String(tasks.data?.length ?? 0)} />
+        <KpiCard label="No funil" value={String(pipelineCount)} />
+        <KpiCard label="Valor no funil" value={formatBRL(pipelineValue)} />
+        <KpiCard label="Tarefas abertas" value={String(openTasks)} />
         <KpiCard
           label="Atrasadas"
-          value={String(overdue.length)}
-          tone={overdue.length ? "warning" : "default"}
+          value={String(overdueTasks)}
+          tone={overdueTasks ? "warning" : "default"}
         />
       </div>
 
@@ -93,21 +91,25 @@ function CrmPage() {
               );
             })}
           </ul>
+          {openTasks > 8 ? (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Mostrando as 8 mais próximas de {openTasks} tarefas abertas.
+            </p>
+          ) : null}
         </Card>
       ) : null}
 
       <div className="board-grid">
         {CRM_STAGES.map((stage) => {
-          const col = rows.filter((c) => c.crm_stage === stage);
-          const sum = col.reduce((a, c) => a + c.total_bought, 0);
+          const col = stages[stage];
           return (
             <div key={stage} className="board-col rounded-xl bg-muted/50 p-2">
               <p className="px-2 pt-2 text-xs font-medium text-muted-foreground">
-                {CRM_STAGE_LABELS[stage]} · {col.length}
+                {CRM_STAGE_LABELS[stage]} · {col.count}
               </p>
-              <p className="px-2 pb-2 text-xs tabular text-muted-foreground">{formatBRL(sum)}</p>
+              <p className="px-2 pb-2 text-xs tabular text-muted-foreground">{formatBRL(col.totalBought)}</p>
               <div className="board-cards">
-                {col.map((c) => (
+                {col.cards.map((c) => (
                   <Card
                     key={c.id}
                     className="cursor-pointer p-3 shadow-none hover:bg-muted/40"
@@ -146,6 +148,14 @@ function CrmPage() {
                     </select>
                   </Card>
                 ))}
+                {col.count > col.cards.length ? (
+                  <p className="px-2 pb-1 text-xs text-muted-foreground">
+                    Mostrando {col.cards.length} de {col.count}.{" "}
+                    <Link to="/app/clientes" search={{ etapa: stage }} className="text-primary underline">
+                      Ver todos em Clientes
+                    </Link>
+                  </p>
+                ) : null}
               </div>
             </div>
           );

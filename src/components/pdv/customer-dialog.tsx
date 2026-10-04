@@ -12,7 +12,7 @@ import { formatBRL, formatDoc } from "@/lib/format";
 import { listCustomersFn } from "@/lib/server/party";
 import { cn } from "@/lib/utils";
 
-type Customer = Awaited<ReturnType<typeof listCustomersFn>>[number];
+type Customer = Awaited<ReturnType<typeof listCustomersFn>>["items"][number];
 
 type Props = {
   open: boolean;
@@ -29,14 +29,22 @@ export function CustomerDialog(p: Props) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<"" | "pf" | "pj">("");
   const [debit, setDebit] = useState(false);
+  /** Quem foi escolhido aqui: some da lista quando um filtro o exclui, e o <select> voltava a mostrar "Consumidor" com o cliente ainda ligado a venda. */
+  const [picked, setPicked] = useState<Customer | null>(null);
   const termo = useDebounced(q.trim(), 250);
   const customers = useQuery({
-    queryKey: ["customers", termo, kind, debit],
+    queryKey: ["customers", "pdv", termo, kind, debit],
     queryFn: () =>
       listCustomersFn({ data: { q: termo || undefined, kind: kind || undefined, debit: debit || undefined } }),
     enabled: p.open,
     placeholderData: keepPreviousData,
   });
+  const found = customers.data?.items ?? [];
+  const total = customers.data?.total ?? 0;
+  const options =
+    p.customerId != null && picked?.id === p.customerId && !found.some((c) => c.id === picked.id)
+      ? [picked, ...found]
+      : found;
 
   function confirmar(e?: FormEvent) {
     e?.preventDefault();
@@ -112,13 +120,14 @@ export function CustomerDialog(p: Props) {
             value={p.customerId ?? ""}
             onChange={(e) => {
               const id = e.target.value ? Number(e.target.value) : null;
-              const pick = (customers.data ?? []).find((c) => c.id === id) ?? null;
+              const pick = options.find((c) => c.id === id) ?? null;
+              setPicked(pick);
               p.onCustomer(pick);
               if (pick?.document) p.onCpf(maskBrDoc(pick.document));
             }}
           >
             <option value="">Consumidor (só o documento acima)</option>
-            {(customers.data ?? []).map((c) => (
+            {options.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
                 {c.document ? ` · ${formatDoc(c.document)}` : ""}
@@ -126,6 +135,11 @@ export function CustomerDialog(p: Props) {
               </option>
             ))}
           </Select>
+          {total > found.length ? (
+            <p className="mt-1 text-xs text-muted-foreground" role="status">
+              Mostrando {found.length} de {total} clientes — digite para refinar.
+            </p>
+          ) : null}
 
           <div className="mt-6 flex gap-2">
             <Button type="button" variant="outline" className="h-11 flex-1 rounded-sm" onClick={p.onSkip}>

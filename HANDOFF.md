@@ -2232,14 +2232,128 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
-    Lacunas que continuam: `listCustomersFn` (`lib/server/party.ts`) ainda
-    corta em 200 sem total e devolve array — usado pelo kanban do CRM e pelo
-    `<select>` de cliente do Financeiro (o aviso de Clientes só cobre a tela
-    de Clientes); `count(*) over()` devolve total 0 quando o `offset` passa do
-    fim (por isso a tela volta à página 0 ao receber página vazia); metas sem
+    Lacunas que continuam: `count(*) over()` devolve total 0 quando o
+    `offset` passa do fim (por isso a tela volta à página 0 ao receber página
+    vazia); a lacuna de `listCustomersFn` (teto de 200, CRM, Financeiro) foi
+    fechada no item 64; metas sem
     desativar/excluir na tela; despesa em dinheiro anterior à migração 0032
     não devolve a gaveta sozinha; `cancelExpenseFn` com caixa fechado ainda
     recusa.
+
+64. **Clientes: lista cortava em 200 sem total, filtro por etapa era letra
+    morta, o funil do CRM saía de uma fatia alfabética e o Financeiro
+    carregava o cadastro inteiro para um `<select>`.** Fecha a lacuna deixada
+    no item 63 (`listCustomersFn`). Pontos reais, reproduzidos antes de
+    corrigir:
+    - **Teto silencioso**: `listCustomersFn` devolvia no máximo 200 clientes
+      por ordem alfabética, em array, sem total. A tela de Clientes só
+      avisava "primeiros 200…" ao bater o teto; o diálogo de cliente do PDV, o
+      CRM e o Financeiro nem isso.
+    - **Filtro por etapa do CRM não existia**: o servidor tinha um parâmetro
+      `stage` que nunca era usado, e a tela de Clientes não tinha filtro. O
+      CRM não tinha como mandar o operador para "todos os clientes em
+      Negociação".
+    - **CRM mentia com mais de 200 clientes**: colunas, "No funil" e "Valor no
+      funil" eram calculados no navegador sobre as 200 primeiras linhas do
+      cadastro; "Tarefas abertas" e "Atrasadas" vinham da agenda, que traz no
+      máximo 80 — nunca passavam disso.
+    - **Financeiro → Conta a receber** buscava a listagem enriquecida de
+      clientes (três agregados: compras, saldo, tarefas) só para montar um
+      `<select>`; com cadastro grande, além do peso, o cliente além do corte
+      não existia para o formulário.
+    - **Diálogo de cliente do PDV**: ao digitar uma busca que não incluía o
+      cliente já escolhido, ele sumia do `<select>` e a venda seguia sem o
+      vínculo, sem aviso.
+    - **`crmStage` sem validação** em `saveCustomerFn`: um valor fora do funil
+      gravava, e o cliente sumia do quadro (nenhuma coluna o mostra).
+    - Chave de consulta `["customers","crm"]` colidia com a busca do texto
+      "crm" na lista de clientes (mesma chave, formatos diferentes).
+
+    Correção:
+    - **`listCustomersFn`** (`lib/server/party.ts`): `parsePaging`
+      (`limit` padrão 100, máx. 200, `offset`), `count(*) over()` e retorno
+      `{ items, total }`; `stage` validado (`parseCrmStage`, "Estágio
+      inválido.") e aplicado em SQL. Os agregados do cliente ficaram numa
+      constante compartilhada (`CUSTOMER_AGGREGATES`) — lista e quadro nunca
+      discordam do "total comprado".
+    - **`crmBoardFn`** (novo): contagem e valor de CADA etapa sobre todos os
+      clientes (`count/sum … over (partition by crm_stage)`), só os primeiros
+      `CRM_BOARD_CARDS` (30) cartões por coluna (`row_number`), e as tarefas
+      abertas/atrasadas contadas em SQL. O CRM mostra "Mostrando 30 de M. Ver
+      todos em Clientes" no rodapé da coluna, com link para
+      `/app/clientes?etapa=<etapa>`.
+    - **Clientes**: `Pager` (100 por página), filtro "Etapa do CRM" (lido de
+      `?etapa=`), estados vazios que dizem o que filtraram ("Nenhum cliente na
+      etapa Negociação." / "…para “x” na etapa Perdido.") com "Limpar filtros".
+      Voltar à página 0 ao mudar busca/etapa e quando a página volta vazia.
+    - **`SearchPicker`** (`components/search-picker.tsx`, novo): o combobox do
+      `ProductPicker` virou genérico (busca digitada, 200 ms, 8 resultados,
+      ↑/↓/Enter, Esc que só fecha a lista, "Trocar …"). `ProductPicker` agora é
+      um invólucro fino dele (mesmas props) e `CustomerPicker`
+      (`components/customer-picker.tsx`) é o segundo uso: nome/documento/
+      telefone, mostra "débito R$ …". Financeiro → Conta a receber passou a
+      usá-lo (some a consulta pesada).
+    - **PDV**: o cliente já escolhido continua nas opções mesmo quando a busca
+      não o inclui; aviso "Mostrando N de TOTAL clientes — digite para
+      refinar." quando há mais do que a lista traz.
+    - `crmStage` de `saveCustomerFn` passa por `parseCrmStage`.
+    - Hook `useSearchParam` em `hooks/use-search-id.ts` (`useSearchId` foi
+      reescrito em cima dele) para ler `?etapa=`.
+
+    **Pegadinhas (não repetir)**: (1) toda chave nova de consulta de cliente
+    começa por `"customers"` — `["customers","list",termo,etapa,página]`,
+    `["customers","board"]`, `["customers","picker",termo]`,
+    `["customers","pdv",termo,tipo,débito]` — porque salvar/editar/mover
+    invalida `["customers"]` por prefixo; uma chave que não começa assim fica
+    velha depois de salvar. (2) `SearchPicker` recebe o prefixo da chave e
+    acrescenta o termo; quem o usa precisa passar um prefixo que a tela
+    invalida. (3) `crmBoardFn` exige `customers.read` E `crm.write` (a tela do
+    CRM usa os dois); papel sem um deles recebe recusa em vez de quadro
+    parcial.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 3 clientes
+    descartáveis "ZZTESTE" (Ana/Bruno/Carla), 1 título a receber, 2 produtos e
+    1 promoção de 2020: lista, filtro por etapa (select e `?etapa=`), busca
+    combinada com etapa mantendo o foco, estados vazios (termo+etapa e só
+    etapa), busca por prefixo de telefone e por nome; mover clientes entre
+    etapas na tela do CRM atualiza colunas, "No funil" (3 → 2 ao mandar um
+    para Perdido) e o quadro refaz sozinho; rodapé "Mostrando 1 de 3. Ver
+    todos em Clientes" (com `CRM_BOARD_CARDS` baixado para 1 só durante a
+    verificação e restaurado para 30) com o link abrindo a lista já filtrada;
+    a consulta do quadro rodada em transação somente-leitura com limite 1
+    devolveu 1 cartão e `stage_count` 3; chamadas diretas: `limit 1` →
+    `{items:1,total:3}`, `offset 2` → Carla, `stage` inválido recusado em
+    `listCustomersFn`/`saveCustomerFn`/`moveCrmFn`; Financeiro: lista abre,
+    digitar filtra, Esc fecha só a lista (diálogo fica), ↓/Enter escolhe sem
+    enviar o formulário, "Trocar cliente" devolve o foco ao campo, salvar grava
+    `customer_id`, e o cliente passa a mostrar "débito R$ 10,00" no seletor e
+    no diálogo do PDV; PDV: cliente escolhido permanece nas opções quando a
+    busca o exclui; `ProductPicker` depois do refator: Promoções (busca por
+    SKU, Enter, grava `product_id`), simulador de comissão e regra de comissão
+    (busca; Esc fecha só a lista). Sem erro no console. Dados de teste
+    removidos numa transação; empresa 4 voltou a zero cliente/título/produto/
+    variação/estoque/movimento/promoção/regra e às 13 linhas de auditoria.
+    `typecheck` + `lint` (0 erros, 5 avisos antigos) + `npm test` (477) limpos.
+
+    Não verificado na tela: o `Pager` de Clientes e o aviso "Mostrando N de
+    TOTAL" do PDV só aparecem com cadastro acima do limite pedido (o piloto
+    tem 0 clientes e não dá para criar volume sem inserção em massa no banco
+    real) — cobertos pelas chamadas diretas com `limit` pequeno e pela
+    consulta somente-leitura. O rodapé de coluna do CRM foi visto com o
+    limite rebaixado, não com 30+ clientes de verdade.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
+    Lacunas que continuam: `listSuppliersFn` ainda devolve o cadastro inteiro
+    sem limite (alimenta os `<select>` de fornecedor de Produtos, Compras e
+    Financeiro — o mesmo `SearchPicker` serve); busca de cliente por telefone
+    é exata ou por prefixo (os últimos dígitos não acham) e palavras de uma
+    letra são descartadas da parte de texto ("zzteste c" equivale a
+    "zzteste"); `count(*) over()` devolve total 0 quando o `offset` passa do
+    fim; tarefas abertas de cliente excluído continuam contando (agenda e
+    KPI concordam entre si); `saveCustomerFn` chamado direto sem telefone/
+    e-mail apaga os dois (o formulário sempre manda o registro completo).
 
 ## Como a próxima IA deve trabalhar
 

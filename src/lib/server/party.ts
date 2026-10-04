@@ -16,7 +16,8 @@ import {
   sanitizeCode,
   sanitizeMultiline,
 } from "@/lib/sanitize";
-import { isCrmStage } from "@/lib/constants";
+import { CRM_STAGES, isCrmStage, type CrmStage } from "@/lib/constants";
+import { parsePaging } from "@/lib/paging";
 
 /**
  * Liquido de devolucao, por venda (usa `sales.id` sem alias -- so serve
@@ -39,9 +40,61 @@ const RETURN_BY_SALE = `
      where si.sale_id = sales.id
   ) ret on true`;
 
+/** Etapa do funil vinda de fora: vazio = não veio; fora do funil = recusa (o cliente sumiria do quadro). */
+function parseCrmStage(v: string | null | undefined): CrmStage | undefined {
+  const t = optionalLine(v, 24);
+  if (!t) return undefined;
+  if (!isCrmStage(t)) throw new Error("Estágio inválido.");
+  return t;
+}
+
+/**
+ * Agregados do cliente: compras liquidas de devolucao, saldo em aberto e
+ * follow-ups pendentes. Compartilhado pela lista e pelo quadro do CRM -- as
+ * duas telas nunca podem discordar do "total comprado" de um cliente.
+ */
+const CUSTOMER_AGGREGATES = `
+  left join (
+    select customer_id, sum(sales.total - coalesce(ret.returned_revenue,0)) as total_bought, max(sold_at) as last_purchase
+      from sales
+      ${RETURN_BY_SALE}
+     where company_id = $1 and status in ('finalizada','devolvida_parcial') and deleted_at is null
+     group by customer_id
+  ) sv on sv.customer_id = c.id
+  left join (
+    select customer_id, sum(amount - received_amount) as open_balance
+      from accounts_receivable
+     where company_id = $1 and deleted_at is null
+       and status in ('pendente','parcial','vencido')
+     group by customer_id
+  ) ar on ar.customer_id = c.id
+  left join (
+    select customer_id, count(*)::int as open_tasks, min(due_at) as next_due
+      from crm_tasks
+     where company_id = $1 and done_at is null
+     group by customer_id
+  ) tk on tk.customer_id = c.id`;
+
 export const listCustomersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string; stage?: string; kind?: "pf" | "pj"; debit?: boolean }) => d)
+  .validator(
+    (d: {
+      q?: string;
+      /** Etapa do funil (CRM_STAGES). */
+      stage?: string;
+      kind?: "pf" | "pj";
+      debit?: boolean;
+      /** Padrão 100, máximo 200. */
+      limit?: number;
+      offset?: number;
+    }) => {
+      // `stage` ja estava no contrato mas nunca foi lido: o filtro era ignorado
+      // em silencio. Agora filtra de verdade, e um valor fora do funil e
+      // recusado em vez de devolver "nenhum cliente".
+      if (d.stage && !isCrmStage(d.stage)) throw new Error("Estágio inválido.");
+      return { ...d, page: parsePaging(d) };
+    },
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "customers.read");
@@ -66,44 +119,38 @@ export const listCustomersFn = createServerFn({ method: "POST" })
       params.push(data.kind);
       extra += ` and c.kind = $${params.length}`;
     }
+    if (data.stage) {
+      params.push(data.stage);
+      extra += ` and c.crm_stage = $${params.length}`;
+    }
     if (data.debit) {
       extra += ` and coalesce(ar.open_balance, 0) > 0`;
     }
+    params.push(data.page.limit, data.page.offset);
+    const limitAt = params.length - 1;
+    const offsetAt = params.length;
     const rows = await sql.query<Row>(
-      `select c.*,
+      `select count(*) over() as total,
+              c.*,
               coalesce(sv.total_bought, 0) as total_bought,
               sv.last_purchase,
               coalesce(ar.open_balance, 0) as open_balance,
               coalesce(tk.open_tasks, 0) as open_tasks,
               tk.next_due
          from customers c
-         left join (
-           select customer_id, sum(sales.total - coalesce(ret.returned_revenue,0)) as total_bought, max(sold_at) as last_purchase
-             from sales
-             ${RETURN_BY_SALE}
-            where company_id = $1 and status in ('finalizada','devolvida_parcial') and deleted_at is null
-            group by customer_id
-         ) sv on sv.customer_id = c.id
-         left join (
-           select customer_id, sum(amount - received_amount) as open_balance
-             from accounts_receivable
-            where company_id = $1 and deleted_at is null
-              and status in ('pendente','parcial','vencido')
-            group by customer_id
-         ) ar on ar.customer_id = c.id
-         left join (
-           select customer_id, count(*)::int as open_tasks, min(due_at) as next_due
-             from crm_tasks
-            where company_id = $1 and done_at is null
-            group by customer_id
-         ) tk on tk.customer_id = c.id
+         ${CUSTOMER_AGGREGATES}
         where c.company_id = $1 and c.deleted_at is null
           ${extra}
-        order by c.name
-        limit 200`,
+        order by c.name, c.id
+        limit $${limitAt} offset $${offsetAt}`,
       params,
     );
-    return rows.map((r) => ({
+    // O corte em 200 era silencioso: o 201o cliente (em ordem alfabetica) nao
+    // aparecia na lista, no CRM, no PDV nem no seletor do Financeiro. `total`
+    // deixa a tela dizer "de quantos" e paginar; o desempate por id mantem a
+    // ordem estavel entre paginas quando dois clientes tem o mesmo nome.
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    const items = rows.map((r) => ({
       id: num(r.id),
       kind: String(r.kind ?? "pf"),
       name: String(r.name ?? ""),
@@ -119,6 +166,89 @@ export const listCustomersFn = createServerFn({ method: "POST" })
       open_tasks: num(r.open_tasks),
       next_due: r.next_due == null ? null : String(r.next_due),
     }));
+    return { items, total };
+  });
+
+/** Cartões por coluna do funil. O resto de cada coluna aparece em Clientes (filtro por etapa). */
+export const CRM_BOARD_CARDS = 30;
+
+type CrmBoardCard = {
+  id: number;
+  name: string;
+  phone: string | null;
+  city: string | null;
+  crm_stage: CrmStage;
+  total_bought: number;
+  open_balance: number;
+  open_tasks: number;
+  next_due: string | null;
+};
+
+/**
+ * Quadro do CRM: contagem e valor de CADA etapa sobre todos os clientes, mais
+ * os primeiros cartões de cada coluna. O quadro usava `listCustomersFn` (teto
+ * de 200 por ordem alfabética): com mais clientes, as colunas, o "No funil" e
+ * o "Valor no funil" saíam de uma fatia do cadastro, sem aviso. Os totais de
+ * tarefas também: a agenda traz no máximo 80, então "Tarefas abertas" nunca
+ * passava de 80.
+ */
+export const crmBoardFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "customers.read");
+    assertCan(tenant.role, "crm.write");
+    const rows = await sql.query<Row>(
+      `with ranked as (
+         select c.id, c.name, c.phone, c.city, c.crm_stage,
+                coalesce(sv.total_bought, 0) as total_bought,
+                coalesce(ar.open_balance, 0) as open_balance,
+                coalesce(tk.open_tasks, 0) as open_tasks,
+                tk.next_due,
+                count(*) over (partition by c.crm_stage) as stage_count,
+                sum(coalesce(sv.total_bought, 0)) over (partition by c.crm_stage) as stage_total,
+                row_number() over (partition by c.crm_stage order by c.name, c.id) as rn
+           from customers c
+           ${CUSTOMER_AGGREGATES}
+          where c.company_id = $1 and c.deleted_at is null
+       )
+       select * from ranked where rn <= $2 order by crm_stage, rn`,
+      [tenant.companyId, CRM_BOARD_CARDS],
+    );
+    const [tk] = await sql.query<Row>(
+      `select count(*)::int as open_tasks,
+              (count(*) filter (where t.due_at < now()))::int as overdue_tasks
+         from crm_tasks t
+         join customers c on c.id = t.customer_id
+        where t.company_id = $1 and t.done_at is null`,
+      [tenant.companyId],
+    );
+    const stages = Object.fromEntries(
+      CRM_STAGES.map((st) => [st, { count: 0, totalBought: 0, cards: [] as CrmBoardCard[] }]),
+    ) as Record<CrmStage, { count: number; totalBought: number; cards: CrmBoardCard[] }>;
+    for (const r of rows) {
+      const st = String(r.crm_stage);
+      if (!isCrmStage(st)) continue;
+      const col = stages[st];
+      col.count = num(r.stage_count);
+      col.totalBought = num(r.stage_total);
+      col.cards.push({
+        id: num(r.id),
+        name: String(r.name ?? ""),
+        phone: r.phone == null ? null : String(r.phone),
+        city: r.city == null ? null : String(r.city),
+        crm_stage: st,
+        total_bought: num(r.total_bought),
+        open_balance: num(r.open_balance),
+        open_tasks: num(r.open_tasks),
+        next_due: r.next_due == null ? null : String(r.next_due),
+      });
+    }
+    return {
+      stages,
+      openTasks: num(tk?.open_tasks),
+      overdueTasks: num(tk?.overdue_tasks),
+    };
   });
 
 export const getCustomerFn = createServerFn({ method: "POST" })
@@ -274,7 +404,7 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       creditLimit:
         d.creditLimit === undefined ? undefined : requireRange(d.creditLimit, "Limite de crédito", 0, 999_999_999),
       notes: sanitizeMultiline(d.notes) ?? undefined,
-      crmStage: optionalLine(d.crmStage, 24) ?? undefined,
+      crmStage: parseCrmStage(d.crmStage),
     }),
   )
   .handler(async ({ context, data }) => {
