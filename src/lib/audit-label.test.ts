@@ -97,6 +97,52 @@ describe("mudancas da auditoria", () => {
     );
   });
 
+  it("lancamentos financeiros: titulo pela descricao e detalhe do evento", () => {
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "create", entity: "expense", entity_id: 7, after_data: { description: "Aluguel" } }),
+      "Ana criou despesa “Aluguel”",
+    );
+    const out = auditChanges({
+      action: "create",
+      entity: "expense",
+      before_data: null,
+      after_data: { description: "Aluguel", amount: 1500, category: "Aluguel", method: "pix" },
+    });
+    assert.equal(out.length, 3);
+    assert.match(out[0]!, /^valor: R\$\s?1\.500,00$/);
+    assert.equal(out[1], "categoria: Aluguel");
+    assert.equal(out[2], "forma: PIX");
+  });
+
+  it("sangria e suprimento mostram valor e motivo", () => {
+    assert.equal(
+      auditTitle({ user_name: "Rui", action: "sangria", entity: "cash_register", entity_id: 3, after_data: { amount: 80 } }),
+      "Rui lançou sangria no caixa #3",
+    );
+    const out = auditChanges({
+      action: "sangria",
+      entity: "cash_register",
+      before_data: null,
+      after_data: { amount: 80, reason: "Troco para o padeiro" },
+    });
+    assert.equal(out.length, 2);
+    assert.match(out[0]!, /^valor: R\$\s?80,00$/);
+    assert.equal(out[1], "motivo: Troco para o padeiro");
+  });
+
+  it("edicao de conta mostra valor, vencimento em dd/mm/aaaa e vinculo", () => {
+    const out = auditChanges({
+      action: "update",
+      entity: "accounts_payable",
+      before_data: { description: "Luz", amount: 200, dueDate: "2026-10-05", supplierId: null, storeId: 7 },
+      after_data: { description: "Luz", amount: 230, dueDate: "2026-10-10", supplierId: 3, storeId: 7 },
+    });
+    assert.equal(out.length, 3);
+    assert.match(out[0]!, /^valor: R\$\s?200,00 → R\$\s?230,00$/);
+    assert.equal(out[1], "vencimento: 05/10/2026 → 10/10/2026");
+    assert.equal(out[2], "fornecedor: vazio → nº 3");
+  });
+
   it("sem antes (criacao) ou com payload estranho nao quebra", () => {
     assert.deepEqual(auditChanges({ action: "create", entity: "store", before_data: null, after_data: { name: "X" } }), []);
     assert.deepEqual(auditChanges({ action: "x", entity: "y", before_data: [1], after_data: "z" }), []);

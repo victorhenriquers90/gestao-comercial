@@ -68,6 +68,30 @@ export function requireRange(raw: unknown, label: string, min: number, max: numb
   return Math.round(n * 100) / 100;
 }
 
+/** Valor em reais: finito, maior que zero e até `max`, arredondado ao centavo. Ausente, zero ou negativo é erro. */
+export function requireMoney(raw: unknown, label: string, max = 999_999_999): number {
+  const n = raw === null || raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  const cents = Math.round(n * 100) / 100;
+  if (!Number.isFinite(n) || cents <= 0 || cents > max) {
+    throw new Error(`${label} inválido: informe um valor maior que zero e de até ${max.toLocaleString("pt-BR")}.`);
+  }
+  return cents;
+}
+
+/** Data AAAA-MM-DD que existe no calendário (31/02 é erro), entre 2000 e 2100 para pegar ano digitado errado. */
+export function requireIsoDate(raw: unknown, label: string): string {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) {
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const t = new Date(Date.UTC(y, mo - 1, d));
+    if (y >= 2000 && y <= 2100 && t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d) {
+      return s;
+    }
+  }
+  throw new Error(`${label}: informe uma data válida.`);
+}
+
 /** Cursor de paginação: inteiro positivo seguro; lixo (NaN, negativo, texto) vira undefined = primeira página. */
 export function parseCursor(raw: unknown): number | undefined {
   const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;

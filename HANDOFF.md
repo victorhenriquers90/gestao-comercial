@@ -1813,6 +1813,74 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     nem por pessoa; outras telas de cadastro ainda não auditam (loja,
     cartões/taxas, metas, regras de comissão — conferir antes de afirmar).
 
+58. **Lançamentos do financeiro aceitavam valor negativo, edição que
+    quebrava a baixa e não deixavam rastro.** Cinco buracos em
+    `finance.ts`, todos conferidos no código antes de mexer:
+
+    - `saveExpenseFn` não validava nada: o formulário (`type=number` sem
+      mínimo) deixa digitar -50 e o servidor aceitava. Em DINHEIRO isso
+      gravava uma `sangria_liquidacao` NEGATIVA, que entra no
+      `expectedCash` do fechamento como dinheiro entrando na gaveta — a
+      diferença real do caixa sumia. Data também não era checada
+      (`2026-02-31`, ano 3026).
+    - `savePayableFn`/`saveReceivableFn` idem (valor, data, descrição
+      vazia). A edição de conta a pagar só tinha `status in ('pendente',
+      'parcial')`; a de conta a receber não tinha guarda NENHUMA: editava
+      título já pago e parcela de crediário/cartão (`origin <> 'manual'`),
+      desencontrando o título da venda e da conciliação da operadora.
+    - As duas edições aceitavam valor MENOR que o já pago/recebido: a conta
+      ficava "parcial" para sempre com saldo negativo e a baixa seguinte
+      nunca fechava. E um `UPDATE` que não achava a linha respondia sucesso
+      (id inexistente ou de outra empresa).
+    - Nada disso — criar despesa, criar/editar conta, sangria, suprimento —
+      ia para `audit_logs`. A baixa (`pay`/`receive`) já ia, mas sem
+      descrição nem forma de pagamento.
+
+    Correção: `requireMoney` (> 0, até 999.999.999, arredonda ao centavo) e
+    `requireIsoDate` (dia que existe no calendário, 2000–2100) em
+    `sanitize.ts`, usados no `validator` das quatro funções
+    (`saveExpenseFn`, `savePayableFn`, `saveReceivableFn`, `cashMoveFn`); a
+    descrição passa por `requireLine`. As edições rodam em
+    `sql.transaction` com `select ... for update` e recusam: não
+    encontrada, não está em aberto, origem diferente de manual (só a
+    receber), valor abaixo do já pago/recebido. Auditam com `auditUpdate`
+    (edição sem mudança não grava linha), criação com `audit`. `cashMoveFn`
+    agora confere a loja (`assertStore`), grava movimento + auditoria na
+    mesma transação, com ação `sangria`/`suprimento` e `{ amount, reason }`.
+    As baixas passaram a registrar descrição e forma. Na tela, o campo
+    Valor da despesa ganhou `min="0.01"`.
+
+    `audit-label.ts` aprendeu a ler isso: entidade "despesa", ações "lançou
+    sangria/suprimento no", campos descrição/valor/vencimento (dd/mm/aaaa)/
+    categoria/fornecedor/cliente/loja, e — novo — eventos SEM "antes"
+    (criação, baixa, sangria) mostram o que carregam: "valor: R$ 30,46 ·
+    motivo: troco padeiro", "valor: R$ 60,00 · forma: PIX · situação:
+    parcial". Antes só o título aparecia e o valor ficava invisível.
+
+    Verificado ao vivo contra o Postgres real (empresa 4, loja 8) pelas
+    server functions reais: valor -50/0/"abc", data 2026-02-31 e 3026-10-04,
+    descrição em branco, loja de outra empresa e tipo de movimento inválido
+    recusados; despesa em PIX e em dinheiro criadas (esta gerou a
+    `sangria_liquidacao` de 20,00 no caixa aberto); conta a pagar editada de
+    300 para 350 e, após pagar 100, valor 50 recusado e 400 aceito; paga por
+    inteiro, nova edição recusada; conta a receber idem e parcela
+    `origin='crediario'` recusada; id inexistente recusado nas duas;
+    reedição sem mudança não gravou linha; sangria 30,456 virou 30,46 e a
+    descrição com `<b>` chegou limpa. A aba Auditoria mostrou todas as
+    linhas com título e detalhe. Dados de teste (17 linhas de auditoria,
+    caixa, 3 movimentos, 2 despesas, 2 contas a pagar, 2 a receber)
+    removidos em uma transação; empresa 4 voltou às 13 linhas de antes.
+    `typecheck` + `lint` (0 erros, 7 avisos antigos) + `npm test` (442) limpos;
+    testes novos em `sanitize.test.ts` (3) e `audit-label.test.ts` (3).
+
+    Lacunas que continuam: não existe função de servidor que exclua/estorne
+    uma despesa nem que cancele conta a pagar/receber manual (conferido: só
+    o cancelamento de VENDA cancela título) — lançamento errado só dá para
+    editar enquanto aberto, e despesa nem isso; é o próximo passo de
+    produto (item 59, com auditoria). Metas, promoções e regras de comissão
+    também ainda sem auditoria; o serviço instalado só recebe isto quando
+    for atualizado.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

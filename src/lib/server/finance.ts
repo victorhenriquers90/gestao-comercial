@@ -11,12 +11,12 @@ import { isReceiptMethod, isTargetBonusKind, type TargetBonusKind } from "@/lib/
 import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
-import { optionalLine, requireMultiline } from "@/lib/sanitize";
+import { optionalLine, requireIsoDate, requireLine, requireMoney, requireMultiline } from "@/lib/sanitize";
 import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
-import { assertOwned, assertStore, audit, requireTenant, type Tenant } from "./context";
+import { assertOwned, assertStore, audit, auditUpdate, requireTenant, type Tenant } from "./context";
 import { taxForSeller, taxInsert } from "./commission";
 import { ymdLocal } from "@/lib/local-date";
 
@@ -70,7 +70,15 @@ export const savePayableFn = createServerFn({ method: "POST" })
       category?: string;
       dueDate: string;
       amount: number;
-    }) => d,
+    }) => ({
+      id: d.id,
+      storeId: d.storeId,
+      supplierId: d.supplierId,
+      description: requireLine(d.description, "Campo descrição", 200),
+      category: optionalLine(d.category, 60),
+      dueDate: requireIsoDate(d.dueDate, "Vencimento"),
+      amount: requireMoney(d.amount, "Valor"),
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -78,23 +86,70 @@ export const savePayableFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
     await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     if (data.id) {
-      await sql`
-        update accounts_payable set description = ${data.description}, category = ${data.category ?? null},
-          due_date = ${data.dueDate}, amount = ${data.amount}, supplier_id = ${data.supplierId ?? null},
-          store_id = ${data.storeId ?? null}
-        where id = ${data.id} and company_id = ${tenant.companyId} and status in ('pendente','parcial')
-      `;
-      return { id: data.id };
+      const id = data.id;
+      return sql.transaction(async (sql) => {
+        const [cur] = await sql<Row>`
+          select description, category, due_date, amount, paid_amount, status, supplier_id, store_id
+            from accounts_payable
+           where id = ${id} and company_id = ${tenant.companyId} and deleted_at is null
+           for update
+        `;
+        if (!cur) throw new Error("Conta a pagar não encontrada.");
+        if (cur.status !== "pendente" && cur.status !== "parcial") {
+          throw new Error("Só contas em aberto podem ser editadas.");
+        }
+        // Valor abaixo do que já foi pago deixaria a conta "parcial" para
+        // sempre, com saldo negativo, e a baixa seguinte nunca fecharia.
+        if (data.amount < num(cur.paid_amount)) {
+          throw new Error("O valor não pode ficar abaixo do que já foi pago.");
+        }
+        await sql`
+          update accounts_payable set description = ${data.description}, category = ${data.category},
+            due_date = ${data.dueDate}, amount = ${data.amount}, supplier_id = ${data.supplierId ?? null},
+            store_id = ${data.storeId ?? null}
+          where id = ${id} and company_id = ${tenant.companyId}
+        `;
+        await auditUpdate(
+          sql,
+          tenant,
+          "accounts_payable",
+          id,
+          {
+            description: String(cur.description),
+            category: cur.category == null ? null : String(cur.category),
+            dueDate: String(cur.due_date).slice(0, 10),
+            amount: num(cur.amount),
+            supplierId: cur.supplier_id == null ? null : num(cur.supplier_id),
+            storeId: cur.store_id == null ? null : num(cur.store_id),
+          },
+          {
+            description: data.description,
+            category: data.category,
+            dueDate: data.dueDate,
+            amount: data.amount,
+            supplierId: data.supplierId ?? null,
+            storeId: data.storeId ?? null,
+          },
+        );
+        return { id };
+      });
     }
-    const [row] = await sql<{ id: number }>`
-      insert into accounts_payable (
-        company_id, store_id, supplier_id, description, category, due_date, amount, status, user_id
-      ) values (
-        ${tenant.companyId}, ${data.storeId ?? null}, ${data.supplierId ?? null}, ${data.description},
-        ${data.category ?? null}, ${data.dueDate}, ${data.amount}, 'pendente', ${tenant.userId}
-      ) returning id
-    `;
-    return { id: row!.id };
+    return sql.transaction(async (sql) => {
+      const [row] = await sql<{ id: number }>`
+        insert into accounts_payable (
+          company_id, store_id, supplier_id, description, category, due_date, amount, status, user_id
+        ) values (
+          ${tenant.companyId}, ${data.storeId ?? null}, ${data.supplierId ?? null}, ${data.description},
+          ${data.category}, ${data.dueDate}, ${data.amount}, 'pendente', ${tenant.userId}
+        ) returning id
+      `;
+      await audit(sql, tenant, "create", "accounts_payable", row!.id, null, {
+        description: data.description,
+        amount: data.amount,
+        dueDate: data.dueDate,
+      });
+      return { id: row!.id };
+    });
   });
 
 export const settlePayableFn = createServerFn({ method: "POST" })
@@ -169,8 +224,10 @@ export const settlePayableFn = createServerFn({ method: "POST" })
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
       await audit(sql, tenant, "pay", "accounts_payable", data.id, null, {
+        description: row.description,
         amount: baixa.amount,
         status,
+        method: metodo,
       });
       return status;
     });
@@ -217,7 +274,14 @@ export const saveReceivableFn = createServerFn({ method: "POST" })
       description: string;
       dueDate: string;
       amount: number;
-    }) => d,
+    }) => ({
+      id: d.id,
+      storeId: d.storeId,
+      customerId: d.customerId,
+      description: requireLine(d.description, "Campo descrição", 200),
+      dueDate: requireIsoDate(d.dueDate, "Vencimento"),
+      amount: requireMoney(d.amount, "Valor"),
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -225,22 +289,70 @@ export const saveReceivableFn = createServerFn({ method: "POST" })
     await assertOwned(sql, tenant.companyId, "customers", data.customerId);
     await assertOwned(sql, tenant.companyId, "stores", data.storeId);
     if (data.id) {
-      await sql`
-        update accounts_receivable set description = ${data.description}, due_date = ${data.dueDate},
-          amount = ${data.amount}, customer_id = ${data.customerId ?? null}, store_id = ${data.storeId ?? null}
-        where id = ${data.id} and company_id = ${tenant.companyId}
-      `;
-      return { id: data.id };
+      const id = data.id;
+      return sql.transaction(async (sql) => {
+        const [cur] = await sql<Row>`
+          select description, due_date, amount, received_amount, status, origin, customer_id, store_id
+            from accounts_receivable
+           where id = ${id} and company_id = ${tenant.companyId} and deleted_at is null
+           for update
+        `;
+        if (!cur) throw new Error("Conta a receber não encontrada.");
+        // Parcela de crediário/cartão nasce da venda; editar o valor aqui
+        // desencontra o título da venda e da conciliação com a operadora.
+        if (cur.origin !== "manual") {
+          throw new Error("Título gerado por venda não pode ser editado aqui.");
+        }
+        if (cur.status !== "pendente" && cur.status !== "parcial") {
+          throw new Error("Só contas em aberto podem ser editadas.");
+        }
+        if (data.amount < num(cur.received_amount)) {
+          throw new Error("O valor não pode ficar abaixo do que já foi recebido.");
+        }
+        await sql`
+          update accounts_receivable set description = ${data.description}, due_date = ${data.dueDate},
+            amount = ${data.amount}, customer_id = ${data.customerId ?? null}, store_id = ${data.storeId ?? null}
+          where id = ${id} and company_id = ${tenant.companyId}
+        `;
+        await auditUpdate(
+          sql,
+          tenant,
+          "accounts_receivable",
+          id,
+          {
+            description: String(cur.description),
+            dueDate: String(cur.due_date).slice(0, 10),
+            amount: num(cur.amount),
+            customerId: cur.customer_id == null ? null : num(cur.customer_id),
+            storeId: cur.store_id == null ? null : num(cur.store_id),
+          },
+          {
+            description: data.description,
+            dueDate: data.dueDate,
+            amount: data.amount,
+            customerId: data.customerId ?? null,
+            storeId: data.storeId ?? null,
+          },
+        );
+        return { id };
+      });
     }
-    const [row] = await sql<{ id: number }>`
-      insert into accounts_receivable (
-        company_id, store_id, customer_id, description, due_date, amount, status, user_id
-      ) values (
-        ${tenant.companyId}, ${data.storeId ?? null}, ${data.customerId ?? null}, ${data.description},
-        ${data.dueDate}, ${data.amount}, 'pendente', ${tenant.userId}
-      ) returning id
-    `;
-    return { id: row!.id };
+    return sql.transaction(async (sql) => {
+      const [row] = await sql<{ id: number }>`
+        insert into accounts_receivable (
+          company_id, store_id, customer_id, description, due_date, amount, status, user_id
+        ) values (
+          ${tenant.companyId}, ${data.storeId ?? null}, ${data.customerId ?? null}, ${data.description},
+          ${data.dueDate}, ${data.amount}, 'pendente', ${tenant.userId}
+        ) returning id
+      `;
+      await audit(sql, tenant, "create", "accounts_receivable", row!.id, null, {
+        description: data.description,
+        amount: data.amount,
+        dueDate: data.dueDate,
+      });
+      return { id: row!.id };
+    });
   });
 
 export const settleReceivableFn = createServerFn({ method: "POST" })
@@ -311,6 +423,7 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
       // nenhum, enquanto o pagamento deixava. Era justamente o lado que some
       // dinheiro de dentro pra fora.
       await audit(sql, tenant, "receive", "accounts_receivable", data.id, null, {
+        description: row.description,
         amount: baixa.amount,
         status,
         method: metodo,
@@ -1056,10 +1169,7 @@ export const explainCashDifferenceFn = createServerFn({ method: "POST" })
 
 export const cashMoveFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId: number; type: "sangria" | "suprimento"; amount: number; description: string }) => d)
-  .handler(async ({ context, data }) => {
-    const { sql, tenant } = await requireTenant(context.userId);
-    assertCan(tenant.role, "cash.write");
+  .validator((d: { storeId: number; type: "sangria" | "suprimento"; amount: number; description: string }) => {
     // Validado AQUI, nao so na tela. A checagem que existia vivia em
     // caixa.tsx, e validacao de tela nao vale para quem chama o servidor
     // direto. Importa porque estes valores entram no expectedCash do
@@ -1067,23 +1177,38 @@ export const cashMoveFn = createServerFn({ method: "POST" })
     // devolucoes): um suprimento NEGATIVO derruba o dinheiro esperado, e a
     // diferenca em especie some da conferencia -- o mesmo desvio que a
     // validacao de pagamento fechou por outra porta.
-    if (data.type !== "sangria" && data.type !== "suprimento") {
+    if (d.type !== "sangria" && d.type !== "suprimento") {
       throw new Error("Tipo de movimentação inválido.");
     }
-    const valor = num(data.amount);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      throw new Error("Informe um valor maior que zero.");
-    }
-    const [reg] = await sql<{ id: number }>`
-      select id from cash_registers
-      where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
-      order by opened_at desc limit 1
-    `;
-    if (!reg) throw new Error("Abra o caixa antes de lançar sangria ou suprimento.");
-    await sql`
-      insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
-      values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, ${data.type}, 'dinheiro', ${valor}, ${data.description})
-    `;
+    return {
+      storeId: d.storeId,
+      type: d.type,
+      amount: requireMoney(d.amount, "Valor"),
+      description: optionalLine(d.description, 200),
+    };
+  })
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "cash.write");
+    await assertStore(sql, tenant.companyId, data.storeId);
+    await sql.transaction(async (sql) => {
+      const [reg] = await sql<{ id: number }>`
+        select id from cash_registers
+        where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
+        order by opened_at desc limit 1
+      `;
+      if (!reg) throw new Error("Abra o caixa antes de lançar sangria ou suprimento.");
+      await sql`
+        insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description)
+        values (${tenant.companyId}, ${data.storeId}, ${reg.id}, ${tenant.userId}, ${data.type}, 'dinheiro', ${data.amount}, ${data.description})
+      `;
+      // Dinheiro entrando ou saindo da gaveta sem rastro de quem lançou e por
+      // quê é o buraco que a Auditoria existe pra fechar.
+      await audit(sql, tenant, data.type, "cash_register", reg.id, null, {
+        amount: data.amount,
+        reason: data.description,
+      });
+    });
     return { ok: true };
   });
 
@@ -1119,7 +1244,15 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
       method: string;
       /** Loja cujo caixa paga o dinheiro (a tela atual). */
       storeId?: number | null;
-    }) => d,
+    }) => ({
+      description: requireLine(d.description, "Campo descrição", 200),
+      category: optionalLine(d.category, 60),
+      amount: requireMoney(d.amount, "Valor"),
+      spentAt: requireIsoDate(d.spentAt, "Data da despesa"),
+      accountKind: optionalLine(d.accountKind, 40),
+      method: d.method,
+      storeId: d.storeId,
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -1151,10 +1284,17 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
                   ${data.amount}, ${`Despesa: ${data.description}`})
         `;
       }
-      await sql`
+      const [exp] = await sql<{ id: number }>`
         insert into expenses (company_id, store_id, description, category, amount, spent_at, account_kind, user_id)
-        values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category ?? null}, ${data.amount}, ${data.spentAt}, ${data.accountKind ?? null}, ${tenant.userId})
+        values (${tenant.companyId}, ${data.storeId ?? null}, ${data.description}, ${data.category}, ${data.amount}, ${data.spentAt}, ${data.accountKind}, ${tenant.userId})
+        returning id
       `;
+      await audit(sql, tenant, "create", "expense", exp!.id, null, {
+        description: data.description,
+        amount: data.amount,
+        category: data.category,
+        method: data.method,
+      });
     });
     return { ok: true };
   });

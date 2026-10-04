@@ -4,7 +4,9 @@ import {
   optionalLine,
   parseCursor,
   parseUf,
+  requireIsoDate,
   requireLine,
+  requireMoney,
   requireRange,
   sanitizeCode,
   sanitizeHttpUrl,
@@ -79,6 +81,28 @@ describe("parseCursor", () => {
   it("lixo vira undefined (primeira pagina) em vez de erro de banco", () => {
     for (const ruim of [undefined, null, "", "  ", "abc", 0, -5, 1.5, Number.NaN, Infinity, 2 ** 60, {}, []]) {
       assert.equal(parseCursor(ruim), undefined, String(ruim));
+    }
+  });
+});
+
+describe("requireMoney e requireIsoDate", () => {
+  it("valor: arredonda ao centavo e aceita texto numerico", () => {
+    assert.equal(requireMoney(12.345, "Valor"), 12.35);
+    assert.equal(requireMoney("50", "Valor"), 50);
+    assert.equal(requireMoney(0.01, "Valor"), 0.01);
+  });
+
+  it("valor: zero, negativo, vazio, NaN, infinito e acima do teto sao erro", () => {
+    for (const ruim of [0, -50, -0.001, 0.004, "", null, undefined, "abc", Number.NaN, Infinity, 1_000_000_000]) {
+      assert.throws(() => requireMoney(ruim, "Valor"), /Valor inválido/, String(ruim));
+    }
+  });
+
+  it("data: aceita dia real e recusa 31/02, ano fora de 2000-2100, formato torto e nao-texto", () => {
+    assert.equal(requireIsoDate(" 2026-10-04 ", "Vencimento"), "2026-10-04");
+    assert.equal(requireIsoDate("2028-02-29", "Vencimento"), "2028-02-29");
+    for (const ruim of ["2026-02-31", "2027-02-29", "0002-05-03", "2101-01-01", "04/10/2026", "2026-1-5", "", null, undefined, 20261004]) {
+      assert.throws(() => requireIsoDate(ruim, "Vencimento"), /Vencimento: informe uma data válida/, String(ruim));
     }
   });
 });

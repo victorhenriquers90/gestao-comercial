@@ -486,7 +486,7 @@ function FinanceiroPage() {
                 <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
                   R$
                 </span>
-                <Input name="a" type="number" step="0.01" className="pl-9" required />
+                <Input name="a" type="number" step="0.01" min="0.01" className="pl-9" required />
               </div>
             </Field>
             <Field label="Data da despesa">
