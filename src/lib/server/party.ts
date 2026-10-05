@@ -398,23 +398,28 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       ...d,
       kind: requireLine(d.kind, "Tipo", 20),
       name: requireLine(d.name, "Nome"),
-      tradeName: optionalLine(d.tradeName) ?? undefined,
-      document: parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf") ?? undefined,
-      // ie/rg/zip/creditLimit/sellerId: undefined = "nao veio, mantem o
-      // gravado"; null/"" = apagado de proposito. A ficha do cliente nao
-      // mostra ie/rg/zip, e uma edicao la os apagava ao regravar.
+      // Todo campo opcional segue a mesma regra: undefined = "nao veio,
+      // mantem o gravado"; null/"" = apagado de proposito. Antes só
+      // ie/rg/zip/creditLimit/sellerId tinham isso -- tradeName/document/
+      // email/phone/whatsapp/address/city/state/notes colapsavam "nao veio"
+      // e "veio vazio" no mesmo undefined, e o UPDATE regravava `?? null`:
+      // quem chamasse saveCustomerFn direto (fora do formulário, que sempre
+      // manda o registro inteiro) sem telefone/e-mail apagava os dois.
+      tradeName: d.tradeName === undefined ? undefined : optionalLine(d.tradeName),
+      document:
+        d.document === undefined ? undefined : parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf"),
       ie: d.ie === undefined ? undefined : sanitizeCode(d.ie, 32),
       rg: d.rg === undefined ? undefined : sanitizeCode(d.rg, 32),
-      email: optionalLine(d.email, 120) ?? undefined,
-      phone: sanitizeCode(d.phone, 32) ?? undefined,
-      whatsapp: sanitizeCode(d.whatsapp, 32) ?? undefined,
-      address: optionalLine(d.address, 200) ?? undefined,
-      city: optionalLine(d.city, 80) ?? undefined,
-      state: parseUf(d.state),
+      email: d.email === undefined ? undefined : optionalLine(d.email, 120),
+      phone: d.phone === undefined ? undefined : sanitizeCode(d.phone, 32),
+      whatsapp: d.whatsapp === undefined ? undefined : sanitizeCode(d.whatsapp, 32),
+      address: d.address === undefined ? undefined : optionalLine(d.address, 200),
+      city: d.city === undefined ? undefined : optionalLine(d.city, 80),
+      state: d.state === undefined ? undefined : (parseUf(d.state) ?? null),
       zip: d.zip === undefined ? undefined : sanitizeCode(d.zip, 16),
       creditLimit:
         d.creditLimit === undefined ? undefined : requireRange(d.creditLimit, "Limite de crédito", 0, 999_999_999),
-      notes: sanitizeMultiline(d.notes) ?? undefined,
+      notes: d.notes === undefined ? undefined : sanitizeMultiline(d.notes),
       crmStage: parseCrmStage(d.crmStage),
     }),
   )
@@ -429,9 +434,18 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
       `;
       if (!cur) throw new Error("Cliente não encontrado.");
+      const tradeName = data.tradeName === undefined ? (cur.trade_name ?? null) : data.tradeName;
+      const document = data.document === undefined ? (cur.document ?? null) : data.document;
       const ie = data.ie === undefined ? (cur.ie ?? null) : data.ie;
       const rg = data.rg === undefined ? (cur.rg ?? null) : data.rg;
+      const email = data.email === undefined ? (cur.email ?? null) : data.email;
+      const phone = data.phone === undefined ? (cur.phone ?? null) : data.phone;
+      const whatsapp = data.whatsapp === undefined ? (cur.whatsapp ?? null) : data.whatsapp;
+      const address = data.address === undefined ? (cur.address ?? null) : data.address;
+      const city = data.city === undefined ? (cur.city ?? null) : data.city;
+      const state = data.state === undefined ? (cur.state ?? null) : data.state;
       const zip = data.zip === undefined ? (cur.zip ?? null) : data.zip;
+      const notes = data.notes === undefined ? (cur.notes ?? null) : data.notes;
       const creditLimit = data.creditLimit ?? num(cur.credit_limit);
       const sellerId = data.sellerId === undefined ? (cur.seller_id ?? null) : data.sellerId;
       const before = {
@@ -447,13 +461,13 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       };
       const after = {
         name: data.name,
-        tradeName: data.tradeName ?? null,
-        document: data.document ?? null,
-        email: data.email ?? null,
-        phone: data.phone ?? null,
-        address: data.address ?? null,
-        city: data.city ?? null,
-        state: data.state ?? null,
+        tradeName,
+        document,
+        email,
+        phone,
+        address,
+        city,
+        state,
         creditLimit,
       };
       /*
@@ -470,12 +484,12 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
         cair nesta mesma armadilha.
       */
       await sql`
-        update customers set kind = ${data.kind}, name = ${data.name}, trade_name = ${data.tradeName ?? null},
-          document = ${data.document ?? null}, ie = ${ie}, rg = ${rg},
-          birth_date = coalesce(${data.birthDate ?? null}, birth_date), email = ${data.email ?? null}, phone = ${data.phone ?? null},
-          whatsapp = ${data.whatsapp ?? null}, address = ${data.address ?? null}, city = ${data.city ?? null},
-          state = ${data.state ?? null}, zip = ${zip}, credit_limit = ${creditLimit},
-          notes = ${data.notes ?? null}, crm_stage = coalesce(${data.crmStage ?? null}, crm_stage),
+        update customers set kind = ${data.kind}, name = ${data.name}, trade_name = ${tradeName},
+          document = ${document}, ie = ${ie}, rg = ${rg},
+          birth_date = coalesce(${data.birthDate ?? null}, birth_date), email = ${email}, phone = ${phone},
+          whatsapp = ${whatsapp}, address = ${address}, city = ${city},
+          state = ${state}, zip = ${zip}, credit_limit = ${creditLimit},
+          notes = ${notes}, crm_stage = coalesce(${data.crmStage ?? null}, crm_stage),
           seller_id = ${sellerId}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;

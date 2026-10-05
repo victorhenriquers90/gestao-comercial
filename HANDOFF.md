@@ -2353,8 +2353,8 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     `count(*) over()` devolve total 0 quando o `offset` passa do
     fim; tarefas abertas de cliente excluído continuarem contando (agenda,
     KPI e sininho) foi fechado no item 67; `saveCustomerFn` chamado direto
-    sem telefone/e-mail apaga os dois (o formulário sempre manda o registro
-    completo).
+    sem telefone/e-mail apagando os dois foi fechado no item 68 (o mesmo
+    buraco existe hoje em `saveSupplierFn`, ainda não fechado).
 
 65. **Fornecedores: `listSuppliersFn` devolvia o cadastro inteiro sem limite
     nem total, usado por três `<select>` (Produtos, Compras, Financeiro) e
@@ -2516,6 +2516,74 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+
+68. **`saveCustomerFn` chamado sem um campo opcional apagava esse campo em
+    vez de manter o que já estava gravado — só `ie`/`rg`/`zip`/
+    `creditLimit`/`sellerId` tinham a proteção certa.** Lacuna documentada
+    desde o item 64, agora fechada. Ponto real, reproduzido antes de
+    corrigir: o próprio código já tinha a correção certa para `ie`/`rg`/
+    `zip` (comentário explicando que uma edição que não mostra esses campos
+    os apagava ao regravar — o mesmo bug, resolvido uma vez), mas
+    `tradeName`/`document`/`email`/`phone`/`whatsapp`/`address`/`city`/
+    `state`/`notes` continuavam sem essa proteção: o validador colapsava
+    "campo não veio" e "campo veio vazio" no mesmo `undefined`, e o UPDATE
+    regravava `data.X ?? null` sempre. As duas telas que chamam a função
+    hoje mandam o registro inteiro (por isso nunca dava pra ver o bug na
+    UI) — mas a própria tela de edição (`CustomerPanel`) já usava `edit.email
+    || undefined` pra alguns campos, ou seja, JÁ dependia (sem saber) de
+    como `undefined` seria tratado — só não quebrava porque antes `undefined`
+    e `""` davam no mesmo resultado.
+
+    Correção:
+    - **`saveCustomerFn`** (`lib/server/party.ts`): todo campo opcional
+      passou a seguir a regra que `ie`/`rg`/`zip`/`creditLimit`/`sellerId`
+      já seguiam — `undefined` (chave ausente do payload) = mantém o
+      gravado; `null`/`""` (chave presente, vazia) = apaga de propósito. No
+      UPDATE, cada campo é resolvido primeiro (`data.X === undefined ?
+      cur.X : data.X`) e só o valor resolvido entra no SQL e no `after` da
+      auditoria — antes o `after` podia mostrar `null` para um campo que na
+      verdade não mudou.
+    - **`CustomerPanel`** (`components/customer-panel.tsx`): o salvar da
+      aba Dados mandava `edit.email || undefined` (e outros 6 campos
+      assim) — com o novo significado de `undefined`, isso teria virado
+      "nunca mais consigo apagar o e-mail pela tela", uma regressão real
+      que só apareceria depois de publicado. Trocado para mandar o valor
+      puro (`edit.email`), já que esta tela edita TODOS esses campos e
+      sempre tem um valor definido (mesmo vazio) pra cada um.
+
+    **Pegadinha (não repetir)**: ao endurecer um contrato "undefined =
+    mantém", TODO chamador que usa `campo || undefined` pra "limpar o
+    campo" vira um chamador que silenciosamente para de limpar. Antes de
+    fechar esse tipo de lacuna num `saveXFn`, grep por `XFn(` pra conferir
+    CADA chamador, não só o que motivou o fix.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 1 cliente
+    descartável "ZZTESTE Partial Update" (telefone e e-mail preenchidos):
+    (1) limpar o telefone pela aba Dados do `CustomerPanel` (campo
+    esvaziado, Salvar) gravou `phone = null` e manteve o e-mail intacto —
+    confirma que `CustomerPanel` continua limpando campo de verdade depois
+    da correção; a auditoria registrou o antes/depois certo (`phone`
+    "11988887777" → `null`, `email` inalterado). (2) Chamada direta ao
+    `saveCustomerFn` real (mesmo endpoint RPC que o app usa, mesma sessão
+    autenticada, capturada via `fetch` interceptado e reenviada só com
+    `{id, kind, name}` — sem telefone, e-mail, cidade, endereço etc., a
+    réplica mais fiel possível de "alguém chamando a função direto, fora do
+    formulário") devolveu sucesso e o cliente manteve telefone e e-mail
+    intactos no banco — nenhuma linha de auditoria nova (nada mudou de
+    verdade, como esperado). `typecheck` + `lint` (0 erros, 5 avisos
+    antigos) + `npm test` (477) limpos. Cliente e auditoria de teste
+    removidos; empresa 4 voltou a zero cliente e às 13 linhas de auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
+    Lacuna nova encontrada (não fechada agora, fora de escopo): o mesmo
+    buraco existe em `saveSupplierFn` (mesmo arquivo) — `tradeName`/
+    `document`/`email`/`phone`/`whatsapp`/`address`/`city`/`state`/`zip`/
+    `representative`/`notes` regravam `data.X ?? null` sem distinguir "não
+    veio" de "veio vazio". A tela de Fornecedores também manda o registro
+    inteiro hoje, então não aparece na UI — mesma situação que `customers`
+    tinha antes deste item.
 
 ## Como a próxima IA deve trabalhar
 

@@ -206,15 +206,20 @@ export function CustomerPanel({
                           kind: c.kind,
                           name: edit.name,
                           tradeName: c.tradeName ?? undefined,
-                          document: edit.document || undefined,
-                          email: edit.email || undefined,
-                          phone: edit.phone || undefined,
-                          whatsapp: edit.phone || undefined,
-                          city: edit.city || undefined,
-                          state: edit.state || undefined,
-                          address: edit.address || undefined,
+                          // Valor sempre enviado (nunca `|| undefined`): depois
+                          // da correcao do item 68, `undefined` passou a
+                          // significar "mantem o que ja esta gravado" -- um
+                          // campo esvaziado nesta tela e "" de verdade, pra
+                          // continuar limpando quando a pessoa apaga o campo.
+                          document: edit.document,
+                          email: edit.email,
+                          phone: edit.phone,
+                          whatsapp: edit.phone,
+                          city: edit.city,
+                          state: edit.state,
+                          address: edit.address,
                           creditLimit: edit.creditLimit,
-                          notes: edit.notes || undefined,
+                          notes: edit.notes,
                           crmStage: c.crmStage,
                           sellerId: c.sellerId,
                         },
