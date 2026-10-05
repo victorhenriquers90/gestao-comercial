@@ -2669,6 +2669,50 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     o botão na tela) quando for atualizado — o banco já está pronto para
     recebê-lo, não falta rodar a migration de novo.
 
+71. **Auditoria não tinha filtro nenhum — só "Carregar mais" por 40 linhas,
+    da mais nova pra mais velha, sem jeito de pular direto pra um período ou
+    isolar um usuário.** Num piloto que só acumula linha, achar "o que o
+    fulano mexeu naquela semana" significava clicar "Carregar mais" repetidas
+    vezes rolando por tudo em ordem cronológica.
+
+    Correção:
+    - **`listAuditFn`** (`lib/server/session.ts`): ganhou `userId`, `from` e
+      `to` opcionais. Cada um checa "não veio" antes de comparar
+      (`$X::tipo is null or coluna = $X`), então convive com o cursor de
+      paginação por `id` que já existia — trocar o filtro começa uma
+      consulta nova (cursor zerado), continuar na mesma página soma mais
+      40 do filtro atual.
+    - **Auditoria** (`routes/app/configuracoes.tsx`): filtro de usuário (um
+      `<select>` com `settings.data.members`, já carregado pela aba
+      Usuários — nenhuma consulta nova) e período (dois `<input
+      type="date">`, De/Até). "Limpar filtros" só aparece com algum filtro
+      ativo. Estado vazio diferencia "nenhuma alteração registrada ainda"
+      (cadastro realmente vazio) de "nenhuma alteração para esse filtro"
+      (hoje o piloto já cai neste segundo caso com qualquer filtro, porque
+      só existe um usuário real).
+
+    **Escopo deliberadamente menor**: sem filtro por tipo de ação
+    (criar/alterar/excluir/cancelar/...) nem por entidade (cliente, produto,
+    meta...) — os mapas `ACTION`/`ENTITY` já existem em `audit-label.ts` e
+    dariam pra virar mais dois `<select>`, mas usuário + período já cobre o
+    uso real mais comum ("o que o fulano fez entre essas datas") sem
+    transformar a aba numa barra de 4 filtros. Fica documentado para quando
+    o piloto tiver mais de um usuário de verdade e a necessidade aparecer.
+
+    Verificado ao vivo contra o Postgres real (empresa 4, as 13 linhas reais
+    de auditoria do piloto — sem dado descartável, filtro é leitura): filtro
+    "De 28/09" cortou de 13 para 9 linhas (as 4 de 25/09 somem); somando
+    "Até 28/09" cortou para 5 (só as de 28/09); selecionar "Victor" no
+    filtro de usuário manteve as mesmas 5 (único usuário real do piloto,
+    confirma que o filtro não exclui por engano); período sem interseção
+    (01/01 a 02/01) mostrou "Nenhuma alteração para esse filtro."; "Limpar
+    filtros" devolveu as 13 linhas e o próprio botão sumiu. `typecheck` +
+    `lint` (0 erros, 5 avisos antigos) + `npm test` (477) limpos. Nenhum
+    dado de teste criado (só filtrou o real) — nada para limpar.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

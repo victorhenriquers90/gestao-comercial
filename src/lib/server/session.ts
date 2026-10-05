@@ -20,6 +20,7 @@ import {
   optionalLine,
   parseCursor,
   parseUf,
+  requireIsoDate,
   requireLine,
   sanitizeCode,
   sanitizeImageUrl,
@@ -722,12 +723,20 @@ export const acceptInviteFn = createServerFn({ method: "POST" })
 
 export const listAuditFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { before?: number }) => ({ before: parseCursor(d.before) }))
+  .validator((d: { before?: number; userId?: string; from?: string; to?: string }) => ({
+    before: parseCursor(d.before),
+    userId: d.userId || undefined,
+    from: d.from ? requireIsoDate(d.from, "Data inicial") : undefined,
+    to: d.to ? requireIsoDate(d.to, "Data final") : undefined,
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "audit.read");
     // Cursor por id (não offset): registro novo entrando enquanto o dono
     // navega não repete nem pula linha. Busca 41 para saber se há mais.
+    // Os filtros (usuário, período) convivem com o cursor: cada um checa
+    // "não veio" antes de comparar, então o mesmo cursor de página funciona
+    // com ou sem filtro ativo -- só muda o que entra no `where`.
     const rows = await sql<Row>`
       select a.id, a.user_id, u.name as user_name, a.action, a.entity, a.entity_id,
              a.before_data, a.after_data, a.created_at
@@ -735,6 +744,9 @@ export const listAuditFn = createServerFn({ method: "POST" })
       left join "user" u on u.id = a.user_id
       where a.company_id = ${tenant.companyId}
         and (${data.before ?? null}::bigint is null or a.id < ${data.before ?? null}::bigint)
+        and (${data.userId ?? null}::text is null or a.user_id = ${data.userId ?? null}::text)
+        and (${data.from ?? null}::date is null or a.created_at >= ${data.from ?? null}::date)
+        and (${data.to ?? null}::date is null or a.created_at < (${data.to ?? null}::date + interval '1 day'))
       order by a.id desc
       limit ${AUDIT_PAGE_SIZE + 1}
     `;

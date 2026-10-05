@@ -74,9 +74,22 @@ function ConfigPage() {
       ? tabPedida
       : (CONFIG_TABS.find((t) => abaPermitida[t]) ?? tabPedida);
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const [auditUserId, setAuditUserId] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
   const audit = useInfiniteQuery({
-    queryKey: ["audit"],
-    queryFn: ({ pageParam }) => listAuditFn({ data: { before: pageParam } }),
+    // Filtro na chave: trocar usuário/período começa uma consulta nova (cursor
+    // zerado) em vez de continuar paginando o resultado do filtro anterior.
+    queryKey: ["audit", auditUserId, auditFrom, auditTo],
+    queryFn: ({ pageParam }) =>
+      listAuditFn({
+        data: {
+          before: pageParam,
+          userId: auditUserId || undefined,
+          from: auditFrom || undefined,
+          to: auditTo || undefined,
+        },
+      }),
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (ultima) => ultima.nextBefore ?? undefined,
     enabled: podeVerAuditoria,
@@ -594,13 +607,48 @@ function ConfigPage() {
         </TabsContent>
         <TabsContent value="audit">
           <Card className="p-5">
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+              <Field label="Usuário" className="w-48">
+                <Select value={auditUserId} onChange={(e) => setAuditUserId(e.target.value)}>
+                  <option value="">Todos</option>
+                  {(settings.data?.members ?? []).map((m) => (
+                    <option key={m.id} value={m.user_id}>
+                      {m.name || m.email}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="De" className="w-36">
+                <Input type="date" value={auditFrom} onChange={(e) => setAuditFrom(e.target.value)} />
+              </Field>
+              <Field label="Até" className="w-36">
+                <Input type="date" value={auditTo} onChange={(e) => setAuditTo(e.target.value)} />
+              </Field>
+              {auditUserId || auditFrom || auditTo ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setAuditUserId("");
+                    setAuditFrom("");
+                    setAuditTo("");
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+              ) : null}
+            </div>
             <div className="space-y-2 text-sm">
               {audit.isError ? (
                 <p className="py-2 text-destructive">Não foi possível carregar a auditoria.</p>
               ) : audit.isPending ? (
                 <p className="py-2 text-muted-foreground">Carregando...</p>
               ) : auditRows.length === 0 ? (
-                <p className="py-2 text-muted-foreground">Nenhuma alteração registrada ainda.</p>
+                <p className="py-2 text-muted-foreground">
+                  {auditUserId || auditFrom || auditTo
+                    ? "Nenhuma alteração para esse filtro."
+                    : "Nenhuma alteração registrada ainda."}
+                </p>
               ) : null}
               {auditRows.map((a) => {
                 const mudancas = auditChanges(a);
