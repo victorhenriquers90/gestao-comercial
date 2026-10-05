@@ -49,6 +49,25 @@ function parseCrmStage(v: string | null | undefined): CrmStage | undefined {
 }
 
 /**
+ * Data de nascimento: AAAA-MM-DD que existe no calendário, sem data futura
+ * e com ano plausível para uma pessoa viva (1900 em diante). Não reaproveita
+ * `requireIsoDate` -- aquela função exige ano 2000-2100 (pensada pra data de
+ * documento: vencimento, período), e recusaria o nascimento de qualquer
+ * cliente nascido no século passado. Sem checagem nenhuma, uma string
+ * qualquer ia direto pro cast de `date` do Postgres e voltava como erro cru.
+ */
+function parseBirthDate(raw: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (!m) throw new Error("Data de nascimento: informe uma data válida.");
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  const valid = t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+  if (!valid || y < 1900) throw new Error("Data de nascimento: informe uma data válida.");
+  if (t.getTime() > Date.now()) throw new Error("Data de nascimento não pode ser no futuro.");
+  return raw;
+}
+
+/**
  * Agregados do cliente: compras liquidas de devolucao, saldo em aberto e
  * follow-ups pendentes. Compartilhado pela lista e pelo quadro do CRM -- as
  * duas telas nunca podem discordar do "total comprado" de um cliente.
@@ -408,6 +427,7 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       tradeName: d.tradeName === undefined ? undefined : optionalLine(d.tradeName),
       document:
         d.document === undefined ? undefined : parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf"),
+      birthDate: d.birthDate === undefined ? undefined : d.birthDate === null ? null : parseBirthDate(d.birthDate),
       ie: d.ie === undefined ? undefined : sanitizeCode(d.ie, 32),
       rg: d.rg === undefined ? undefined : sanitizeCode(d.rg, 32),
       email: d.email === undefined ? undefined : optionalLine(d.email, 120),
@@ -969,7 +989,11 @@ export const saveSellerFn = createServerFn({ method: "POST" })
     const taxRegime = data.taxRegime && ["none", "clt", "autonomo", "mei", "pj"].includes(data.taxRegime)
       ? data.taxRegime
       : "none";
-    const monthlySalary = Math.max(0, Number(data.monthlySalary) || 0);
+    // Math.max(0, Number(x) || 0) deixava passar Infinity (Number("1e999")
+    // e truthy) e qualquer numero gigante digitado por engano -- o valor vai
+    // direto pra base do calculo de INSS/IRRF da comissao, entao um erro de
+    // digitacao aqui distorce o liquido de TODA comissao do vendedor, calado.
+    const monthlySalary = data.monthlySalary == null ? 0 : requireRange(data.monthlySalary, "Salário mensal", 0, 999_999_999);
     const dependents = Math.max(0, Math.floor(Number(data.dependents) || 0));
     const issRate = data.issRate == null || data.issRate === undefined ? null : clampIss(data.issRate);
     const document = data.document ?? null;

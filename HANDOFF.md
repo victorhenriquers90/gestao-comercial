@@ -1775,10 +1775,11 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     `audit-label.test.ts`.
 
     Lacunas que continuam: a aba Auditoria mostra só as 40 mais recentes
-    (sem paginação na tela, `listAuditFn` já aceita `page`); `birthDate` do
-    cliente não é validado e, por causa do `coalesce`, não dá para limpar
-    (nenhuma tela usa o campo); `monthlySalary` não tem teto — acima de
-    numeric(14,2) o banco devolve erro cru; o serviço instalado só recebe
+    (sem paginação na tela, `listAuditFn` já aceita `page`) — filtro por
+    usuário/período chegou no item 71, paginação na tela continua em aberto;
+    `birthDate` sem validação e `monthlySalary` sem teto foram fechados no
+    item 72 (o `coalesce` do `birthDate` continua — nenhuma tela usa o campo
+    pra testar se deveria dar pra limpar); o serviço instalado só recebe
     isto quando for atualizado.
 
 57. **A aba Auditoria parava nas 40 mais recentes.** O dono não via nada
@@ -2709,6 +2710,59 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     filtros" devolveu as 13 linhas e o próprio botão sumiu. `typecheck` +
     `lint` (0 erros, 5 avisos antigos) + `npm test` (477) limpos. Nenhum
     dado de teste criado (só filtrou o real) — nada para limpar.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
+72. **`monthlySalary` (vendedor CLT) não tinha teto, e `birthDate` do
+    cliente não era validado.** Lacuna documentada desde o item 56, agora
+    fechada. Pontos reais:
+    - **`monthlySalary`**: `Math.max(0, Number(data.monthlySalary) || 0)`
+      travava negativo e `NaN` (`NaN || 0` vira `0`), mas um valor gigante
+      ou digitado a mais (um zero extra: 28000 em vez de 2800) passava
+      direto — o número alimenta a base do cálculo de INSS/IRRF da
+      comissão do vendedor (CLT), então um erro de digitação aqui distorce
+      o líquido de TODA comissão lançada pra aquele vendedor, calado, sem
+      aviso nenhum na hora de salvar.
+    - **`birthDate`**: `coalesce(${data.birthDate ?? null}, birth_date)`
+      gravava qualquer string direto no cast de `date` do Postgres — sem
+      validar formato, sem checar se a data existe no calendário, sem
+      recusar data no futuro. Hoje nenhuma tela usa o campo (só alcançável
+      chamando `saveCustomerFn` direto), mas isso significa que o primeiro
+      lugar que expuser o campo herdaria um erro cru do banco em vez de uma
+      mensagem decente.
+
+    Correção:
+    - **`monthlySalary`** (`lib/server/party.ts`, `saveSellerFn`): troca
+      para `requireRange(data.monthlySalary, "Salário mensal", 0,
+      999_999_999)` quando o valor vem preenchido — mesmo teto usado em
+      `creditLimit` (item 68) e `requireMoney`, só que aqui `0` continua
+      válido (vendedor sem regime CLT ou sem salário configurado).
+      `data.monthlySalary == null` continua virando `0` sem erro, igual
+      antes — só o valor fora da faixa (incluindo `Infinity`, que
+      `Math.max(0, Infinity)` deixava passar) passa a ser recusado.
+    - **`parseBirthDate`** (nova função local em `party.ts`): data
+      AAAA-MM-DD que existe no calendário, ano ≥ 1900, não no futuro. Não
+      reaproveita `requireIsoDate` (`lib/sanitize.ts`) porque aquela exige
+      ano 2000-2100 — pensada pra data de documento (vencimento, período),
+      recusaria o nascimento de qualquer cliente do século passado.
+      `saveCustomerFn` passou a chamar essa função quando `birthDate` vem
+      preenchido (mesma regra "undefined mantém" dos outros campos opcionais
+      — null explícito continua limpando).
+
+    Verificado ao vivo contra o Postgres real (empresa 4): Vendedores → Novo
+    vendedor, regime CLT, salário "9999999999" — recusado na tela
+    ("Salário mensal deve ficar entre 0 e 999999999."), nada gravado;
+    salário "2800" — salvo normalmente (`monthly_salary: "2800.00"`).
+    `birthDate` sem tela pra testar: capturado o request real de
+    `saveCustomerFn` (criar cliente) e reenviado três vezes com `birthDate`
+    adicionado — "not-a-date" recusado ("informe uma data válida"),
+    "2099-01-01" recusado ("não pode ser no futuro"), "1990-05-15" aceito e
+    gravado certo (`birth_date: "1990-05-15"`); as duas tentativas recusadas
+    não criaram cliente nenhum. `typecheck` + `lint` (0 erros, 5 avisos
+    antigos) + `npm test` (477) limpos. Vendedor e clientes de teste
+    removidos; empresa 4 voltou a zero vendedor/cliente e às 13 linhas de
+    auditoria.
 
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
