@@ -13,7 +13,7 @@ import { INVITE_COOKIE, INVITE_TTL_DAYS } from "@/lib/invite-constants";
 import { deleteCookie, setCookie } from "@tanstack/react-start/server";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
-import { parseCnpj } from "@/lib/document";
+import { onlyDigits, parseCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime } from "@/lib/nfce";
 import {
@@ -45,6 +45,9 @@ export const globalSearchFn = createServerFn({ method: "POST" })
     const like = prefixLike(q);
     const fts = ftsPrefix(q);
     const contains = `%${q}%`;
+    // So entra na busca de telefone com 4+ digitos (igual listCustomersFn):
+    // null desarma a clausula sem precisar compor o SQL condicionalmente.
+    const phoneDigits = onlyDigits(q).length >= 4 ? onlyDigits(q) : null;
     // A busca global devolvia as cinco secoes para QUALQUER papel autenticado:
     // era o unico caminho de leitura sem assertCan, e furava o que as telas
     // barram. Um "Operador de PDV" (so pdv.sell, pdv.discount, customers.read,
@@ -77,6 +80,7 @@ export const globalSearchFn = createServerFn({ method: "POST" })
           or lower(name) like ${like} or lower(coalesce(phone,'')) like ${like}
           or to_tsvector('simple', coalesce(name,'')) @@ to_tsquery('simple', ${fts})
           or name ilike ${contains}
+          or (${phoneDigits}::text is not null and regexp_replace(coalesce(phone,''), '\\D', '', 'g') like ('%' || ${phoneDigits} || '%'))
         )
       limit 5
     `;

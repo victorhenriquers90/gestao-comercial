@@ -113,6 +113,14 @@ export const listCustomersFn = createServerFn({ method: "POST" })
         params.push(digits);
         extra += ` or c.document = $${params.length}`;
       }
+      // Telefone so batia exato ou por prefixo: quem so tem os ULTIMOS
+      // digitos (caller ID, uma anotacao) nunca achava o cliente. Com 4+
+      // digitos, compara so os digitos do telefone salvo (ele pode ter sido
+      // digitado com ou sem formatacao) contra qualquer posicao.
+      if (digits.length >= 4) {
+        params.push(digits);
+        extra += ` or regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') like ('%' || $${params.length} || '%')`;
+      }
       extra += `)`;
     }
     if (data.kind === "pf" || data.kind === "pj") {

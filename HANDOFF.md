@@ -2347,10 +2347,10 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     Lacunas que continuam: a lacuna de `listSuppliersFn` (sem limite,
     alimentava os `<select>` de fornecedor de Produtos, Compras e Financeiro)
-    foi fechada no item 65; busca de cliente por telefone
-    é exata ou por prefixo (os últimos dígitos não acham) e palavras de uma
-    letra são descartadas da parte de texto ("zzteste c" equivale a
-    "zzteste"); `count(*) over()` devolve total 0 quando o `offset` passa do
+    foi fechada no item 65; a busca de cliente por telefone só por igualdade
+    ou prefixo foi fechada no item 66 (palavras de uma letra continuam fora
+    da parte de texto da busca — ver a nota de baixo impacto no item 66);
+    `count(*) over()` devolve total 0 quando o `offset` passa do
     fim; tarefas abertas de cliente excluído continuam contando (agenda e
     KPI concordam entre si); `saveCustomerFn` chamado direto sem telefone/
     e-mail apaga os dois (o formulário sempre manda o registro completo).
@@ -2416,6 +2416,64 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
+
+66. **Busca de cliente por telefone só achava por igualdade ou pelo começo —
+    os últimos dígitos (o que quem atende o telefone normalmente tem: caller
+    ID, uma anotação) não achavam ninguém.** Lacuna documentada nos itens 64
+    e 65, agora fechada. Ponto real, reproduzido antes de corrigir: um
+    cliente salvo com telefone "(11) 98765-4321" não aparecia buscando
+    "4321" nem "8765" (meio do número) — só "(11) 98765-4321" inteiro, ou
+    algo que batesse com o INÍCIO do que estava salvo (`like 'prefixo%'`).
+    Como o telefone é texto livre (sem máscara no cadastro), o mesmo número
+    digitado com ou sem formatação também não se encontrava.
+
+    Correção:
+    - **`listCustomersFn`** (`lib/server/party.ts`) e **`globalSearchFn`**
+      (`lib/server/session.ts`, a busca do Ctrl K): com 4+ dígitos no termo
+      buscado, nova cláusula compara só os DÍGITOS do telefone salvo
+      (`regexp_replace(coalesce(phone,''), '\D', '', 'g')`) contra o termo em
+      qualquer posição (`like '%dígitos%'`) — acha meio ou fim do número,
+      com ou sem formatação, sem se importar com parênteses/traço/espaço.
+      Chave em 4 dígitos (não 1-2, que devolveria clientes demais) — mesmo
+      corte que o item usava para documento (lá em 6, por ser mais longo).
+      Em `globalSearchFn`, que monta a consulta como template tagged (não
+      `sql.query` com `$N`), o gatilho é um parâmetro `null` quando o termo
+      tem menos de 4 dígitos — desarma a cláusula sem compor SQL condicional.
+    - Cobre todas as telas que passam por `listCustomersFn`: Clientes, CRM
+      (link "Ver todos"), diálogo de cliente do PDV, `CustomerPicker`
+      (Financeiro → Conta a receber) — e a busca global (Ctrl K) por cima.
+
+    **Pegadinha (não repetir)**: `'\D'` dentro de um template string JS vira
+    `'D'` — o `\D` da expressão regular do Postgres (não-dígito) exige
+    `'\\D'` no código-fonte (barra dupla) pra sobreviver ao parser do
+    JavaScript antes de virar SQL. Teria passado no `typecheck`/`lint` (é só
+    uma string) e falhado em silêncio — a cláusula teria virado "remove a
+    letra D do telefone" em vez de "remove tudo que não é dígito". Pego
+    testando a string resultante antes de rodar contra o banco.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 1 cliente
+    descartável "ZZTESTE Fulano Suffix" (telefone "(11) 98765-4321"): tela de
+    Clientes — busca "4321" (últimos 4) achou, "8765" (meio do número)
+    achou, "43219999" (dígitos que não batem) não achou nada; busca global
+    (Ctrl K) — "4321" devolveu o cliente na seção "Clientes". Consulta
+    somente-leitura reproduzindo as duas cláusulas exatas confirmou os
+    mesmos resultados antes de mexer na tela. `typecheck` + `lint` (0 erros,
+    5 avisos antigos) + `npm test` (477) limpos. Cliente de teste removido;
+    empresa 4 voltou a zero cliente e às 13 linhas de auditoria.
+
+    Não corrigido (impacto baixo, decisão deliberada): `ftsPrefix` ainda
+    descarta palavras de uma letra do termo buscado (`src/lib/search.ts`) —
+    "zzteste c" vira a mesma busca que "zzteste" na cláusula de texto. Na
+    prática isso quase nunca muda o resultado porque a cláusula `name ilike
+    '%termo%'` já cobre o caso comum (iniciais na ordem digitada, ex.: "João
+    C" acha "João Carlos" por essa cláusula, não pela de texto) — só perde
+    quando as palavras do nome estão fora de ordem, caso raro pra busca de
+    cliente. Não mexido para não arriscar a cláusula de texto por um ganho
+    que a `ilike` já cobre na prática.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 
 ## Como a próxima IA deve trabalhar
 
