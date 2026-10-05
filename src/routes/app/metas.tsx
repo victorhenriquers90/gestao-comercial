@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
@@ -12,7 +12,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { TARGET_BONUS_KINDS, TARGET_BONUS_LABELS, type TargetBonusKind } from "@/lib/constants";
 import { formatBRL, formatPct } from "@/lib/format";
-import { listTargetsFn, saveTargetFn } from "@/lib/server/finance";
+import { deleteTargetFn, listTargetsFn, saveTargetFn } from "@/lib/server/finance";
 import { listSellersFn } from "@/lib/server/party";
 import { getTenantFn } from "@/lib/server/session";
 
@@ -54,6 +54,8 @@ function MetasPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [salvando, setSalvando] = useState(false);
+  const [excluindo, setExcluindo] = useState<TargetRow | null>(null);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const list = useQuery({ queryKey: ["targets"], queryFn: () => listTargetsFn() });
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const sellers = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
@@ -118,6 +120,22 @@ function MetasPage() {
     }
   }
 
+  async function confirmarExclusao() {
+    if (!excluindo || confirmandoExclusao) return;
+    setConfirmandoExclusao(true);
+    try {
+      await deleteTargetFn({ data: { id: excluindo.id } });
+      toast.success("Meta excluída.");
+      setExcluindo(null);
+      void qc.invalidateQueries({ queryKey: ["targets"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível excluir a meta.");
+    } finally {
+      setConfirmandoExclusao(false);
+    }
+  }
+
   const rows = list.data ?? [];
 
   return (
@@ -157,6 +175,14 @@ function MetasPage() {
                     <span className="tabular text-sm">{formatPct(t.progress)}</span>
                     <Button size="icon-sm" variant="ghost" onClick={() => startEdit(t)} aria-label="Editar meta">
                       <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => setExcluindo(t)}
+                      aria-label="Excluir meta"
+                    >
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -269,6 +295,25 @@ function MetasPage() {
           <Button className="mt-4" disabled={salvando} onClick={() => void save()}>
             {salvando ? "Salvando…" : "Salvar"}
           </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={excluindo != null} onOpenChange={(next) => !next && setExcluindo(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir meta</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Excluir “{excluindo?.name}”? O progresso realizado some do painel; as vendas que já contaram para
+            ela continuam no histórico de vendas normalmente.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <Button variant="destructive" disabled={confirmandoExclusao} onClick={() => void confirmarExclusao()}>
+              {confirmandoExclusao ? "Excluindo…" : "Excluir"}
+            </Button>
+            <Button variant="ghost" onClick={() => setExcluindo(null)}>
+              Cancelar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

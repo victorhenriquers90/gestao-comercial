@@ -1727,7 +1727,7 @@ export const listTargetsFn = createServerFn({ method: "GET" })
               where si.sale_id = s.id and p.category_id = t.category_id
            ))
       ) r on true
-      where t.company_id = ${tenant.companyId}
+      where t.company_id = ${tenant.companyId} and t.deleted_at is null
       order by t.period_start desc
     `;
     const out: {
@@ -1823,7 +1823,9 @@ export const saveTargetFn = createServerFn({ method: "POST" })
       if (data.id) {
         const [cur] = await sql<Row>`
           select name, amount, period_start, period_end, store_id, seller_id, category_id, bonus_kind, bonus_value
-            from targets where id = ${data.id} and company_id = ${tenant.companyId} for update
+            from targets
+           where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+           for update
         `;
         if (!cur) throw new Error("Meta não encontrada.");
         await sql`
@@ -1873,6 +1875,52 @@ export const saveTargetFn = createServerFn({ method: "POST" })
       `;
       await audit(sql, tenant, "create", "target", row!.id, null, after);
       return { id: row!.id };
+    });
+  });
+
+export const deleteTargetFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "targets.write");
+    // Soft delete, igual customers/products/suppliers: uma meta criada com o
+    // periodo/loja/vendedor errado nao tinha como sair da tela -- so dava pra
+    // editar por cima, distorcendo o historico em vez de corrigi-lo. Sem
+    // filho (nada referencia targets.id), entao nao ha risco de orfao --
+    // diferente de commission_rules, que precisa checar uso antes de apagar.
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<Row>`
+        select name, amount, period_start, period_end, store_id, seller_id, category_id, bonus_kind, bonus_value
+          from targets
+         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+         for update
+      `;
+      if (!cur) throw new Error("Meta não encontrada.");
+      await sql`
+        update targets set deleted_at = now()
+         where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(
+        sql,
+        tenant,
+        "delete",
+        "target",
+        data.id,
+        {
+          name: String(cur.name),
+          amount: num(cur.amount),
+          periodStart: String(cur.period_start).slice(0, 10),
+          periodEnd: String(cur.period_end).slice(0, 10),
+          storeId: cur.store_id == null ? null : num(cur.store_id),
+          sellerId: cur.seller_id == null ? null : num(cur.seller_id),
+          categoryId: cur.category_id == null ? null : num(cur.category_id),
+          bonusKind: String(cur.bonus_kind ?? "none"),
+          bonusValue: num(cur.bonus_value),
+        },
+        null,
+      );
+      return { ok: true };
     });
   });
 

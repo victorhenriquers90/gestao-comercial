@@ -2621,6 +2621,54 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+70. **Meta de vendas não tinha como ser excluída.** Criada com o período, a
+    loja ou o vendedor errado (ou um bônus de comissão configurado sem
+    querer), ficava presa na tela de Metas para sempre — o único jeito de
+    tirar do caminho era editar por cima (ex.: mudar o período pro passado),
+    distorcendo o histórico em vez de corrigir o erro. `targets` nem tinha
+    coluna `deleted_at` — diferente de customers/products/suppliers, que já
+    usam esse padrão.
+
+    Correção:
+    - **Migration `0034_target_soft_delete.sql`**: `alter table targets add
+      column deleted_at timestamptz` — aditiva, sem default, não quebra
+      nada que já lê a tabela.
+    - **`deleteTargetFn`** (novo, `lib/server/finance.ts`): soft delete
+      (`update targets set deleted_at = now()`), exige `targets.write`,
+      audita antes/depois. Sem filho (nada referencia `targets.id`), então
+      não precisa do "checa se já foi usada antes de apagar de vez" que
+      `commission_rules` precisa — mais simples, mesmo padrão de
+      customers/products/suppliers.
+    - **`listTargetsFn`**: ganhou `and t.deleted_at is null`.
+    - **`saveTargetFn`** (edição): o `select ... for update` que busca a
+      meta atual ganhou `and deleted_at is null` — sem isto, editar o id de
+      uma meta já excluída a trazia de volta à tela por engano.
+    - **Metas** (`routes/app/metas.tsx`): ícone de lixeira ao lado do lápis
+      de editar, com um diálogo de confirmação simples (nome da meta +
+      aviso de que vendas já contadas continuam no histórico normalmente —
+      só o acompanhamento da meta some).
+
+    Verificado ao vivo contra o Postgres real (empresa 4): a migration
+    `0034` foi aplicada de verdade (`npm run db:migrate` — igual a um
+    deploy real rodaria) e confirmada (`information_schema.columns` mostra
+    `targets.deleted_at`); 1 meta descartável "ZZTESTE Meta Deletavel"
+    criada pela tela, aparecia no card com progresso 0,0%; clique na
+    lixeira abriu "Excluir 'ZZTESTE Meta Deletavel'?"; confirmar gravou
+    `deleted_at` no banco, a tela voltou ao estado vazio ("Nenhuma meta
+    neste período") e a auditoria registrou `create` e depois `delete` com
+    o snapshot certo. `typecheck` + `lint` (0 erros, 5 avisos antigos) +
+    `npm test` (477) limpos. Meta de teste apagada de vez (não só soft
+    delete, já que era só lixo de teste) e auditoria removida; empresa 4
+    voltou a zero meta e às 13 linhas de auditoria.
+
+    **Diferente dos itens anteriores**: este item muda schema, não só
+    código — e a migration `0034` já foi aplicada ao banco real do piloto
+    nesta sessão (`npm run db:migrate`, igual um deploy rodaria), então
+    `targets.deleted_at` já existe lá. O serviço instalado (NSSM, :8080)
+    só ganha o código novo (`deleteTargetFn`, o filtro em `listTargetsFn`,
+    o botão na tela) quando for atualizado — o banco já está pronto para
+    recebê-lo, não falta rodar a migration de novo.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
