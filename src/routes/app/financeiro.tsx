@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
 import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useSelection } from "@/hooks/use-selection";
 import {
   ACCOUNT_STATUS_LABELS,
@@ -41,7 +42,6 @@ import {
   settlePayableFn,
   settleReceivableFn,
 } from "@/lib/server/finance";
-import { listSuppliersFn } from "@/lib/server/party";
 import { cn, num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
@@ -104,7 +104,7 @@ function FinanceiroPage() {
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState("");
-  const [partyId, setPartyId] = useState("");
+  const [paySupplier, setPaySupplier] = useState<PickedSupplier | null>(null);
   const [recCustomer, setRecCustomer] = useState<PickedCustomer | null>(null);
   const [category, setCategory] = useState("Compras");
   /** Lancamento que a pessoa esta cancelando e o motivo (obrigatorio: vai pra Auditoria). */
@@ -128,7 +128,6 @@ function FinanceiroPage() {
     queryKey: ["expenses", storeId],
     queryFn: () => listExpensesFn({ data: { storeId: storeId ?? undefined } }),
   });
-  const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
 
   if (pay.isPending) return <PageSkeleton />;
   if (pay.error) return <QueryError error={pay.error} fallback="Erro ao carregar o financeiro." />;
@@ -234,7 +233,7 @@ function FinanceiroPage() {
               setDesc("");
               setAmount("");
               setDue("");
-              setPartyId("");
+              setPaySupplier(null);
               setCategory("Compras");
               setOpenPay(true);
             }}
@@ -754,14 +753,11 @@ function FinanceiroPage() {
             <DialogTitle>Conta a pagar</DialogTitle>
           </DialogHeader>
           <Field label="Fornecedor">
-            <Select value={partyId} onChange={(e) => setPartyId(e.target.value)}>
-              <option value="">—</option>
-              {(suppliers.data ?? []).map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.tradeName || s.legalName}
-                </option>
-              ))}
-            </Select>
+            <SupplierPicker
+              placeholder="Sem fornecedor (opcional) — digite para buscar"
+              value={paySupplier}
+              onChange={setPaySupplier}
+            />
           </Field>
           <Field label="Descrição" className="mt-block">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} />
@@ -807,7 +803,7 @@ function FinanceiroPage() {
                         dueDate: due,
                         amount: valor,
                         storeId,
-                        supplierId: partyId ? Number(partyId) : null,
+                        supplierId: paySupplier?.id ?? null,
                         category,
                       },
                     }),

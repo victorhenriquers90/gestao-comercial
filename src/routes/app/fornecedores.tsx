@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -6,7 +6,8 @@ import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { parseCnpj, maskCnpj } from "@/lib/document";
@@ -14,9 +15,13 @@ import { listSuppliersFn, saveSupplierFn } from "@/lib/server/party";
 
 export const Route = createFileRoute("/app/fornecedores")({ component: FornecedoresPage });
 
+const PAGE_SIZE = 100;
+
 function FornecedoresPage() {
   const qc = useQueryClient();
   const searchId = useSearchId();
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -29,11 +34,28 @@ function FornecedoresPage() {
     representative: "",
     notes: "",
   });
-  const list = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
+
+  // keepPreviousData: igual Clientes -- sem ele cada letra digitada trocava a
+  // chave da consulta, a pagina virava PageSkeleton e o campo de busca
+  // perdia o foco.
+  const termo = useDebounced(q.trim(), 250);
+  const list = useQuery({
+    queryKey: ["suppliers", "list", termo, page],
+    queryFn: () => listSuppliersFn({ data: { q: termo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+    placeholderData: keepPreviousData,
+  });
+  const items = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
+  const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
 
   useEffect(() => {
     if (searchId) setDetailId(searchId);
   }, [searchId]);
+
+  useEffect(() => {
+    // Fornecedores apagados/filtrados com a pagina N aberta: volta pro comeco em vez de mostrar "vazio".
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
 
   if (list.isPending) return <PageSkeleton />;
   if (list.error) return <QueryError error={list.error} fallback="Erro ao carregar fornecedores." />;
@@ -45,9 +67,35 @@ function FornecedoresPage() {
         description="Ficha 360, pedidos e contas a pagar vinculadas."
         actions={<Button onClick={() => setOpen(true)}>Novo fornecedor</Button>}
       />
-      {!list.data?.length ? (
-        <EmptyState title="Você ainda não possui fornecedores cadastrados." description="Cadastre o primeiro fornecedor para emitir pedidos de compra." />
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Input
+          className="max-w-sm"
+          placeholder="Razão social, nome fantasia ou CNPJ"
+          aria-label="Buscar fornecedor por razão social, nome fantasia ou CNPJ"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
+        />
+      </div>
+      {!items.length ? (
+        // Busca sem resultado nao e "nenhum fornecedor cadastrado".
+        termo ? (
+          <EmptyState
+            title={`Nenhum fornecedor encontrado para “${termo}”.`}
+            description="Confira a grafia ou busque pelo CNPJ."
+            action={
+              <Button variant="outline" onClick={() => { setQ(""); setPage(0); }}>
+                Limpar busca
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title="Você ainda não possui fornecedores cadastrados." description="Cadastre o primeiro fornecedor para emitir pedidos de compra." />
+        )
       ) : (
+        <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable
           headers={
             <tr>
@@ -60,7 +108,7 @@ function FornecedoresPage() {
             </tr>
           }
         >
-          {list.data.map((s) => (
+          {items.map((s) => (
             <tr
               key={s.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
@@ -78,6 +126,8 @@ function FornecedoresPage() {
             </tr>
           ))}
         </DataTable>
+        <Pager page={page} pageSize={PAGE_SIZE} shown={items.length} total={total} onPage={setPage} />
+        </div>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -12,6 +12,7 @@ import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
@@ -25,7 +26,6 @@ import {
   saveCategoryFn,
   saveProductFn,
 } from "@/lib/server/catalog";
-import { listSuppliersFn } from "@/lib/server/party";
 import { parseBarcode } from "@/lib/check-digit";
 
 export const Route = createFileRoute("/app/produtos")({ component: ProdutosPage });
@@ -47,7 +47,7 @@ const empty = {
   imageUrl: "",
   isActive: true,
   categoryId: "" as string | number,
-  supplierId: "" as string | number,
+  supplier: null as PickedSupplier | null,
   variantsText: "",
   ncm: "",
   cfop: "5102",
@@ -78,7 +78,6 @@ function ProdutosPage() {
   const [criandoCategoria, setCriandoCategoria] = useState(false);
 
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
-  const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
   const ncmPend = useQuery({
     queryKey: ["ncm-pending"],
     queryFn: () => listNcmPendingFn(),
@@ -170,7 +169,10 @@ function ProdutosPage() {
         imageUrl: pr.image_url ? String(pr.image_url) : "",
         isActive: Boolean(pr.is_active),
         categoryId: pr.category_id == null ? "" : Number(pr.category_id),
-        supplierId: pr.supplier_id == null ? "" : Number(pr.supplier_id),
+        supplier:
+          pr.supplier_id == null
+            ? null
+            : { id: Number(pr.supplier_id), name: String(pr.supplier_trade_name || pr.supplier_legal_name || "") },
         ncm: pr.ncm ? String(pr.ncm) : "",
         cfop: pr.cfop ? String(pr.cfop) : "5102",
       });
@@ -219,7 +221,7 @@ function ProdutosPage() {
           imageUrl: form.imageUrl || null,
           isActive: form.isActive,
           categoryId: form.categoryId === "" ? null : Number(form.categoryId),
-          supplierId: form.supplierId === "" ? null : Number(form.supplierId),
+          supplierId: form.supplier?.id ?? null,
           ncm: form.ncm || undefined,
           cfop: form.cfop || undefined,
           variants: variants.length ? variants : undefined,
@@ -460,14 +462,11 @@ function ProdutosPage() {
                 no cadastro do produto" pra um campo que nao existia, entao
                 todo produto caia sempre em "Sem fornecedor definido". */}
             <Field label="Fornecedor">
-              <Select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-                <option value="">—</option>
-                {(suppliers.data ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.tradeName || s.legalName}
-                  </option>
-                ))}
-              </Select>
+              <SupplierPicker
+                value={form.supplier}
+                onChange={(s) => setForm({ ...form, supplier: s })}
+                placeholder="Sem fornecedor — digite para buscar"
+              />
             </Field>
             <Field label="Custo">
               <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: Number(e.target.value) })} />

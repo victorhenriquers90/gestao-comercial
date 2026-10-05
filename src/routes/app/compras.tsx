@@ -9,13 +9,13 @@ import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
+import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDate, formatDateTime, formatQty } from "@/lib/format";
 import { getPurchaseFn, listPurchasesFn, receivePurchaseFn, savePurchaseFn, searchPosFn } from "@/lib/server/catalog";
-import { listSuppliersFn } from "@/lib/server/party";
 
 export const Route = createFileRoute("/app/compras")({ component: ComprasPage });
 
@@ -33,7 +33,7 @@ function ComprasPage() {
    */
   const [salvandoPedido, setSalvandoPedido] = useState(false);
   const [recebendoId, setRecebendoId] = useState<number | null>(null);
-  const [supplierId, setSupplierId] = useState("");
+  const [supplier, setSupplier] = useState<PickedSupplier | null>(null);
   const [status, setStatus] = useState("pedido");
   const [freight, setFreight] = useState("0");
   const [q, setQ] = useState("");
@@ -45,7 +45,6 @@ function ComprasPage() {
     queryKey: ["purchases", storeId],
     queryFn: () => listPurchasesFn({ data: { storeId: storeId ?? undefined } }),
   });
-  const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => listSuppliersFn({ data: {} }) });
   const detail = useQuery({
     queryKey: ["purchase", detailId],
     queryFn: () => getPurchaseFn({ data: { id: detailId! } }),
@@ -153,14 +152,7 @@ function ComprasPage() {
             <DialogTitle>Pedido de compra</DialogTitle>
           </DialogHeader>
           <Field label="Fornecedor">
-            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">—</option>
-              {suppliers.data?.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.tradeName || s.legalName}
-                </option>
-              ))}
-            </Select>
+            <SupplierPicker placeholder="Sem fornecedor — digite para buscar" value={supplier} onChange={setSupplier} />
           </Field>
           <Field label="Status" className="mt-block">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -248,7 +240,7 @@ function ComprasPage() {
                 await savePurchaseFn({
                   data: {
                     storeId,
-                    supplierId: supplierId ? Number(supplierId) : null,
+                    supplierId: supplier?.id ?? null,
                     status,
                     freight: Number(freight),
                     items,

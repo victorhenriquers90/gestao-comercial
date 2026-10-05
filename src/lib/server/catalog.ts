@@ -163,7 +163,16 @@ export const getProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.read");
-    const products = await sql<Row>`select * from products where id = ${data.id} and company_id = ${tenant.companyId}`;
+    // s.legal_name/trade_name: sem isto o formulario de edicao so tinha o
+    // supplier_id, e o SupplierPicker (busca por nome) abria sem nome
+    // nenhum pra mostrar -- o campo parecia "sem fornecedor" mesmo com um
+    // fornecedor de verdade salvo.
+    const products = await sql<Row>`
+      select p.*, s.legal_name as supplier_legal_name, s.trade_name as supplier_trade_name
+        from products p
+        left join suppliers s on s.id = p.supplier_id
+       where p.id = ${data.id} and p.company_id = ${tenant.companyId}
+    `;
     const product = products[0];
     if (!product) throw new Error("Produto não encontrado.");
     const vParams: unknown[] = [data.id, tenant.companyId];

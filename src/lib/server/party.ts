@@ -593,13 +593,18 @@ export const moveCrmFn = createServerFn({ method: "POST" })
 
 export const listSuppliersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string }) => d)
+  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.read");
     const raw = data.q?.trim() || "";
+    // Igual ao listCustomersFn antes do item 64: devolvia o cadastro inteiro
+    // sem limite, usado pra alimentar <select> de fornecedor em Produtos,
+    // Compras e Financeiro -- cresce o cadastro e o <select> (e esta consulta)
+    // crescem sem aviso nenhum.
     const rows = await sql.query<Row>(
-      `select s.*,
+      `select count(*) over() as total,
+              s.*,
               coalesce((select sum(p.total) from purchases p where p.supplier_id = s.id),0) as total_bought,
               (select count(*) from purchases p where p.supplier_id = s.id)::int as orders,
               coalesce((select sum(ap.amount - ap.paid_amount) from accounts_payable ap
@@ -613,10 +618,12 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
             or to_tsvector('simple', coalesce(s.legal_name,'') || ' ' || coalesce(s.trade_name,'')) @@ to_tsquery('simple', $4)
             or s.legal_name ilike ('%' || $2 || '%') or s.trade_name ilike ('%' || $2 || '%')
           )
-        order by s.legal_name`,
-      [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*"],
+        order by s.legal_name, s.id
+        limit $5 offset $6`,
+      [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*", data.page.limit, data.page.offset],
     );
-    return rows.map((r) => ({
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    const items = rows.map((r) => ({
       id: num(r.id),
       legalName: String(r.legal_name ?? ""),
       tradeName: r.trade_name == null ? null : String(r.trade_name),
@@ -633,6 +640,7 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
       orders: num(r.orders),
       openBalance: num(r.open_balance),
     }));
+    return { items, total };
   });
 
 export const getSupplierFn = createServerFn({ method: "POST" })

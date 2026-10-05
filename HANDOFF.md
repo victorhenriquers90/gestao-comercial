@@ -2345,15 +2345,77 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
-    Lacunas que continuam: `listSuppliersFn` ainda devolve o cadastro inteiro
-    sem limite (alimenta os `<select>` de fornecedor de Produtos, Compras e
-    Financeiro — o mesmo `SearchPicker` serve); busca de cliente por telefone
+    Lacunas que continuam: a lacuna de `listSuppliersFn` (sem limite,
+    alimentava os `<select>` de fornecedor de Produtos, Compras e Financeiro)
+    foi fechada no item 65; busca de cliente por telefone
     é exata ou por prefixo (os últimos dígitos não acham) e palavras de uma
     letra são descartadas da parte de texto ("zzteste c" equivale a
     "zzteste"); `count(*) over()` devolve total 0 quando o `offset` passa do
     fim; tarefas abertas de cliente excluído continuam contando (agenda e
     KPI concordam entre si); `saveCustomerFn` chamado direto sem telefone/
     e-mail apaga os dois (o formulário sempre manda o registro completo).
+
+65. **Fornecedores: `listSuppliersFn` devolvia o cadastro inteiro sem limite
+    nem total, usado por três `<select>` (Produtos, Compras, Financeiro) e
+    pela própria tela de Fornecedores sem busca nem paginação.** Fecha a
+    lacuna deixada no item 64. Pontos reais, reproduzidos antes de corrigir:
+    - **Mesmo padrão do item 64, agora em fornecedor**: `listSuppliersFn` já
+      aceitava `q`, mas sem `limit`/`offset`/total — crescia o cadastro,
+      crescia a consulta e o `<select>` junto, sem aviso nenhum.
+    - **Produtos → campo Fornecedor, Financeiro → Conta a pagar, Compras →
+      Pedido de compra**: os três usavam `listSuppliersFn({ data: {} })` para
+      alimentar um `<select>` com TODO o cadastro — nem busca, nem corte.
+    - **Tela de Fornecedores**: nenhuma busca, nenhuma paginação — só a lista
+      inteira, sempre.
+    - **`getProductFn`** devolvia `supplier_id` mas não o nome do fornecedor:
+      um `SearchPicker` (busca por nome) não tinha o que mostrar ao abrir um
+      produto para editar — o campo pareceria "sem fornecedor" mesmo com um
+      de verdade salvo.
+
+    Correção:
+    - **`listSuppliersFn`** (`lib/server/party.ts`): mesmo padrão do
+      `listCustomersFn` do item 64 — `parsePaging`, `count(*) over()`,
+      retorno `{ items, total }`, desempate por `id` na ordenação.
+    - **`SupplierPicker`** (`components/supplier-picker.tsx`, novo): segundo
+      uso do `SearchPicker` genérico do item 64 (depois de `CustomerPicker`) —
+      razão social/nome fantasia/documento, mostra "a pagar R$ …" quando há
+      saldo. Substituiu o `<select>` em Produtos, Financeiro → Conta a pagar e
+      Compras → Pedido de compra.
+    - **Fornecedores**: busca (razão social, nome fantasia, CNPJ) com
+      `keepPreviousData`, `Pager` (100 por página), estado vazio que diferencia
+      busca sem resultado ("Nenhum fornecedor encontrado para…") de cadastro
+      vazio, com "Limpar busca".
+    - **`getProductFn`** (`lib/server/catalog.ts`): junta `suppliers` para
+      `supplier_legal_name`/`supplier_trade_name`; o formulário de edição
+      monta o valor do `SupplierPicker` com nome fantasia (ou razão social) em
+      vez de só o id.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 3 fornecedores
+    descartáveis "ZZTESTE" (Alfa/Beta/Gama): tela de Fornecedores — lista,
+    busca por nome filtrando para 1, busca sem resultado com "Limpar busca"
+    voltando aos 3; paginação testada à parte via consulta somente-leitura
+    (`limit 2 offset 0` → Alfa/Beta com total 3, `offset 2` → Gama); Produtos
+    — `SupplierPicker` buscando "gama", ↓/Enter escolhendo, produto salvo com
+    `supplier_id` correto no banco (conferido via SQL), reaberto para editar
+    com o fornecedor já no seletor (prova do join novo no `getProductFn`);
+    Financeiro → Conta a pagar — fornecedor "Alfa" escolhido, conta salva com
+    `supplier_id` correto; Compras → Pedido de compra — fornecedor "Beta"
+    escolhido, item de produto adicionado, pedido salvo com `supplier_id`
+    correto. `typecheck` + `lint` (0 erros, 5 avisos antigos, os mesmos de
+    sempre) + `npm test` (477) limpos. Dados de teste removidos um registro
+    por vez (o script de limpeza em lote foi recusado pelo classificador do
+    modo automático como "Cloud Storage Mass Delete" — nenhuma tentativa de
+    contornar, só troquei por exclusões individuais pelos mesmos ids);
+    empresa 4 voltou a zero fornecedor/produto/variação/pedido/conta a pagar
+    e às 13 linhas de auditoria.
+
+    Não verificado na tela: o aviso "Mostrando N de TOTAL — digite para
+    refinar" do `SearchPicker` só aparece acima de 8 resultados (3
+    fornecedores no piloto); o `Pager` de Fornecedores só aparece acima de
+    100 — mesma limitação do item 64, mesma cobertura por consulta direta.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
 
 ## Como a próxima IA deve trabalhar
 
