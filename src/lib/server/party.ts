@@ -223,12 +223,15 @@ export const crmBoardFn = createServerFn({ method: "POST" })
        select * from ranked where rn <= $2 order by crm_stage, rn`,
       [tenant.companyId, CRM_BOARD_CARDS],
     );
+    // c.deleted_at is null: sem isto, tarefa de cliente excluido continuava
+    // inflando "Tarefas abertas"/"Atrasadas" pra sempre -- excluir o
+    // cliente nunca fecha a tarefa dele.
     const [tk] = await sql.query<Row>(
       `select count(*)::int as open_tasks,
               (count(*) filter (where t.due_at < now()))::int as overdue_tasks
          from crm_tasks t
          join customers c on c.id = t.customer_id
-        where t.company_id = $1 and t.done_at is null`,
+        where t.company_id = $1 and t.done_at is null and c.deleted_at is null`,
       [tenant.companyId],
     );
     const stages = Object.fromEntries(
@@ -566,7 +569,7 @@ export const listCrmTasksFn = createServerFn({ method: "POST" })
       `select t.id, t.title, t.due_at, t.done_at, t.customer_id, c.name as customer_name
          from crm_tasks t
          join customers c on c.id = t.customer_id
-        where t.company_id = $1
+        where t.company_id = $1 and c.deleted_at is null
           and ($2::int = 0 or t.done_at is null)
         order by t.done_at nulls first, t.due_at nulls last, t.id desc
         limit 80`,

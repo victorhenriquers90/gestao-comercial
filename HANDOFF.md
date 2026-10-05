@@ -2351,9 +2351,10 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     ou prefixo foi fechada no item 66 (palavras de uma letra continuam fora
     da parte de texto da busca — ver a nota de baixo impacto no item 66);
     `count(*) over()` devolve total 0 quando o `offset` passa do
-    fim; tarefas abertas de cliente excluído continuam contando (agenda e
-    KPI concordam entre si); `saveCustomerFn` chamado direto sem telefone/
-    e-mail apaga os dois (o formulário sempre manda o registro completo).
+    fim; tarefas abertas de cliente excluído continuarem contando (agenda,
+    KPI e sininho) foi fechado no item 67; `saveCustomerFn` chamado direto
+    sem telefone/e-mail apaga os dois (o formulário sempre manda o registro
+    completo).
 
 65. **Fornecedores: `listSuppliersFn` devolvia o cadastro inteiro sem limite
     nem total, usado por três `<select>` (Produtos, Compras, Financeiro) e
@@ -2470,6 +2471,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     quando as palavras do nome estão fora de ordem, caso raro pra busca de
     cliente. Não mexido para não arriscar a cláusula de texto por um ganho
     que a `ilike` já cobre na prática.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
+
+67. **Excluir um cliente não fechava as tarefas dele: continuavam inflando
+    "Tarefas abertas"/"Atrasadas" do CRM, a agenda de follow-ups e o sininho
+    de notificações pra sempre.** Lacuna documentada nos itens 64-66, agora
+    fechada. Ponto real, reproduzido antes de corrigir: cliente com uma
+    tarefa vencida, excluído — "Tarefas abertas" e "Atrasadas" continuavam
+    em 1 (não em 0), o cartão "Agenda de follow-ups" continuava mostrando o
+    follow-up com o nome do cliente excluído, e o sininho continuava
+    avisando "1 follow-up(s) vencido(s)". Três consultas, três lugares:
+    - **`crmBoardFn`** (`lib/server/party.ts`): a consulta do KPI
+      "Tarefas abertas"/"Atrasadas" juntava `crm_tasks` com `customers` mas
+      não filtrava `deleted_at`.
+    - **`listCrmTasksFn`** (mesmo arquivo, alimenta a "Agenda de
+      follow-ups" do CRM): mesma junção, mesma falta de filtro.
+    - **`listNotificationsFn`** (`lib/server/session.ts`, o sininho): nem
+      juntava com `customers` — contava `crm_tasks` sozinha, então nem
+      sabia se o cliente da tarefa ainda existia.
+
+    Correção: as três consultas agora exigem `customers.deleted_at is
+    null` (a de `listNotificationsFn` ganhou o join que não tinha). O
+    contador por cliente que já aparece em cada card (`CUSTOMER_AGGREGATES`,
+    usado por `listCustomersFn`/`crmBoardFn`) não precisou de mudança: já
+    só soma tarefa de cliente que sobra depois do filtro externo
+    `c.deleted_at is null` — o problema era só nos três totais "soltos" que
+    não passavam por esse filtro.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 1 cliente
+    descartável "ZZTESTE Tarefa Orfa" e 1 tarefa vencida: antes de excluir,
+    "Tarefas abertas" = 1, "Atrasadas" = 1, cartão "Agenda de follow-ups"
+    mostrando a tarefa, sininho "Tarefas do CRM — 1 follow-up(s) vencido(s)
+    ou para hoje."; depois de excluir o cliente (`deleted_at = now()`
+    direto no banco, mesmo efeito do botão Excluir): "Tarefas abertas" e
+    "Atrasadas" em 0, cartão de agenda desaparecido inteiro (sem tarefas
+    abertas), sininho "Tudo em dia.". `typecheck` + `lint` (0 erros, 5
+    avisos antigos) + `npm test` (477) limpos. Cliente e tarefa de teste
+    removidos; empresa 4 voltou a zero cliente/tarefa e às 13 linhas de
+    auditoria.
 
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).

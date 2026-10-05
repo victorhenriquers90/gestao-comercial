@@ -237,10 +237,14 @@ export const listNotificationsFn = createServerFn({ method: "GET" })
        where company_id = ${tenant.companyId} and deleted_at is null
          and nfce_pendencia is not null
     `;
+    // join customers ... deleted_at is null: sem isto, excluir o cliente
+    // nunca fechava a tarefa dele -- o sininho continuava avisando um
+    // follow-up vencido de alguem que nao existe mais no cadastro.
     const dueTasks = await sql<{ n: number }>`
-      select count(*)::int as n from crm_tasks
-      where company_id = ${tenant.companyId} and done_at is null
-        and due_at is not null and due_at < now() + interval '1 day'
+      select count(*)::int as n from crm_tasks t
+      join customers c on c.id = t.customer_id and c.deleted_at is null
+      where t.company_id = ${tenant.companyId} and t.done_at is null
+        and t.due_at is not null and t.due_at < now() + interval '1 day'
     `;
     const stored = await sql<{
       id: number;
