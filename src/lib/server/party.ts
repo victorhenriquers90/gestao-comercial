@@ -767,46 +767,52 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
     }) => ({
       ...d,
       legalName: requireLine(d.legalName, "Razão social"),
-      tradeName: optionalLine(d.tradeName) ?? undefined,
-      document: parseCnpj(d.document) ?? undefined,
-      email: optionalLine(d.email, 120) ?? undefined,
-      phone: sanitizeCode(d.phone, 32) ?? undefined,
-      whatsapp: sanitizeCode(d.whatsapp, 32) ?? undefined,
-      address: optionalLine(d.address, 200) ?? undefined,
-      city: optionalLine(d.city, 80) ?? undefined,
-      state: parseUf(d.state),
-      zip: sanitizeCode(d.zip, 16) ?? undefined,
-      representative: optionalLine(d.representative) ?? undefined,
-      notes: sanitizeMultiline(d.notes) ?? undefined,
+      // Mesma regra do saveCustomerFn (item 68): undefined (chave ausente do
+      // payload) = mantem o gravado; null/"" (chave presente, vazia) = apaga
+      // de proposito. Antes todo campo opcional regravava `data.X ?? null`
+      // sem distincao -- quem chamasse saveSupplierFn sem telefone/e-mail
+      // apagava os dois, so invisivel porque a unica tela que chama hoje
+      // manda o registro inteiro.
+      tradeName: d.tradeName === undefined ? undefined : optionalLine(d.tradeName),
+      document: d.document === undefined ? undefined : parseCnpj(d.document),
+      email: d.email === undefined ? undefined : optionalLine(d.email, 120),
+      phone: d.phone === undefined ? undefined : sanitizeCode(d.phone, 32),
+      whatsapp: d.whatsapp === undefined ? undefined : sanitizeCode(d.whatsapp, 32),
+      address: d.address === undefined ? undefined : optionalLine(d.address, 200),
+      city: d.city === undefined ? undefined : optionalLine(d.city, 80),
+      state: d.state === undefined ? undefined : (parseUf(d.state) ?? null),
+      zip: d.zip === undefined ? undefined : sanitizeCode(d.zip, 16),
+      representative: d.representative === undefined ? undefined : optionalLine(d.representative),
+      notes: d.notes === undefined ? undefined : sanitizeMultiline(d.notes),
     }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.write");
     await assertFreeDocument(sql, "suppliers", tenant.companyId, data.document, data.id, "um fornecedor");
-    const snapshot = {
-      name: data.legalName,
-      tradeName: data.tradeName ?? null,
-      document: data.document ?? null,
-      email: data.email ?? null,
-      phone: data.phone ?? null,
-      representative: data.representative ?? null,
-      address: data.address ?? null,
-      city: data.city ?? null,
-      state: data.state ?? null,
-    };
     if (data.id) {
       const [cur] = await sql<Row>`
         select * from suppliers
         where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
       `;
       if (!cur) throw new Error("Fornecedor não encontrado.");
+      const tradeName = data.tradeName === undefined ? (cur.trade_name ?? null) : data.tradeName;
+      const document = data.document === undefined ? (cur.document ?? null) : data.document;
+      const email = data.email === undefined ? (cur.email ?? null) : data.email;
+      const phone = data.phone === undefined ? (cur.phone ?? null) : data.phone;
+      const whatsapp = data.whatsapp === undefined ? (cur.whatsapp ?? null) : data.whatsapp;
+      const address = data.address === undefined ? (cur.address ?? null) : data.address;
+      const city = data.city === undefined ? (cur.city ?? null) : data.city;
+      const state = data.state === undefined ? (cur.state ?? null) : data.state;
+      const zip = data.zip === undefined ? (cur.zip ?? null) : data.zip;
+      const representative = data.representative === undefined ? (cur.representative ?? null) : data.representative;
+      const notes = data.notes === undefined ? (cur.notes ?? null) : data.notes;
       await sql`
-        update suppliers set legal_name = ${data.legalName}, trade_name = ${data.tradeName ?? null},
-          document = ${data.document ?? null}, email = ${data.email ?? null}, phone = ${data.phone ?? null},
-          whatsapp = ${data.whatsapp ?? null}, address = ${data.address ?? null}, city = ${data.city ?? null},
-          state = ${data.state ?? null}, zip = ${data.zip ?? null}, representative = ${data.representative ?? null},
-          notes = ${data.notes ?? null}, updated_at = now()
+        update suppliers set legal_name = ${data.legalName}, trade_name = ${tradeName},
+          document = ${document}, email = ${email}, phone = ${phone},
+          whatsapp = ${whatsapp}, address = ${address}, city = ${city},
+          state = ${state}, zip = ${zip}, representative = ${representative},
+          notes = ${notes}, updated_at = now()
         where id = ${data.id} and company_id = ${tenant.companyId}
       `;
       await auditUpdate(
@@ -825,10 +831,21 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
           city: cur.city ?? null,
           state: cur.state ?? null,
         },
-        snapshot,
+        { name: data.legalName, tradeName, document, email, phone, representative, address, city, state },
       );
       return { id: data.id };
     }
+    const snapshot = {
+      name: data.legalName,
+      tradeName: data.tradeName ?? null,
+      document: data.document ?? null,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      representative: data.representative ?? null,
+      address: data.address ?? null,
+      city: data.city ?? null,
+      state: data.state ?? null,
+    };
     const [row] = await sql<{ id: number }>`
       insert into suppliers (
         company_id, legal_name, trade_name, document, email, phone, whatsapp, address, city, state, zip, representative, notes

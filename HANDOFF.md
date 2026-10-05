@@ -2577,13 +2577,49 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
-    Lacuna nova encontrada (não fechada agora, fora de escopo): o mesmo
-    buraco existe em `saveSupplierFn` (mesmo arquivo) — `tradeName`/
-    `document`/`email`/`phone`/`whatsapp`/`address`/`city`/`state`/`zip`/
-    `representative`/`notes` regravam `data.X ?? null` sem distinguir "não
-    veio" de "veio vazio". A tela de Fornecedores também manda o registro
-    inteiro hoje, então não aparece na UI — mesma situação que `customers`
-    tinha antes deste item.
+    Lacuna nova encontrada: o mesmo buraco em `saveSupplierFn` foi fechado
+    no item 69.
+
+69. **`saveSupplierFn` tinha o mesmo buraco do item 68, encontrado ao
+    corrigi-lo: chamado sem um campo opcional, apagava esse campo em vez de
+    manter o gravado.** `tradeName`/`document`/`email`/`phone`/`whatsapp`/
+    `address`/`city`/`state`/`zip`/`representative`/`notes` regravavam
+    `data.X ?? null` sempre, sem distinguir "não veio" de "veio vazio" — a
+    tela de Fornecedores (`SupplierPanel`, edição) mandava o registro
+    inteiro, então o bug nunca aparecia na UI, só numa chamada direta.
+
+    Correção, mesmo padrão do item 68:
+    - **`saveSupplierFn`** (`lib/server/party.ts`): validador passa a
+      checar `d.X === undefined` antes de sanitizar (preserva "não veio");
+      no UPDATE, cada campo é resolvido (`data.X === undefined ? cur.X :
+      data.X`) antes de entrar no SQL e na auditoria — `document` continua
+      usando `parseCnpj` (equivalente a `parseBrDocument` com `"cnpj"`),
+      `state` continua com a mesma ressalva do item 68 (`parseUf` devolve
+      `undefined` tanto pra "não veio" quanto pra "veio vazio" — precisa do
+      `?? null` extra pra diferenciar).
+    - **`SupplierPanel`** (`components/supplier-panel.tsx`): o salvar da
+      aba Dados mandava `edit.tradeName || undefined` (e outros 7 campos
+      assim) — mesma regressão em potencial do `CustomerPanel` antes do
+      item 68. Trocado para mandar o valor puro.
+    - **Fornecedores → Novo fornecedor** (`routes/app/fornecedores.tsx`):
+      conferido — é só criação (sem `id` no payload), não passa pela
+      semântica de "manter o gravado", não precisou de mudança.
+
+    Verificado ao vivo contra o Postgres real (empresa 4) com 1 fornecedor
+    descartável "ZZTESTE Partial Supplier" (telefone e e-mail preenchidos),
+    mesma metodologia do item 68: (1) limpar o telefone pela aba Dados do
+    `SupplierPanel` gravou `phone = null` e manteve o e-mail — confirma que
+    a tela continua limpando campo de verdade. (2) Chamada direta ao
+    `saveSupplierFn` real (mesmo endpoint RPC, sessão autenticada, request
+    capturado via `fetch` interceptado e reenviado só com `{id,
+    legalName}` — sem telefone, e-mail, nome fantasia etc.) devolveu
+    sucesso e o fornecedor manteve telefone, e-mail e nome fantasia
+    intactos no banco. `typecheck` + `lint` (0 erros, 5 avisos antigos) +
+    `npm test` (477) limpos. Fornecedor e auditoria de teste removidos;
+    empresa 4 voltou a zero fornecedor e às 13 linhas de auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
 
 ## Como a próxima IA deve trabalhar
 

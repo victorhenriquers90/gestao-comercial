@@ -185,17 +185,23 @@ export function SupplierPanel({
                         data: {
                           id: s.id,
                           legalName: edit.legalName,
-                          tradeName: edit.tradeName || undefined,
-                          document: edit.document || undefined,
-                          email: edit.email || undefined,
-                          phone: edit.phone || undefined,
+                          // Valor sempre enviado (nunca `|| undefined`): depois
+                          // da correcao do item 68 (aplicada aqui tambem),
+                          // `undefined` passou a significar "mantem o que ja
+                          // esta gravado" -- um campo esvaziado nesta tela e
+                          // "" de verdade, pra continuar limpando quando a
+                          // pessoa apaga o campo.
+                          tradeName: edit.tradeName,
+                          document: edit.document,
+                          email: edit.email,
+                          phone: edit.phone,
                           whatsapp: s.whatsapp ?? undefined,
-                          address: edit.address || undefined,
-                          city: edit.city || undefined,
-                          state: edit.state || undefined,
+                          address: edit.address,
+                          city: edit.city,
+                          state: edit.state,
                           zip: s.zip ?? undefined,
-                          representative: edit.representative || undefined,
-                          notes: edit.notes || undefined,
+                          representative: edit.representative,
+                          notes: edit.notes,
                         },
                       });
                       toast.success("Fornecedor atualizado.");
