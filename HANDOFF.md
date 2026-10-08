@@ -2892,6 +2892,80 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+75. **Pagar comissões pendentes em lote podia gravar retenção NEGATIVA numa
+    linha e um líquido ACIMA do próprio bruto daquela linha — achado
+    sondando `allocateTax` numericamente, não por reprodução casual.** O
+    piloto nunca teve vendedor de verdade, então `settleSellerBatch` (que
+    reparte o imposto do lote entre os lançamentos de `commissions`) nunca
+    rodou com dado real — por isso a varredura em vez de só reler o código.
+
+    Ponto real: `allocateTax` (`lib/tax.ts`) arredondava a fatia de CADA
+    linha isoladamente (`money(tax.inss * (gross/total))`) e jogava o
+    resto inteiro na ÚLTIMA linha (`money(tax.inss - used.inss)`). Com
+    muitas linhas pequenas, o arredondamento de cada fatia tende pro mesmo
+    lado — reproduzido com 100 lançamentos de R$0,33 (INSS 11% = R$3,63 no
+    total): cada linha arredondava 0,0363 → 0,04, 99 linhas já somavam
+    R$3,96 (mais que o total), e a última linha — que "levava o resto" —
+    saía em **-R$0,33**, com o líquido daquela linha passando do próprio
+    bruto. Rodando sem essa correção, um lote de pagamento de verdade
+    (vendedor com muitos lançamentos pequenos pendentes, pagos de uma vez)
+    gravaria isso direto em `commissions.net_amount`/`tax_inss` — o
+    demonstrativo que o vendedor assina ia mostrar valor errado numa linha
+    específica, calado, sem erro nenhum na tela.
+
+    Como achei: não é um caminho que desse pra notar só lendo o código ou
+    testando com 2-3 linhas (os testes antigos só cobriam isso, e
+    passavam). Escrevi uma sondagem numérica fora do app (grade de
+    `prevBase`/`gross`/dependentes nas fronteiras de faixa do INSS/IRRF, e
+    separadamente dezenas de combinações de quantidade/tamanho de linha em
+    `allocateTax`) rodando as funções de verdade de `lib/tax.ts` via `node
+    --experimental-strip-types`. A sondagem de `computeNetCommission`
+    (5.320 combinações) não achou nada — o cálculo marginal de INSS/IRRF
+    por faixa está correto. A de `allocateTax` achou o problema em
+    poucos segundos de execução.
+
+    Correção (`lib/tax.ts`): `allocateTax` passou a repartir pelo
+    ACUMULADO de bruto até cada linha (linha *i* leva "arredondado até
+    aqui" menos "arredondado até a anterior"), não a fatia isolada. Como o
+    acumulado nunca diminui, a diferença entre dois arredondados
+    consecutivos nunca fica negativa — e a última linha ainda fecha no
+    total exato porque usa `tax.inss`/`irrf`/`iss`/`other` direto, não a
+    fração. Testes novos em `tax.test.ts`: 100 linhas de R$0,33 (o caso
+    reproduzido) e uma lista irregular de 10 valores em PJ (4 tipos de
+    retenção ao mesmo tempo), checando que nenhuma linha fica negativa e
+    que a soma de cada imposto ainda bate com o total.
+
+    **Residual, não corrigido (documentado, não escondido)**: a sondagem
+    ainda encontra uma combinação de **2 violações** num caso bem mais
+    extremo — dezenas de linhas de EXATAMENTE R$0,01 em regime PJ (onde
+    IRRF e ISS podem cruzar sua própria fronteira de centavo na MESMA
+    linha, somando mais que aquela linha de R$0,01). Rodei a mesma
+    sondagem com magnitudes realistas de comissão (R$0,50 a R$300 por
+    linha, até 120 linhas, todos os regimes) e não achei nenhuma — o
+    problema realista (linhas de poucos reais, a faixa normal de uma
+    comissão de venda de verdade) está fechado; o residual exigiria
+    lançamentos de comissão de um centavo cada, aos montes, só em PJ — não
+    corrigido de propósito, pra não complicar a função por um cenário sem
+    uso real.
+
+    Verificado ao vivo contra o Postgres real (empresa 4): vendedor
+    descartável "ZZTESTE Vendedor Rateio" (regime autônomo) com 100 linhas
+    de `commissions` pendentes de R$0,33 cada (total R$33,00, o caso
+    reproduzido) inseridas direto; "Pagar pendentes" na aba Vendedores →
+    Pagamentos processou o lote pela função real (`payPendingCommissionsFn`
+    → `settleSellerBatch` → `allocateTax`), recibo mostrou Bruto R$33,00 /
+    INSS R$3,63 / ISS R$1,65 / Líquido R$27,72; consulta direta nas 100
+    linhas gravadas confirmou ZERO com `net_amount`, `tax_inss` ou
+    `tax_iss` negativo, e a soma das 100 linhas bate exata com o total do
+    lote (R$33,00 bruto, R$27,72 líquido, R$3,63 INSS, R$1,65 ISS).
+    `typecheck` + `lint` (0 erros, 5 avisos antigos) + `npm test` (479,
+    +2 novos) limpos. Vendedor, comissões e as duas despesas de folha
+    (líquido + retenção) geradas pelo pagamento removidos; empresa 4
+    voltou a zero vendedor/comissão/despesa e às 13 linhas de auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

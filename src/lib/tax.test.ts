@@ -236,4 +236,43 @@ describe("allocateTax", () => {
     assert.equal(money(rows.reduce((a, r) => a + r.iss, 0)), tax.iss);
     assert.equal(money(rows.reduce((a, r) => a + r.net, 0)), tax.net);
   });
+
+  it("never lets a rounded-up share push a line's withholding past its own gross", () => {
+    // Repro: 100 lines of R$0,33 (total R$33,00). Rounding each line's share
+    // independently (0,11 INSS * 1% = R$0,0363 -> rounds up to R$0,04 on
+    // EVERY line) overshoots the real total before the last line, which used
+    // to "absorb the remainder" and go negative (net above its own gross).
+    const amounts = Array.from({ length: 100 }, () => 0.33);
+    const tax = computeNetCommission({
+      gross: money(amounts.reduce((a, n) => a + n, 0)),
+      profile: { ...none, regime: "autonomo", withholdIss: true, issRate: 5 },
+    });
+    const rows = allocateTax(amounts, tax);
+    for (const row of rows) {
+      assert.ok(row.inss >= 0, `inss went negative: ${JSON.stringify(row)}`);
+      assert.ok(row.iss >= 0, `iss went negative: ${JSON.stringify(row)}`);
+      assert.ok(row.net >= 0, `net went negative: ${JSON.stringify(row)}`);
+      assert.ok(row.net <= row.gross + 0.001, `net exceeded gross: ${JSON.stringify(row)}`);
+    }
+    assert.equal(money(rows.reduce((a, r) => a + r.inss, 0)), tax.inss);
+    assert.equal(money(rows.reduce((a, r) => a + r.iss, 0)), tax.iss);
+    assert.equal(money(rows.reduce((a, r) => a + r.net, 0)), tax.net);
+  });
+
+  it("still reconciles exactly with an irregular, many-line split", () => {
+    const amounts = [12.37, 0.5, 45.01, 3.33, 3.33, 3.34, 100, 0.99, 7.77, 19.99];
+    const tax = computeNetCommission({
+      gross: money(amounts.reduce((a, n) => a + n, 0)),
+      profile: { ...none, regime: "pj", withholdIss: true, issRate: 5 },
+    });
+    const rows = allocateTax(amounts, tax);
+    assert.equal(money(rows.reduce((a, r) => a + r.inss, 0)), tax.inss);
+    assert.equal(money(rows.reduce((a, r) => a + r.irrf, 0)), tax.irrf);
+    assert.equal(money(rows.reduce((a, r) => a + r.iss, 0)), tax.iss);
+    assert.equal(money(rows.reduce((a, r) => a + r.other, 0)), tax.other);
+    assert.equal(money(rows.reduce((a, r) => a + r.net, 0)), tax.net);
+    for (const row of rows) {
+      assert.ok(row.net >= 0, `net went negative: ${JSON.stringify(row)}`);
+    }
+  });
 });

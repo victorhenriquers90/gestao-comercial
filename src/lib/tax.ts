@@ -421,18 +421,40 @@ export function allocateTax(amounts: number[], tax: TaxResult): TaxSplit[] {
   if (total <= 0) {
     return values.map((gross) => ({ gross, inss: 0, irrf: 0, iss: 0, other: 0, net: gross }));
   }
-  const used = { inss: 0, irrf: 0, iss: 0, other: 0 };
+  /*
+    Reparte cada imposto pelo ACUMULADO de bruto até cada linha (linha i
+    leva "arredondado até aqui" menos "arredondado até a anterior"), não
+    arredondando a fatia de cada linha isolada. Arredondar fatia por fatia
+    (version antiga: `money(tax.inss * share)` por linha, resto inteiro na
+    última) deixava um viés igual em toda linha pequena — ex.: com 100
+    linhas de R$0,33 e INSS total R$3,63, cada linha arredondava
+    0,0363 → 0,04; 99 linhas somavam R$3,96, e a última (que "levava o
+    resto") saía em -R$0,33, com o líquido daquela linha passando do
+    próprio bruto. Acumular ANTES de arredondar garante que cada linha é a
+    diferença entre dois valores não decrescentes — nunca fica negativa —
+    e a última linha ainda fecha no total exato por usar `tax.X` direto,
+    não a fração.
+  */
+  let cumGross = 0;
+  let prevInss = 0;
+  let prevIrrf = 0;
+  let prevIss = 0;
+  let prevOther = 0;
   return values.map((gross, i) => {
     const last = i === values.length - 1;
-    const share = gross / total;
-    const inss = last ? money(tax.inss - used.inss) : money(tax.inss * share);
-    const irrf = last ? money(tax.irrf - used.irrf) : money(tax.irrf * share);
-    const iss = last ? money(tax.iss - used.iss) : money(tax.iss * share);
-    const other = last ? money(tax.other - used.other) : money(tax.other * share);
-    used.inss = money(used.inss + inss);
-    used.irrf = money(used.irrf + irrf);
-    used.iss = money(used.iss + iss);
-    used.other = money(used.other + other);
+    cumGross += gross;
+    const cumInss = last ? tax.inss : money((tax.inss * cumGross) / total);
+    const cumIrrf = last ? tax.irrf : money((tax.irrf * cumGross) / total);
+    const cumIss = last ? tax.iss : money((tax.iss * cumGross) / total);
+    const cumOther = last ? tax.other : money((tax.other * cumGross) / total);
+    const inss = money(cumInss - prevInss);
+    const irrf = money(cumIrrf - prevIrrf);
+    const iss = money(cumIss - prevIss);
+    const other = money(cumOther - prevOther);
+    prevInss = cumInss;
+    prevIrrf = cumIrrf;
+    prevIss = cumIss;
+    prevOther = cumOther;
     return {
       gross,
       inss,
