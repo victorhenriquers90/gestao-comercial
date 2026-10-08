@@ -145,6 +145,7 @@ function LoginPage() {
     // O aceite vem daqui, logo depois de autenticar; o efeito de "ja
     // logado" nao pode disparar junto (o segundo aceite leria "invalido").
     if (conviteToken) setAceitando(true);
+    let autenticado = false;
     try {
       if (mode === "up") {
         const res = await authClient.signUp.email({
@@ -162,10 +163,18 @@ function LoginPage() {
         });
         if (res.error) throw new Error(authErrorMessage(res.error.code, "Não foi possível entrar. Tente novamente."));
       }
+      autenticado = true;
       if (conviteToken) await acceptInviteFn({ data: { token: conviteToken } });
       navigate({ to: "/app" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha na autenticação.");
+      const msg = err instanceof Error ? err.message : "Falha na autenticação.";
+      // Depois que o login/cadastro deu certo, `user` fica truthy e a tela
+      // passa a mostrar o bloco "aceitando o convite" (que só lê
+      // `conviteErro`, nunca `error`) -- um erro do aceite gravado só em
+      // `error` ficava preso atrás de "Aceitando o convite…" pra sempre,
+      // sem mensagem e sem botão pra sair dali.
+      if (autenticado && conviteToken) setConviteErro(msg);
+      else setError(msg);
     } finally {
       setBusy(false);
     }

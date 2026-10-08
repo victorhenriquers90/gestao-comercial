@@ -2834,6 +2834,64 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     (sem migração nova — `deleted_at` já existia na tabela desde o schema
     inicial).
 
+74. **Convite por link: quando o cadastro/login dava certo mas aceitar o
+    convite falhava logo depois, a tela ficava presa em "Aceitando o
+    convite…" pra sempre — a mensagem de erro de verdade era calculada e
+    nunca aparecia.** O caminho mais comum de uso real do convite (quem
+    não tem conta ainda, abre o link, cria a conta ali mesmo) nunca tinha
+    sido exercitado nesta pilotagem.
+
+    Ponto real, achado por rastrear o código (não por reprodução na tela —
+    ver nota de verificação abaixo): `onEmail` (`routes/login.tsx`) faz
+    cadastro/login e, se deu certo, chama `acceptInviteFn` dentro do MESMO
+    `try`; qualquer erro dos dois cai no MESMO `catch`, que grava em
+    `error`. Só que assim que o cadastro/login termina, `user` fica
+    truthy — e o componente passa a renderizar o bloco `user && conviteToken`
+    (linha ~119), que só lê `conviteErro`, nunca `error`. Se o aceite falhar
+    DEPOIS do cadastro/login ter dado certo (link já usado em outra aba,
+    expirou nesse meio-tempo, ou — no caminho de login — a conta já
+    pertence a outra empresa), a pessoa fica numa tela de "Aceitando o
+    convite…" sem fim, sem mensagem nenhuma e sem botão pra sair dali (o
+    "Ir para o sistema" só aparece quando `conviteErro` existe). O efeito
+    irmão (`useEffect` de "já logado abre o link", linhas ~77-85) já
+    acertava isso — só o caminho "cadastra/loga e aceita na mesma
+    submissão" tinha o bug.
+
+    Correção (`routes/login.tsx`): `onEmail` marca `autenticado = true` só
+    depois que o cadastro/login respondeu sem erro; no `catch`, se
+    `autenticado && conviteToken`, o erro vai pra `conviteErro` (aparece no
+    bloco que a tela realmente mostra nesse estado); senão continua indo
+    pra `error` (formulário normal), igual antes. O `setAceitando(true)`
+    antes do `await` continua no lugar — ele existe pra impedir que o
+    `useEffect` do "já logado" dispare uma SEGUNDA chamada de aceite em
+    paralelo (leria "convite inválido" no próprio); não mexi nisso.
+
+    **Verificação, com um limite deliberado**: `openInviteFn` (metade
+    pública do fluxo — devolve nome da empresa/papel pra mostrar antes do
+    login, não aceita nada) foi verificada ao vivo contra o Postgres real:
+    convite descartável "ZZTESTE Convite Item74" criado pela tela
+    Configurações → Usuários, `openInviteFn` chamada direto com o token
+    real devolveu `{companyName: "Victor Comércio", role: "vendedor",
+    label: "ZZTESTE Convite Item74"}`; chamada com um token qualquer
+    devolveu "Convite inválido ou expirado." — as duas pontas que o
+    componente usa pra montar a tela de pré-visualização do convite batem
+    com o esperado. A metade que o bug ataca (`acceptInviteFn`, depois de
+    um cadastro/login de verdade) **não foi reproduzida na tela**: isso
+    exigiria criar uma conta de teste descartável no MESMO navegador onde a
+    sessão real do administrador já está logada — o cadastro trocaria ou
+    arriscaria a sessão ativa de verdade sem um jeito limpo de desfazer (a
+    única saída seria deslogar, e aí só o dono consegue logar de volta).
+    Preferi não arriscar a sessão real a uma verificação que só prova algo
+    que o rastreio do código já deixa inequívoco (é uma troca de `error`
+    por `conviteErro` em dois `throw` já existentes, sem lógica nova).
+    `typecheck` + `lint` (0 erros, 5 avisos antigos) + `npm test` (477)
+    limpos. Convite de teste cancelado pela própria tela (apagado, não só
+    marcado) e auditoria removida; empresa 4 voltou às 13 linhas de
+    auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
