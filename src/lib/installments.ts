@@ -50,9 +50,27 @@ export function splitInstallments(args: {
   const total = round2(args.total);
   const passo = args.stepDays ?? 30;
 
-  const base = round2(total / parcelas);
+  let base = round2(total / parcelas);
   let somaDemais = 0;
   for (let i = 2; i <= parcelas; i++) somaDemais = round2(somaDemais + base);
+
+  /*
+    `base` arredonda pro centavo mais proximo -- pra cima, na metade dos
+    casos. Com total bem pequeno (nada impede, mesmo sem fazer sentido no
+    balcao) e muitas parcelas, essa sobra de arredondamento multiplicada
+    por (parcelas-1) passa do total, e a primeira parcela (que absorve a
+    diferenca) saia NEGATIVA -- ex.: R$0,07 em 12x: base arredondava pra
+    R$0,01, 11 parcelas somavam R$0,11, e a primeira saia em -R$0,04.
+    Só nesse caso (que o calculo normal já teria detectado como negativo)
+    troca pra arredondar as demais SEMPRE pra baixo: `(parcelas-1) * base`
+    fica estritamente menor que o total, entao a primeira nunca fica
+    negativa. Não mexe no caso comum -- só entra quando ele já ia quebrar.
+  */
+  if (parcelas > 1 && round2(total - somaDemais) < 0) {
+    base = Math.floor((total / parcelas) * 100) / 100;
+    somaDemais = 0;
+    for (let i = 2; i <= parcelas; i++) somaDemais = round2(somaDemais + base);
+  }
 
   const linhas: Installment[] = [];
   for (let i = 1; i <= parcelas; i++) {

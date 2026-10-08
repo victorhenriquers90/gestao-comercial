@@ -2966,6 +2966,75 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+76. **`splitInstallments` — a mesma família de bug do item 75, agora no
+    crediário/parcelamento de cartão: com total minúsculo e muitas
+    parcelas, a primeira parcela (que absorve o arredondamento) podia sair
+    NEGATIVA.** Investigando um outro caminho (reembolso de despesa em
+    dinheiro legado) que acabou não tendo dado vivo no piloto (`select
+    count(*) from expenses where company_id=4 and method is null` → 0
+    linhas, só 6 em outras empresas fora do piloto — não mexi nisso),
+    decidi rodar a mesma sondagem numérica do item 75 em `splitInstallments`
+    (`lib/installments.ts`), a função que `splitCrediario` e o parcelamento
+    de cartão compartilham.
+
+    Ponto real: a função arredondava `total/parcelas` pro centavo mais
+    próximo (pra cima, metade das vezes) e multiplicava esse valor
+    arredondado por `parcelas-1` pra achar quanto sobra pra primeira
+    parcela. Com total pequeno e muitas parcelas, essa sobra de
+    arredondamento acumulada passa do total — reproduzido com R$0,07 em
+    12x: a parcela-base arredondava pra R$0,01, 11 parcelas já somavam
+    R$0,11 (mais que o total de R$0,07), e a primeira parcela saía em
+    **-R$0,04**. Rodando sem a correção, isso grava direto em
+    `accounts_receivable.amount` (crediário) ou no repasse de parcela do
+    cartão — um título a receber negativo, sem erro nenhum na tela.
+
+    Alcance real: não existe trava de valor mínimo por parcela em lugar
+    nenhum do sistema. Calculei o maior total que ainda quebrava pra cada
+    teto de parcelas real do produto: até R$0,54 no crediário (teto de 12x,
+    `MAX_CREDIARIO_INSTALLMENTS`) e até R$1,35 no cartão (teto de 18x,
+    `MAX_INSTALLMENTS`) — valores que não fazem sentido parcelar no balcão,
+    mas nada no código impede.
+
+    Correção (`lib/installments.ts`): diferente do item 75 (onde o
+    acumulado resolvia porque a localização do resto era indiferente),
+    aqui o resto SEMPRE tem que ficar na primeira parcela — é desenho
+    deliberado, documentado no comentário da função, pra o carnê do
+    cliente e o extrato da adquirente mostrarem N-1 parcelas redondas e uma
+    só diferente. Trocar pra acumulado mudaria esse comportamento em TODO
+    caso normal. Em vez disso, um fallback estreito: só quando o cálculo
+    normal já resultaria em primeira parcela negativa, as demais parcelas
+    passam a arredondar SEMPRE pra baixo (`Math.floor`) em vez de pro mais
+    próximo — `(parcelas-1) * base` fica estritamente menor que o total, a
+    primeira nunca fica negativa, e nenhum caso normal muda de valor
+    (o fallback não entra se o cálculo de sempre já não ia quebrar).
+
+    Sondagem: 552 combinações determinísticas (totais de R$0,01 a
+    R$12.345,67, parcelas de 1 a 24) achou 28 violações antes da correção,
+    0 depois; rodei de novo com 20.000 combinações aleatórias (totais de
+    R$0,01 a R$5.000, parcelas de 1 a 100) — 0 violações. Testes novos em
+    `crediario.test.ts`: o caso exato de R$0,07/12x (nenhuma parcela
+    negativa, soma bate) e uma varredura de 11 totais × 24 contagens de
+    parcela checando não-negatividade e reconciliação de soma em todas.
+    `typecheck` + `lint` (0 erros, 5 avisos antigos) + `npm test` (481,
+    +2 novos) limpos.
+
+    Verificado ao vivo contra o Postgres real (empresa 4): produto
+    descartável "ZZTESTE Produto Item76" (R$50,00, 10 un. de estoque via
+    inventário) e cliente descartável "ZZTESTE Crediario Item76" (limite de
+    crédito R$1.000) criados; venda nº 11 no PDV de verdade — Loja Centro,
+    pagamento dividido em R$49,46 dinheiro + R$0,54 crediário em 12x — pela
+    função real (`checkoutFn` → `splitCrediario` → `splitInstallments`).
+    As 12 linhas gravadas em `accounts_receivable`: primeira parcela
+    R$0,10, as 11 seguintes R$0,04 cada, soma exata R$0,54, **nenhuma
+    negativa** (antes da correção, a primeira teria saído em -R$0,01: base
+    arredondava 0,54/12=0,045 pra R$0,05, 11×R$0,05=R$0,55 > R$0,54).
+    Venda, parcelas, cliente, produto, estoque e os 5 logs de auditoria
+    gerados removidos; empresa 4 voltou a zero cliente/produto/venda/caixa
+    e às 13 linhas de auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

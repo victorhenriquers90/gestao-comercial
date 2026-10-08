@@ -114,4 +114,31 @@ describe("splitInstallments (regra compartilhada com o cartao)", () => {
     assert.equal(p.length, 1);
     assert.equal(p[0]!.amount, 50);
   });
+
+  it("nao deixa a primeira parcela negativa com total minusculo e muitas parcelas", () => {
+    // R$0,07 em 12x: base arredondava pra R$0,01, 11 parcelas somavam R$0,11
+    // (mais que o total) e a primeira, que absorve a diferenca, saia em -R$0,04.
+    const p = splitInstallments({ total: 0.07, count: 12, firstDueInDays: 30, from: venda });
+    assert.equal(p.length, 12);
+    for (const parcela of p) assert.ok(parcela.amount >= 0, `parcela ${parcela.number} negativa: ${parcela.amount}`);
+    const soma = Number(p.reduce((a, x) => a + x.amount, 0).toFixed(2));
+    assert.equal(soma, 0.07);
+  });
+
+  it("nunca gera parcela negativa nem perde centavo, mesmo em totais e contagens extremas", () => {
+    const totais = [0.01, 0.02, 0.05, 0.07, 0.1, 0.5, 1, 1.5, 5, 99.9, 1234.57];
+    for (const total of totais) {
+      for (let count = 1; count <= 24; count++) {
+        const p = splitInstallments({ total, count, firstDueInDays: 30, from: venda });
+        for (const parcela of p) {
+          assert.ok(
+            parcela.amount >= 0,
+            `total=${total} count=${count}: parcela ${parcela.number} negativa (${parcela.amount})`,
+          );
+        }
+        const soma = Number(p.reduce((a, x) => a + x.amount, 0).toFixed(2));
+        assert.equal(soma, Number(total.toFixed(2)), `total=${total} count=${count}: soma nao reconcilia`);
+      }
+    }
+  });
 });
