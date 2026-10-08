@@ -624,6 +624,67 @@ export const saveStoreFn = createServerFn({ method: "POST" })
   });
 
 /*
+  Fechar loja: nao existia NENHUM jeito de tirar uma loja do caminho -- uma
+  vez criada, ficava pra sempre em todo seletor "Loja" do sistema (PDV,
+  Produtos, Compras, Financeiro, Metas...), mesmo que o negocio tivesse
+  fechado aquele ponto de verdade. `deleted_at` ja existia na tabela e
+  `requireTenant`/`assertStore` ja filtram por ele em todo lugar que
+  importa -- faltava so o caminho de escrita.
+
+  Dois jeitos de travar que nao tem como contornar depois (por isso recusa
+  em vez de fechar e deixar quebrado):
+  - Ultima loja ativa: sem nenhuma loja restante, `defaultStoreId` (em
+    `requireTenant`) cai pra `0` -- PDV, vendas, caixa, tudo que depende de
+    uma loja valida trava pra empresa inteira.
+  - Caixa aberto na loja: a gaveta ficaria aberta e inalcancavel (a loja
+    some do seletor, ninguem mais consegue abrir a tela de Caixa daquela
+    loja pra fechar o que ja estava aberto).
+
+  Nao apaga nada: vendas, estoque, caixas e metas antigos da loja continuam
+  no banco com o `store_id` original -- so somem dos seletores de loja
+  ATIVA (os mesmos que ja escondiam loja de outra empresa). Um relatorio
+  que ja faz join com `sales`/`stores` sem filtrar `deleted_at` ainda mostra
+  o nome da loja fechada no historico; só não aparece mais como opção pra
+  filtrar daqui pra frente.
+*/
+export const closeStoreFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "settings.write");
+    return sql.transaction(async (sql) => {
+      const [cur] = await sql<{ name: string }>`
+        select name from stores
+        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+        for update
+      `;
+      if (!cur) throw new Error("Loja não encontrada.");
+      const [{ n: ativas }] = await sql<{ n: number }>`
+        select count(*)::int as n from stores
+        where company_id = ${tenant.companyId} and deleted_at is null
+      `;
+      if (num(ativas) <= 1) {
+        throw new Error("Não é possível fechar a única loja ativa da empresa.");
+      }
+      const [caixaAberto] = await sql<{ id: number }>`
+        select id from cash_registers
+        where company_id = ${tenant.companyId} and store_id = ${data.id} and status = 'open'
+        limit 1
+      `;
+      if (caixaAberto) {
+        throw new Error("Esta loja tem um caixa aberto. Feche o caixa antes de fechar a loja.");
+      }
+      await sql`
+        update stores set deleted_at = now(), updated_at = now()
+        where id = ${data.id} and company_id = ${tenant.companyId}
+      `;
+      await audit(sql, tenant, "close", "store", data.id, { name: cur.name }, null);
+      return { ok: true };
+    });
+  });
+
+/*
   Convite = link com token. Antes o convite casava pelo e-mail (ou, se ja
   existisse conta com aquele e-mail, entrava direto na empresa) -- e como o
   cadastro nao confere posse do e-mail, quem cadastrasse o endereco

@@ -2767,6 +2767,73 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+73. **Não existia jeito nenhum de fechar uma loja.** Uma vez criada, ficava
+    pra sempre em todo seletor "Loja" do sistema (PDV, Produtos, Compras,
+    Financeiro, Metas, Estoque, Relatórios...), mesmo que o negócio tivesse
+    fechado aquele ponto de verdade. `stores` já tinha `deleted_at`, e
+    `requireTenant`/`assertStore` (usados em quase toda escrita do sistema)
+    já filtram por ele — só faltava o caminho de escrita; nenhuma função
+    jamais gravava nesse campo.
+
+    **Decisão de escopo (checada antes de implementar, não só assumida)**:
+    fechar uma loja esconde ela de todo seletor de loja ATIVA — o mesmo
+    filtro `deleted_at is null` que já existia em todo lugar. Não existe
+    caminho separado "mostra loja fechada só em relatório": um relatório
+    que já faz `join` direto com `stores` (sem filtrar `deleted_at`)
+    continua mostrando o nome da loja fechada nas vendas antigas dela — só
+    não aparece mais como opção pra FILTRAR por ela daqui pra frente. Isso
+    segue exatamente o mesmo padrão que customers/products/suppliers/
+    targets já usam há várias sessões — nenhum deles ganhou um caminho
+    especial de "esconde de operação, mas mantém em relatório" separado, e
+    inventar um só pra loja seria a primeira exceção sem necessidade
+    comprovada (o piloto tem 2 lojas, nenhuma sendo fechada agora).
+
+    Correção:
+    - **`closeStoreFn`** (novo, `lib/server/session.ts`): soft delete
+      (`update stores set deleted_at = now()`), exige `settings.write`,
+      audita (`close`/`"fechou"`, rótulos que já existiam em
+      `audit-label.ts` — reaproveitados, não inventados). Duas travas que
+      não têm como contornar depois de fechado (por isso recusa, não deixa
+      fechar quebrado):
+      - **Última loja ativa**: sem loja nenhuma restando,
+        `defaultStoreId` (em `requireTenant`) cai pra `0` — PDV, vendas,
+        caixa, tudo que depende de uma loja válida trava pra empresa
+        inteira. Conta lojas ativas antes de fechar; recusa se for a
+        última.
+      - **Caixa aberto na loja**: a gaveta ficaria aberta e inalcançável —
+        a loja some do seletor, ninguém mais abre a tela de Caixa daquela
+        loja pra fechar o que já estava aberto. Mesmo padrão de
+        `select ... where status = 'open'` já usado em commerce.ts/
+        finance.ts.
+    - **Configurações → Lojas**: botão "Fechar loja" ao lado de "Editar"
+      em cada linha, desabilitado quando é a única loja ativa (mesma
+      checagem do servidor, feita no cliente só pra não deixar clicar
+      numa recusa óbvia — o servidor continua sendo quem decide de
+      verdade). Diálogo de confirmação simples (nome da loja + aviso de
+      que histórico continua intacto), mesmo padrão dos itens 69/70.
+
+    Verificado ao vivo contra o Postgres real (empresa 4, que tem Loja
+    Centro e Loja Shopping — nenhuma das duas tocada): 2 lojas descartáveis
+    "ZZTESTE Loja A/B" criadas; fechar A pela tela — some do seletor de
+    loja E da lista em Configurações, `deleted_at` gravado, auditoria
+    "Victor fechou loja 'ZZTESTE Loja A'"; trocar a loja ativa pra B, abrir
+    caixa lá (fundo R$ 100) e tentar fechar B — recusado na tela ("Esta
+    loja tem um caixa aberto. Feche o caixa antes de fechar a loja."),
+    `deleted_at` continuou `null` (conferido no banco); fechar o caixa de
+    B (fechamento por total, R$ 100 contado) e tentar fechar B de novo —
+    desta vez funcionou. Loja Centro e Loja Shopping sempre com "Fechar
+    loja" habilitado (nunca ficaram como última loja, já que sempre havia
+    pelo menos uma loja de teste ativa junto) — a trava de "última loja"
+    foi conferida por leitura de código (conta simples, `<= 1`) em vez de
+    reduzir o piloto a uma loja só, pra não arriscar a disponibilidade real
+    do PDV. `typecheck` + `lint` (0 erros, 5 avisos antigos) + `npm test`
+    (477) limpos. Lojas, caixa e auditoria de teste removidos; empresa 4
+    voltou às 2 lojas reais, zero caixa e 13 linhas de auditoria.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova — `deleted_at` já existia na tabela desde o schema
+    inicial).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
