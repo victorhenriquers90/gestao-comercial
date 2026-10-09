@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CommissionRulesTab, CommissionSimTab } from "@/components/commission-panel";
 import { CommissionNetTab } from "@/components/commission-net";
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
@@ -62,16 +62,31 @@ function VendedoresPage() {
   const [slips, setSlips] = useState<CommissionSlipData[] | null>(null);
   const list = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const [commissionsPage, setCommissionsPage] = useState(0);
+  const COMMISSIONS_PAGE_SIZE = 100;
   const commissions = useQuery({
-    queryKey: ["commissions", sellerFilter, statusFilter],
+    queryKey: ["commissions", sellerFilter, statusFilter, commissionsPage],
     queryFn: () =>
       listCommissionsFn({
         data: {
           sellerId: sellerFilter ? Number(sellerFilter) : undefined,
           status: statusFilter || undefined,
+          limit: COMMISSIONS_PAGE_SIZE,
+          offset: commissionsPage * COMMISSIONS_PAGE_SIZE,
         },
       }),
+    placeholderData: keepPreviousData,
   });
+  const commissionItems = commissions.data?.items ?? [];
+  const commissionsTotal = commissions.data?.total ?? 0;
+  const commissionsPaginaVazia =
+    !commissions.isPlaceholderData &&
+    commissions.data != null &&
+    commissionItems.length === 0 &&
+    commissionsPage > 0;
+  useEffect(() => {
+    if (commissionsPaginaVazia) setCommissionsPage(0);
+  }, [commissionsPaginaVazia]);
   const monthRange = resolvePeriod("month");
   const guide = useQuery({
     queryKey: ["retention-guide", monthRange.from, monthRange.to],
@@ -158,7 +173,7 @@ function VendedoresPage() {
   const pendingNet = (list.data ?? []).reduce((a, s) => a + (s.pending_net ?? s.pending_commission), 0);
 
   function previewSlip(commissionId: number): CommissionSlipData | null {
-    const c = (commissions.data ?? []).find((row) => row.id === commissionId);
+    const c = commissionItems.find((row) => row.id === commissionId);
     if (!c) return null;
     const seller = sellers.find((s) => s.id === c.sellerId);
     const tax = parseTaxBreakdown(c.taxBreakdown, {
@@ -319,12 +334,13 @@ function VendedoresPage() {
               </Button>
             ) : null}
           </div>
-          {!commissions.data?.length ? (
+          {!commissionItems.length ? (
             <EmptyState
               title="Nenhuma comissão neste filtro."
               description="Comissões aparecem aqui automaticamente quando uma venda é finalizada no PDV."
             />
           ) : (
+          <div className={commissions.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={commissions.isPlaceholderData}>
           <DataTable
             headers={
               <tr>
@@ -339,7 +355,7 @@ function VendedoresPage() {
               </tr>
             }
           >
-            {commissions.data.map((c) => (
+            {commissionItems.map((c) => (
               <tr key={c.id} className="border-b border-border last:border-0">
                 <Td>{c.sellerName}</Td>
                 <Td>{c.saleNumber != null ? `nº ${c.saleNumber}` : "—"}</Td>
@@ -377,6 +393,8 @@ function VendedoresPage() {
               </tr>
             ))}
           </DataTable>
+          <Pager page={commissionsPage} pageSize={COMMISSIONS_PAGE_SIZE} shown={commissionItems.length} total={commissionsTotal} onPage={setCommissionsPage} />
+          </div>
           )}
         </TabsContent>
         <TabsContent value="retencoes">
@@ -554,7 +572,7 @@ function VendedoresPage() {
             <DialogTitle>Comissão líquida</DialogTitle>
           </DialogHeader>
           {(() => {
-            const c = (commissions.data ?? []).find((row) => row.id === taxOpen);
+            const c = commissionItems.find((row) => row.id === taxOpen);
             if (!c) return null;
             const tax = parseTaxBreakdown(c.taxBreakdown, {
               amount: c.amount,

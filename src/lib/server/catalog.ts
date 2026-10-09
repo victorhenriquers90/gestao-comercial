@@ -712,12 +712,24 @@ export const transferStockFn = createServerFn({ method: "POST" })
 
 export const listPurchasesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string }) => d)
+  .validator(
+    (d: { storeId?: number; status?: string; limit?: number; offset?: number }) => ({
+      ...d,
+      page: parsePaging(d),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.read");
+    // Mesmo teto silencioso do item 63/77: `limit 100` sem contagem nem
+    // paginacao -- um pedido de compra a cada poucos dias ja passa de 100
+    // dentro de um ano de loja aberta.
+    // `row_count`, nao `total`: `p.*` ja traz uma coluna `total` (o valor do
+    // pedido) -- usar o mesmo nome faria o objeto da linha sobrescrever a
+    // contagem pelo valor do pedido (a ultima coluna repetida vence).
     const rows = await sql.query<Row>(
-      `select p.*, s.legal_name as supplier_name, st.name as store_name
+      `select count(*) over() as row_count,
+              p.*, s.legal_name as supplier_name, st.name as store_name
          from purchases p
          left join suppliers s on s.id = p.supplier_id
          join stores st on st.id = p.store_id
@@ -725,10 +737,11 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
           and ($2::int is null or p.store_id = $2)
           and ($3::text is null or p.status = $3)
         order by p.created_at desc
-        limit 100`,
-      [tenant.companyId, data.storeId ?? null, data.status ?? null],
+        limit $4 offset $5`,
+      [tenant.companyId, data.storeId ?? null, data.status ?? null, data.page.limit, data.page.offset],
     );
-    return rows.map((r) => ({
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows.map((r) => ({
       id: num(r.id),
       number: num(r.number),
       status: String(r.status ?? ""),
@@ -742,6 +755,7 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
       createdAt: String(r.created_at ?? ""),
       notes: r.notes == null ? null : String(r.notes),
     }));
+    return { items, total };
   });
 
 export const getPurchaseFn = createServerFn({ method: "POST" })

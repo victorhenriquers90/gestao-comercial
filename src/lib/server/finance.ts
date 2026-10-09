@@ -15,6 +15,7 @@ import { optionalLine, requireIsoDate, requireLine, requireMoney, requireMultili
 import { planReversal, planSettlement } from "@/lib/settlement";
 import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
+import { parsePaging } from "@/lib/paging";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
 import { assertOwned, assertStore, audit, auditUpdate, requireTenant, type Tenant } from "./context";
@@ -1425,7 +1426,9 @@ export const cashMoveFn = createServerFn({ method: "POST" })
 
 export const listExpensesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number | null }) => d)
+  .validator(
+    (d: { storeId?: number | null; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
@@ -1433,14 +1436,20 @@ export const listExpensesFn = createServerFn({ method: "POST" })
     // sem isto, trocar de loja no seletor do topo mudava o card "Saidas" mas
     // a lista de despesas embaixo continuava mostrando as DUAS lojas juntas,
     // sem coluna nenhuma indicando de qual loja era cada uma.
-    return dump(
-      await sql.query<Row>(
-        `select * from expenses where company_id = $1 and deleted_at is null
-           and ($2::int is null or store_id = $2)
-         order by spent_at desc limit 100`,
-        [tenant.companyId, data.storeId ?? null],
-      ),
+    // Mesmo teto silencioso do item 63/77: `limit 100` sem contagem nem
+    // paginacao -- despesa recorrente (aluguel, energia) sozinha ja passa de
+    // 100 lancamentos em menos de um ano.
+    const rows = await sql.query<Row>(
+      `select count(*) over() as row_count, e.*
+         from expenses e
+        where e.company_id = $1 and e.deleted_at is null
+          and ($2::int is null or e.store_id = $2)
+        order by e.spent_at desc
+        limit $3 offset $4`,
+      [tenant.companyId, data.storeId ?? null, data.page.limit, data.page.offset],
     );
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    return { items: dump(rows.map((r) => { const { row_count: _rc, ...rest } = r; return rest; })), total };
   });
 
 export const saveExpenseFn = createServerFn({ method: "POST" })
@@ -1926,7 +1935,12 @@ export const deleteTargetFn = createServerFn({ method: "POST" })
 
 export const listCommissionsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { sellerId?: number; status?: string }) => d)
+  .validator(
+    (d: { sellerId?: number; status?: string; limit?: number; offset?: number }) => ({
+      ...d,
+      page: parsePaging(d),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     /*
@@ -1939,8 +1953,15 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
       venda a venda, historico inteiro.
     */
     assertCan(tenant.role, "sellers.write");
+    // Mesmo teto silencioso do item 63/77: `limit 200` sem contagem nem
+    // paginacao -- cada venda com vendedor gera uma linha de comissao, entao
+    // o historico (filtro "Todas"/"Pagas") passa de 200 rapido. O pagamento
+    // em lote (payPendingCommissionsFn/loadPendingCommissions) e uma consulta
+    // SEPARADA, sem limite -- isto aqui e so a lista que a tela mostra, nao
+    // afeta quanto se paga.
     const rows = await sql.query<Row>(
-      `select c.id, c.seller_id, c.sale_id, c.amount, c.percent, c.status, c.created_at, c.paid_at, c.note,
+      `select count(*) over() as row_count,
+              c.id, c.seller_id, c.sale_id, c.amount, c.percent, c.status, c.created_at, c.paid_at, c.note,
               c.net_amount, c.tax_inss, c.tax_irrf, c.tax_iss, c.tax_other, c.tax_breakdown,
               sl.name as seller_name, s.number as sale_number, s.total as sale_total,
               cr.name as rule_name
@@ -1952,10 +1973,11 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
           and ($2::int is null or c.seller_id = $2)
           and ($3::text is null or c.status = $3)
         order by case when c.status = 'pendente' then 0 else 1 end, c.created_at desc
-        limit 200`,
-      [tenant.companyId, data.sellerId ?? null, data.status ?? null],
+        limit $4 offset $5`,
+      [tenant.companyId, data.sellerId ?? null, data.status ?? null, data.page.limit, data.page.offset],
     );
-    return rows.map((r) => ({
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows.map((r) => ({
       id: num(r.id),
       sellerId: num(r.seller_id),
       saleId: r.sale_id == null ? null : num(r.sale_id),
@@ -1976,6 +1998,7 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
       taxOther: num(r.tax_other),
       taxBreakdown: r.tax_breakdown ?? null,
     }));
+    return { items, total };
   });
 
 type PendingCommission = {

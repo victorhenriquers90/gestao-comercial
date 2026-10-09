@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
-import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useSelection } from "@/hooks/use-selection";
 import {
@@ -124,10 +124,23 @@ function FinanceiroPage() {
     queryKey: ["flow", storeId, range.from, range.to],
     queryFn: () => cashflowFn({ data: { from: range.from, to: range.to, storeId: storeId ?? undefined } }),
   });
+  const [expensesPage, setExpensesPage] = useState(0);
+  const EXPENSES_PAGE_SIZE = 100;
   const expenses = useQuery({
-    queryKey: ["expenses", storeId],
-    queryFn: () => listExpensesFn({ data: { storeId: storeId ?? undefined } }),
+    queryKey: ["expenses", storeId, expensesPage],
+    queryFn: () =>
+      listExpensesFn({
+        data: { storeId: storeId ?? undefined, limit: EXPENSES_PAGE_SIZE, offset: expensesPage * EXPENSES_PAGE_SIZE },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const expenseItems = expenses.data?.items ?? [];
+  const expensesTotal = expenses.data?.total ?? 0;
+  const expensesPaginaVazia =
+    !expenses.isPlaceholderData && expenses.data != null && expenseItems.length === 0 && expensesPage > 0;
+  useEffect(() => {
+    if (expensesPaginaVazia) setExpensesPage(0);
+  }, [expensesPaginaVazia]);
 
   if (pay.isPending) return <PageSkeleton />;
   if (pay.error) return <QueryError error={pay.error} fallback="Erro ao carregar o financeiro." />;
@@ -642,12 +655,13 @@ function FinanceiroPage() {
               {lancandoDespesa ? "Lançando…" : "Lançar"}
             </Button>
           </form>
-          {!expenses.data?.length ? (
+          {!expenseItems.length ? (
             <EmptyState
               title="Nenhuma despesa lançada."
               description="Use o formulário acima para lançar a primeira despesa (aluguel, energia, marketing…)."
             />
           ) : (
+          <div className={expenses.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={expenses.isPlaceholderData}>
           <DataTable
             headers={
               <tr>
@@ -659,7 +673,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {(expenses.data as Record<string, unknown>[]).map((e) => (
+            {(expenseItems as Record<string, unknown>[]).map((e) => (
               <tr key={String(e.id)} className="border-b border-border last:border-0">
                 <Td>{formatDate(String(e.spent_at))}</Td>
                 <Td>{String(e.description)}</Td>
@@ -684,6 +698,8 @@ function FinanceiroPage() {
               </tr>
             ))}
           </DataTable>
+          <Pager page={expensesPage} pageSize={EXPENSES_PAGE_SIZE} shown={expenseItems.length} total={expensesTotal} onPage={setExpensesPage} />
+          </div>
           )}
         </TabsContent>
       </Tabs>

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,11 +40,21 @@ function ComprasPage() {
   const [items, setItems] = useState<
     { variantId: number; productId: number; description: string; quantity: number; unitCost: number }[]
   >([]);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
 
   const list = useQuery({
-    queryKey: ["purchases", storeId],
-    queryFn: () => listPurchasesFn({ data: { storeId: storeId ?? undefined } }),
+    queryKey: ["purchases", storeId, page],
+    queryFn: () =>
+      listPurchasesFn({ data: { storeId: storeId ?? undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+    placeholderData: keepPreviousData,
   });
+  const purchases = list.data?.items ?? [];
+  const purchasesTotal = list.data?.total ?? 0;
+  const paginaVazia = !list.isPlaceholderData && list.data != null && purchases.length === 0 && page > 0;
+  useEffect(() => {
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
   const detail = useQuery({
     queryKey: ["purchase", detailId],
     queryFn: () => getPurchaseFn({ data: { id: detailId! } }),
@@ -91,9 +101,10 @@ function ComprasPage() {
           <TabsTrigger value="sugestao">Sugestão de compra</TabsTrigger>
         </TabsList>
         <TabsContent value="pedidos">
-      {!list.data?.length ? (
+      {!purchases.length ? (
         <EmptyState title="Nenhum pedido de compra." description="Crie o primeiro pedido para abastecer o estoque." />
       ) : (
+        <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable
           headers={
             <tr>
@@ -106,7 +117,7 @@ function ComprasPage() {
             </tr>
           }
         >
-          {list.data.map((row) => (
+          {purchases.map((row) => (
             <tr
               key={row.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
@@ -139,6 +150,8 @@ function ComprasPage() {
             </tr>
           ))}
         </DataTable>
+        <Pager page={page} pageSize={PAGE_SIZE} shown={purchases.length} total={purchasesTotal} onPage={setPage} />
+        </div>
       )}
         </TabsContent>
         <TabsContent value="sugestao">

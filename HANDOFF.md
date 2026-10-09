@@ -3076,6 +3076,81 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+78. **Mesmo buraco do item 77, em mais três telas: Compras, Financeiro →
+    Despesas e Vendedores → Pagamentos cortavam em 100/100/200 linhas sem
+    total nem paginação.** Depois de fechar `listMovementsFn` (item 77),
+    varri o resto de `src/lib/server` atrás de `limit N` sem
+    `count(*) over()` correspondente, separando listas de PÁGINA inteira
+    (o mesmo bug) de listas de TOPO-N que já são o design certo (dashboards,
+    relatórios por período, "últimas N compras" dentro da ficha do cliente/
+    fornecedor — essas eu NÃO toquei, inclusive `listCrmTasksFn`, que
+    parecia candidata mas alimenta só um widget de 8 itens em `crm.tsx`,
+    nunca uma tela de lista completa).
+
+    Três funções reais, mesmo defeito do item 63/77:
+    - `listPurchasesFn` (Compras): `limit 100`.
+    - `listExpensesFn` (Financeiro → Despesas): `limit 100`.
+    - `listCommissionsFn` (Vendedores → Pagamentos): `limit 200`.
+
+    Alcance real: um pedido de compra a cada poucos dias passa de 100 num
+    ano; despesa recorrente (aluguel, energia) sozinha também; toda venda
+    com vendedor grava uma linha de comissão, então o filtro "Todas"/"Pagas"
+    passa de 200 rápido. As três já filtravam em SQL (loja, status,
+    vendedor) — o problema era só a ausência de paginação além do corte.
+
+    **Achado no caminho, documentado por transparência (não é bug, é
+    susto que não virou correção)**: `listPurchasesFn` usava `select p.*`
+    e eu ia adicionar `count(*) over() as total` — mas `purchases` já tem
+    uma coluna `total` (o valor do pedido). Duas colunas chamadas `total`
+    no mesmo `select` fariam o driver do Postgres sobrescrever a contagem
+    pelo valor do pedido no objeto da linha (a última coluna repetida
+    vence) — a paginação pareceria funcionar nos testes manuais e minta
+    sistematicamente assim que o pedido não fosse múltiplo exato do
+    valor certo. Pego na checagem do SQL antes de rodar, não em produção;
+    usei `row_count` como alias nas três funções (mesmo sem colisão nas
+    outras duas) para não depender de nenhuma delas não ter coluna
+    `total`/`row_count` no futuro.
+
+    Correção, mesmo padrão dos itens 63/77: `parsePaging` + `{items,
+    total}` no servidor; `Pager` + `EmptyState` + `keepPreviousData` +
+    estado de página próprio em cada tela (`compras.tsx`, `financeiro.tsx`,
+    `vendedores.tsx`).
+
+    **Verificado que o pagamento em lote não dependia da lista cortada**:
+    `payPendingCommissionsFn` → `loadPendingCommissions` é uma consulta
+    SEPARADA, sem `limit` nenhum — a paginação da TELA nunca limitou quanto
+    se PAGA, só quanto se MOSTRA. Confirmado ao vivo (abaixo), não só por
+    leitura de código.
+
+    Verificado ao vivo contra o Postgres real (empresa 4): 120 pedidos de
+    compra, 120 despesas e um vendedor descartável "ZZTESTE Vendedor
+    Item78" com 120 comissões pendentes de R$10 cada, inseridos direto.
+    Compras: "1–100 de 120" → "Próxima" → "101–120 de 120" (pedidos 9001–
+    9020, antes invisíveis). Despesas: mesmo padrão. Comissões (filtro
+    padrão "Pendentes"): mesmo padrão; clicar "Pagar pendentes" nessa tela
+    pagou as 120 de uma vez (toast "120 comissões pagas · líquido
+    R$ 1.200,00", recibo com bruto e líquido R$ 1.200,00 batendo exato) —
+    confirma que a paginação é só de exibição. `typecheck` + `lint` (0
+    erros, 5 avisos antigos) + `npm test` (481, sem novo — paginação/UI,
+    não regra pura) limpos. Pedidos, despesas (incluindo a gerada pelo
+    pagamento), comissões, vendedor e o log de auditoria do pagamento
+    removidos; empresa 4 voltou a zero em todas as tabelas tocadas e às 13
+    linhas de auditoria.
+
+    **Lacuna que continua, documentada por transparência**: `listPayablesFn`
+    e `listReceivablesFn` (Financeiro → Pagar/Receber) não têm `limit`
+    NENHUM — sempre devolvem a tabela inteira (`deleted_at is null`, sem
+    filtro de status). Isso não é o bug desta família (não esconde nada
+    em silêncio), mas é consulta sem teto: cresce pra sempre enquanto a
+    loja opera, inclusive títulos já pagos/cancelados há anos. Não mexi
+    agora — é uma mudança de escopo maior (teto + paginação em duas telas
+    que hoje assumem lista completa em vários lugares do componente, não só
+    na renderização), e nada no piloto hoje se aproxima do volume onde isso
+    importa.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
