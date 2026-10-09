@@ -734,11 +734,40 @@
     display: grid;
     gap: clamp(0.75rem, 1vw, 1.25rem);
     grid-template-columns: minmax(0, 1fr);
+    /*
+      `[viz]` precisa de altura explicita, nao `auto`.
+
+      O grafico de "Vendas do periodo" usa Recharts `ResponsiveContainer`,
+      que pede `height: 100%` do pai pra se desenhar. Faixa `auto` so tem
+      altura depois que o conteudo é medido -- e o grafico, sem altura, mede
+      ZERO: dependencia circular que nunca resolve. Resultado, so abaixo do
+      breakpoint de 48rem (unico lugar onde esta faixa ficava `auto`): o
+      cartao "Vendas do periodo" renderizava so o titulo, grafico nenhum,
+      sem erro em lugar nenhum -- olhando a tela nao dava pra saber se
+      faltava venda no periodo ou se o grafico tinha quebrado. As duas
+      faixas `[viz]` mais largas (abaixo) ja usavam `minmax`; faltava so
+      esta.
+    */
+    /*
+      `[monthly]` tem o MESMO problema do `[viz]` acima, no mesmo motivo:
+      "Evolucao mensal" tambem e Recharts `ResponsiveContainer`, e essa
+      linha e a UNICA, nas tres faixas de `.dash-stage`, que sobrava
+      implicita (alem das 4 nomeadas) em vez de ganhar altura explicita --
+      quebrada aqui e no breakpoint de 48rem logo abaixo (so o de 60rem,
+      que ja precisa de 5 faixas nomeadas por outro motivo, cobria por
+      acidente). "monthly" e a OITAVA linha de `grid-template-areas`, entao
+      precisa das 8 faixas escritas -- nomear só a 5ª sem completar as
+      linhas 5-7 teria dado a altura explicita pra "products", nao pra ela.
+    */
     grid-template-rows:
       [kpis] auto
-      [viz] auto
+      [viz] minmax(14rem, 18rem)
       [lists] auto
-      [trend] auto;
+      [trend] auto
+      auto
+      auto
+      auto
+      [monthly] minmax(14rem, 18rem);
     grid-template-areas:
       "kpis"
       "chart"
@@ -793,11 +822,14 @@
   @container main (min-width: 48rem) {
     .dash-stage {
       grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.85fr);
+      /* "monthly" e a 5ª (ultima) linha aqui -- ver o comentario na faixa
+         base, acima, sobre por que essa linha precisa de altura explicita. */
       grid-template-rows:
         [kpis] auto
         [viz] minmax(16rem, 22rem)
         [lists] auto
-        [trend] auto;
+        [trend] auto
+        [monthly] minmax(16rem, 22rem);
       grid-template-areas:
         "kpis kpis"
         "chart metas"

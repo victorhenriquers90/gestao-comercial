@@ -3151,6 +3151,64 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+79. **Os dois gráficos do painel ("Vendas do período" e "Evolução mensal")
+    desapareciam em silêncio em boa parte das larguras de tela — só o
+    título do cartão aparecia, gráfico nenhum, sem erro em lugar nenhum.**
+    Achado numa passada de polimento visual pedida pelo usuário (não uma
+    auditoria de bug): o dashboard estava sempre vazio no piloto, então
+    testei com dado descartável (produtos, clientes, vendedor e ~20 vendas
+    espalhadas em 30 dias) — só com dado de verdade dava pra ver os
+    gráficos renderizando (ou não).
+
+    Causa: os dois gráficos usam `ResponsiveContainer` do Recharts, que
+    pede `height: 100%` do elemento pai pra se desenhar. `.dash-stage`
+    (`src/styles.css`) é um CSS Grid com `grid-template-rows` nomeado, e a
+    faixa da largura mais estreita (abaixo de 48rem de container) deixava
+    a linha do gráfico de vendas como `[viz] auto` — sem altura explícita.
+    Faixa `auto` só ganha altura DEPOIS que o conteúdo é medido; o gráfico,
+    sem altura, mede zero: dependência circular que nunca resolve. O cartão
+    "Evolução mensal" tinha o problema AINDA MAIS largo: por estar na
+    oitava (última) linha de `grid-template-areas` mas fora das 4 faixas
+    nomeadas, ficava implícito (`auto` por padrão) em DUAS das três faixas
+    de breakpoint — a estreita E a de 48rem — só o breakpoint de 60rem
+    (⁓960px de container, a faixa mais larga, com 5 linhas nomeadas por
+    outro motivo) cobria por acidente. Ou seja: numa janela não-maximizada
+    ou num notebook comum, "Evolução mensal" provavelmente nunca mostrava
+    gráfico nenhum.
+
+    Correção: as duas faixas mais estreitas de `.dash-stage` ganharam altura
+    explícita (`minmax(14rem,18rem)` na mais estreita, `minmax(16rem,22rem)`
+    na de 48rem) pras duas linhas de gráfico — `[viz]` (já existia nas duas
+    faixas largas, só faltava na estreita) e a nova `[monthly]` (faltava
+    nas duas faixas estreitas). Cuidado ao escrever: `grid-template-areas`
+    tem 8 linhas na faixa estreita, então nomear só a 5ª faixa de
+    `grid-template-rows` teria dado a altura explícita pra "products"
+    (5ª linha de verdade), não pra "monthly" (8ª) — precisei escrever as
+    8 faixas por extenso (`auto` nas 3 do meio, sem nome, que já
+    funcionavam).
+
+    Verificado ao vivo (JS, não só visual — `getBoundingClientRect` do
+    `<svg>` de cada gráfico) nas três larguras de container: estreita
+    (442px de viewport), 48rem (834px de container) e 60rem (1134px de
+    container) — as duas `<svg>` aparecem e medem altura real nas três,
+    onde antes só a mais larga funcionava. Confirmado visualmente por
+    screenshot nativo do navegador também. `typecheck` + `lint` (0 erros,
+    5 avisos antigos) + `npm test` (481, sem novo — é CSS puro) limpos.
+    Produtos, clientes, vendedor, vendas, itens e pagamentos de teste
+    removidos; empresa 4 voltou a zero em tudo e às 13 linhas de auditoria.
+
+    **Nota de ferramenta, não do produto**: o painel do navegador usado
+    nesta sessão devolve screenshot não-confiável (imagem obsoleta/
+    incorreta) quando se emula uma viewport grande via `resize_window` com
+    largura customizada — confirmado batendo a imagem contra
+    `getBoundingClientRect` real mais de uma vez nesta sessão. Pra julgar
+    visual, usar a largura nativa do painel; pra medir em largura grande,
+    usar `javascript_tool`, não a screenshot. Já documentado em memória
+    (`design-lab-gestao`), reconfirmado aqui.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
