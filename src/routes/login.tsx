@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent, useEffect, useRef } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -83,6 +83,25 @@ function LoginPage() {
         setConviteErro(err instanceof Error ? err.message : "Não foi possível aceitar o convite."),
       );
   }, [conviteToken, isPending, user, aceitando, navigate]);
+
+  // Ja logado, sem convite (ex.: voltou pra /login direto): manda pro
+  // sistema. Precisa ser efeito, nao chamada no corpo do componente -- `
+  // navigate` do router atualiza estado de um Provider acima na arvore, e
+  // chamar isso DURANTE o render do LoginPage disparava "Cannot update a
+  // component (LoginPage) while rendering a different component
+  // (LoginPage)" toda vez que alguem logado abria /login.
+  //
+  // `redirected` (ref, nao state) trava o efeito depois da PRIMEIRA
+  // chamada: a identidade de `navigate` muda a cada render deste router, e
+  // sem a trava o efeito reexecuta (deps mudam) -> chama `navigate` de
+  // novo -> re-render -> reexecuta... "Maximum update depth exceeded" em
+  // vez do aviso original, bem pior que o que estava corrigindo.
+  const redirected = useRef(false);
+  useEffect(() => {
+    if (isPending || !user || conviteToken || redirected.current) return;
+    redirected.current = true;
+    navigate({ to: "/app" });
+  }, [isPending, user, conviteToken, navigate]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -133,7 +152,8 @@ function LoginPage() {
     );
   }
   if (user) {
-    navigate({ to: "/app" });
+    // O efeito acima dispara a navegacao; aqui so evita desenhar o
+    // formulario de login por um instante antes de sair da tela.
     return null;
   }
 

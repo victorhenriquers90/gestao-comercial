@@ -3209,6 +3209,51 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+80. **`LoginPage` atualizava o router DURANTE o próprio render — todo
+    acesso a `/login` já autenticado (sem convite) disparava "Cannot update
+    a component (LoginPage) while rendering a different component
+    (LoginPage)" no console.** Achado por acidente checando o console
+    durante o polimento visual (item 79): naveguei pra `/login` com a
+    sessão de administrador já aberta (pra olhar a tela de login, que
+    nunca tinha sido revisada nesta sessão) e o aviso apareceu repetido.
+
+    Ponto real: o componente tinha `if (user) { navigate({ to: "/app" });
+    return null; }` no CORPO da função — não dentro de um `useEffect`.
+    `navigate()` do TanStack Router atualiza estado de um Provider acima na
+    árvore; chamar isso enquanto o React ainda está no meio do render do
+    próprio `LoginPage` é exatamente o padrão que o aviso descreve. Não
+    travava a tela (o redirecionamento acontecia mesmo assim), mas é o tipo
+    de aviso que vira erro de verdade em versões futuras do React
+    (concurrent rendering é mais estrito com isso), e indicava um
+    re-render a mais a cada vez que alguém logado caía em `/login`.
+
+    Corrigido: virou `useEffect`, mesmo padrão dos outros dois efeitos que
+    já existiam no arquivo (validação de convite e aceite automático).
+
+    **Essa correção, da forma mais simples, criou um bug PIOR**: com
+    `navigate` na lista de dependências do efeito e sem nenhuma trava, o
+    efeito disparava, chamava `navigate()`, o router mudava de identidade
+    a cada render, as deps "mudavam" de novo, o efeito reexecutava — "
+    Maximum update depth exceeded" (loop de render de verdade, não só um
+    aviso) no lugar do problema original. Pego ainda nesta sessão, antes
+    de commitar, testando ao vivo com o console aberto — não só lendo o
+    código. Corrigido com a mesma trava que o efeito de aceite de convite
+    already usava (lá era a state `aceitando`; aqui virou um `useRef`, já
+    que não precisa re-renderizar nada): o efeito só chama `navigate()` na
+    PRIMEIRA vez que as condições batem, nunca de novo.
+
+    Verificado ao vivo, numa aba nova do navegador (sem nenhum console
+    acumulado de tentativa anterior, pra não ter dúvida): sessão de
+    administrador autenticada, acesso direto a `/login` redirecionou pra
+    `/app` sem nenhum erro ou aviso no console (confirmado com
+    `read_console_messages` zerado — só as 3 linhas inofensivas de
+    conexão do Vite). `typecheck` + `lint` (0 erros, 5 avisos antigos) +
+    `npm test` (481, sem novo — é fluxo de navegação, não regra pura)
+    limpos.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
