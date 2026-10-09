@@ -601,12 +601,23 @@ export const listStockFn = createServerFn({ method: "POST" })
 
 export const listMovementsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; variantId?: number; type?: string }) => d)
+  .validator(
+    (d: { storeId?: number; variantId?: number; type?: string; limit?: number; offset?: number }) => ({
+      ...d,
+      page: parsePaging(d),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.read");
-    return dump(await sql.query<Row>(
-      `select m.id, m.quantity, m.previous_qty, m.new_qty, m.type, m.user_id, m.note, m.created_at,
+    // Mesmo teto silencioso do item 63 (listProductsFn/listStockFn/
+    // listSalesFn), achado aqui depois: `limit 200` sem contagem nem
+    // paginacao -- uma loja em operacao bate 200 movimentos (entrada, venda,
+    // ajuste, transferencia) em poucas semanas, e o historico mais antigo
+    // simplesmente sumia da tela sem nenhum aviso.
+    const rows = await sql.query<Row>(
+      `select count(*) over() as total,
+              m.id, m.quantity, m.previous_qty, m.new_qty, m.type, m.user_id, m.note, m.created_at,
               p.name, v.color, v.size, s.name as store_name
          from stock_movements m
          join product_variants v on v.id = m.variant_id
@@ -617,9 +628,11 @@ export const listMovementsFn = createServerFn({ method: "POST" })
           and ($3::int is null or m.variant_id = $3)
           and ($4::text is null or m.type = $4)
         order by m.created_at desc
-        limit 200`,
-      [tenant.companyId, data.storeId ?? null, data.variantId ?? null, data.type ?? null],
-    ));
+        limit $5 offset $6`,
+      [tenant.companyId, data.storeId ?? null, data.variantId ?? null, data.type ?? null, data.page.limit, data.page.offset],
+    );
+    const total = rows.length ? num(rows[0]!.total) : 0;
+    return { items: dump(rows.map((r) => { const { total: _t, ...rest } = r; return rest; })), total };
   });
 
 export const adjustStockFn = createServerFn({ method: "POST" })

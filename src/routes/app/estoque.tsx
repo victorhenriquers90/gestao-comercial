@@ -27,6 +27,7 @@ function EstoquePage() {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  const [movPage, setMovPage] = useState(0);
   const [filter, setFilter] = useState<"all" | "low" | "zero" | "stale">("all");
   const [adj, setAdj] = useState<{ variantId: number; name: string } | null>(null);
   const [type, setType] = useState<"entrada" | "saida" | "ajuste" | "perda">("entrada");
@@ -60,9 +61,19 @@ function EstoquePage() {
     if (paginaVazia) setPage(0);
   }, [paginaVazia]);
   const moves = useQuery({
-    queryKey: ["moves", storeId],
-    queryFn: () => listMovementsFn({ data: { storeId: storeId ?? undefined } }),
+    queryKey: ["moves", storeId, movPage],
+    queryFn: () =>
+      listMovementsFn({
+        data: { storeId: storeId ?? undefined, limit: PAGE_SIZE, offset: movPage * PAGE_SIZE },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const movItems = moves.data?.items ?? [];
+  const movTotal = moves.data?.total ?? 0;
+  const movPaginaVazia = !moves.isPlaceholderData && moves.data != null && movItems.length === 0 && movPage > 0;
+  useEffect(() => {
+    if (movPaginaVazia) setMovPage(0);
+  }, [movPaginaVazia]);
 
   if (stock.isPending) return <PageSkeleton />;
   if (stock.error) return <QueryError error={stock.error} fallback="Erro ao carregar o estoque." />;
@@ -173,33 +184,40 @@ function EstoquePage() {
           )}
         </TabsContent>
         <TabsContent value="mov">
-          <DataTable
-            headers={
-              <tr>
-                <Th>Quando</Th>
-                <Th>Produto</Th>
-                <Th>Tipo</Th>
-                <Th className="col-num">Qtd</Th>
-                <Th className="col-num">Antes</Th>
-                <Th className="col-num">Depois</Th>
-                <Th>Obs.</Th>
-              </tr>
-            }
-          >
-            {(moves.data as Record<string, unknown>[] | undefined)?.map((m) => (
-              <tr key={String(m.id)} className="border-b border-border last:border-0">
-                <Td>{formatDateTime(String(m.created_at))}</Td>
-                <Td>
-                  {String(m.name)} {[m.color, m.size].filter(Boolean).join(" ")}
-                </Td>
-                <Td>{STOCK_TYPE_LABELS[String(m.type)] ?? String(m.type)}</Td>
-                <Td className="tabular col-num">{formatQty(num(m.quantity))}</Td>
-                <Td className="tabular col-num">{formatQty(num(m.previous_qty))}</Td>
-                <Td className="tabular col-num">{formatQty(num(m.new_qty))}</Td>
-                <Td className="text-muted-foreground">{String(m.note ?? "")}</Td>
-              </tr>
-            ))}
-          </DataTable>
+          {!movItems.length ? (
+            <EmptyState title="Nenhuma movimentação ainda." description="Entradas, saídas, ajustes e transferências aparecem aqui." />
+          ) : (
+            <div className={moves.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={moves.isPlaceholderData}>
+              <DataTable
+                headers={
+                  <tr>
+                    <Th>Quando</Th>
+                    <Th>Produto</Th>
+                    <Th>Tipo</Th>
+                    <Th className="col-num">Qtd</Th>
+                    <Th className="col-num">Antes</Th>
+                    <Th className="col-num">Depois</Th>
+                    <Th>Obs.</Th>
+                  </tr>
+                }
+              >
+                {movItems.map((m) => (
+                  <tr key={String(m.id)} className="border-b border-border last:border-0">
+                    <Td>{formatDateTime(String(m.created_at))}</Td>
+                    <Td>
+                      {String(m.name)} {[m.color, m.size].filter(Boolean).join(" ")}
+                    </Td>
+                    <Td>{STOCK_TYPE_LABELS[String(m.type)] ?? String(m.type)}</Td>
+                    <Td className="tabular col-num">{formatQty(num(m.quantity))}</Td>
+                    <Td className="tabular col-num">{formatQty(num(m.previous_qty))}</Td>
+                    <Td className="tabular col-num">{formatQty(num(m.new_qty))}</Td>
+                    <Td className="text-muted-foreground">{String(m.note ?? "")}</Td>
+                  </tr>
+                ))}
+              </DataTable>
+              <Pager page={movPage} pageSize={PAGE_SIZE} shown={movItems.length} total={movTotal} onPage={setMovPage} />
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="inv">
           <StockCountPanel storeId={storeId ?? tenant.data?.defaultStoreId ?? null} />

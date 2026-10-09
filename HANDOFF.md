@@ -3035,6 +3035,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+77. **`listMovementsFn` (histórico de movimentações de estoque) ficou de
+    fora da correção do item 63 — ainda cortava em 200 linhas, sem total,
+    sem paginação, sem aviso nenhum.** O item 63 fechou o mesmo buraco em
+    `listProductsFn`, `listStockFn` e `listSalesFn`, mas a aba
+    "Movimentações" de Estoque usa uma função separada
+    (`listMovementsFn`) que ninguém tocou na época — grep por
+    `limit 200`/`limit 400` fora desses três não apareceu na auditoria
+    original.
+
+    Alcance real: uma loja em operação normal gera 1 `stock_movements` por
+    item vendido, mais entrada/ajuste/perda/transferência — 10 vendas por
+    dia com 2-3 itens cada já passa de 200 em 2-3 semanas. Diferente do
+    `listStockFn` antigo (onde o filtro rodava em JS depois do corte), aqui
+    os filtros (`storeId`/`variantId`/`type`) já rodavam em SQL antes do
+    `limit` — o problema era só a ausência de paginação: passado o
+    corte de 200, o histórico mais antigo simplesmente deixava de existir
+    pra tela, sem nenhum "mostrando X de Y" indicando que faltava algo.
+
+    Correção, mesmo padrão do item 63: `listMovementsFn` passa a usar
+    `parsePaging` (`src/lib/paging.ts`) e devolve `{ items, total }` com
+    `count(*) over()`; a aba Movimentações (`routes/app/estoque.tsx`) ganhou
+    estado de página próprio (`movPage`, antes só a aba Saldos paginava),
+    `keepPreviousData`, o mesmo `<Pager>` e o mesmo `EmptyState` honesto que
+    as outras abas já tinham.
+
+    Verificado ao vivo contra o Postgres real (empresa 4): produto
+    descartável "ZZTESTE Produto Item77 Movs" com 120 linhas de
+    `stock_movements` inseridas direto (cada uma um "ajuste" de +1,
+    simulando semanas de operação); página 1 mostrou "1–100 de 120" com os
+    100 mais recentes, "Próxima" levou a "101–120 de 120" com os 20 mais
+    antigos e desabilitou o botão — os 120 continuam todos visíveis e
+    navegáveis, nada truncado em silêncio. `typecheck` + `lint` (0 erros, 5
+    avisos antigos) + `npm test` (481, sem novo — é mudança de
+    paginação/UI, não de regra pura) limpos. Produto, variante e as 120
+    movimentações de teste removidos; empresa 4 voltou a zero produto/
+    variante/movimento e às 13 linhas de auditoria (os inserts diretos não
+    passam por `audit()`, então não geraram linha nova pra limpar).
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
