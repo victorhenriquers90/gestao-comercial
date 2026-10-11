@@ -3254,6 +3254,50 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
     (sem migração nova).
 
+81. **Fluxo completo de venda no PDV testado ao vivo com o console aberto —
+    limpo do início ao fim, sem bug achado.** Pedido explícito do usuário
+    depois da varredura de console do item anterior (carregamento de
+    página + troca de aba, sem exercitar o fluxo de venda de verdade).
+
+    Roteiro, numa aba nova do navegador (console zerado) contra a empresa
+    4 do piloto: abrir caixa (fundo R$100) → buscar e adicionar produto
+    descartável "ZZTESTE Produto Fluxo PDV" (R$59,90) → aplicar desconto
+    de R$5 (F6) → vincular cliente descartável "ZZTESTE Cliente Fluxo PDV"
+    (F4) → pagamento no cartão de crédito, bandeira Visa, 2x (exercita o
+    `splitInstallments` corrigido nos itens 76/78) → Finalizar venda →
+    conferir o recibo → fechar o recibo. `read_console_messages` checado
+    depois de CADA passo (não só no fim) — zero erro, zero aviso, em
+    todos.
+
+    Verificado no Postgres real, não só na tela: venda nº 12 criada
+    (subtotal R$59,90, desconto R$5, total R$54,90, custo R$20); 1 linha
+    de `payments` (crédito, Visa, 2x); 2 linhas de `accounts_receivable`
+    (R$27,45 cada, somando exato R$54,90 — confirma de novo, ao vivo, que
+    o item 76 continua correto); estoque do produto desceu de 10 para 9,
+    com 1 linha de `stock_movements` (tipo "venda", -1, referência pra
+    venda nº 12); 3 linhas novas de auditoria (`cash_register.open`,
+    `sale.discount`, `sale.create`).
+
+    **Checado no caminho, não é bug**: a venda no cartão também grava uma
+    linha em `cash_movements` (não só vendas em dinheiro) — a primeira
+    vista parecia que isso poderia inflar o "dinheiro esperado" do
+    fechamento de caixa com um valor que nunca entrou na gaveta de
+    verdade. Conferindo `loadOpenRegister` (`lib/server/finance.ts`): a
+    tabela guarda TODA venda (serve de livro-razão geral, usado pra somar
+    "total de vendas" no fechamento), mas `expectedCash` filtra
+    explicitamente `method = 'dinheiro'` antes de somar — cartão e PIX
+    entram no resumo (`cards`/`pix`) só pra exibição, nunca no cálculo do
+    que deveria estar fisicamente na gaveta. Já estava certo.
+
+    Produto, variante, estoque, cliente, venda, itens, pagamento,
+    parcelas, movimento de caixa, movimento de estoque, caixa aberto e as
+    3 linhas de auditoria removidos depois; empresa 4 voltou a zero em
+    tudo e às 13 linhas de auditoria.
+
+    Nenhum bug encontrado nesta rodada — resultado real, registrado por
+    transparência (a mesma técnica achou os itens 79 e 80 em sessões
+    recentes, então vale deixar claro quando ela não acha nada também).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
