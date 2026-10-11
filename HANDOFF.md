@@ -3298,6 +3298,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     transparência (a mesma técnica achou os itens 79 e 80 em sessões
     recentes, então vale deixar claro quando ela não acha nada também).
 
+82. **Fluxo completo de devolução contra venda no crediário testado ao
+    vivo com console aberto — limpo, e confirma de novo (ao vivo, não só
+    lendo código) o abatimento em cascata contra parcelas.** Escolhi esse
+    caminho em vez de uma devolução simples de propósito: é o trecho mais
+    comentado/mais vezes corrigido de `commerce.ts` (o "abate em
+    cascata... da parcela que vence primeiro pra última"), nunca tinha
+    sido reproduzido nesta sessão com dado de crediário de verdade.
+
+    Roteiro, numa aba nova (console zerado), empresa 4: abrir caixa →
+    venda de 2× "ZZTESTE Produto Devolução" (R$90 cada = R$180) → cliente
+    descartável vinculado → pagamento Crediário 3x (R$60/parcela) →
+    finalizar (venda nº 13) → Devoluções → Nova devolução → buscar venda
+    nº 13 → reduzir quantidade de 2 pra 1 (devolução parcial de R$90,
+    conferido na tela que o "Estorno" recalculou antes de confirmar) →
+    motivo → Confirmar. Console checado depois de CADA passo (abrir caixa,
+    adicionar item, aumentar quantidade, vincular cliente, trocar forma de
+    pagamento, parcelar, finalizar, buscar venda, mudar quantidade a
+    devolver, confirmar devolução) — zero erro em todos.
+
+    Verificado no Postgres, não só na tela ("Devolução registrada. Estoque
+    e financeiro atualizados." sozinho não prova nada): as 3 parcelas de
+    crediário ANTES da devolução eram R$60/R$60/R$60, todas pendentes.
+    DEPOIS de devolver R$90: parcela 1 foi pra R$0,00/cancelado (abatida
+    inteira), parcela 2 foi de R$60 pra R$30,00/pendente (abatida
+    parcial), parcela 3 continuou R$60,00/pendente (intocada) — soma das
+    três agora R$90, exatamente `total da venda (R$180) - estorno (R$90)`.
+    Também corretos: `returns` (kind=parcial, total=R$90, motivo
+    gravado), `return_items` (1 unidade, variant certo), estoque voltou
+    de 8 pra 9 (tinha ido de 10 pra 8 na venda de 2 unidades),
+    `stock_movements` com as duas entradas (venda -2, devolução +1,
+    referenciando a venda e a devolução certas), `sales.status` virou
+    "devolvida_parcial", e 3 linhas novas de auditoria
+    (`cash_register.open`, `sale.create`, `return.create`).
+
+    **Checado no caminho, mesmo achado (não-bug) do item 81**: a venda no
+    crediário também grava uma linha em `cash_movements` (não só vendas em
+    dinheiro) — já sabia, pelo item anterior, que `expectedCash` do
+    fechamento filtra por `method = 'dinheiro'` antes de somar, então essa
+    linha não infla o caixa físico esperado. Sem novidade, só reconfirmado.
+
+    Devolução, parcelas, venda, itens, pagamento, movimento de caixa,
+    movimento de estoque, produto, variante, estoque, cliente, caixa
+    aberto e as 3 linhas de auditoria removidos depois; empresa 4 voltou a
+    zero em tudo e às 13 linhas de auditoria.
+
+    Nenhum bug encontrado — segundo fluxo completo seguido testado com
+    console aberto sem achado (ver item 81), registrado pelo mesmo motivo
+    de transparência.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
