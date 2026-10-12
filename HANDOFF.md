@@ -3347,6 +3347,44 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     console aberto sem achado (ver item 81), registrado pelo mesmo motivo
     de transparência.
 
+83. **Fluxo completo de fechamento de caixa (contagem cega por cédula +
+    divergência + explicação) testado ao vivo com console aberto —
+    limpo, terceiro fluxo seguido sem achado.** Pedido explícito do
+    usuário depois dos itens 81 (venda) e 82 (devolução).
+
+    Roteiro, numa aba nova (console zerado), empresa 4: abrir caixa com
+    fundo R$150 → vender "ZZTESTE Produto Caixa" por R$45 em dinheiro
+    (esperado passa a ser R$150+R$45=R$195) → Caixa → contar por cédula
+    DE PROPÓSITO um valor diferente do esperado (1×R$100 + 1×R$50 +
+    2×R$20 = R$190, R$5 a menos) pra exercitar tanto a contagem cega
+    quanto a classificação de divergência, não só o caminho feliz onde
+    bate certo → "Fechar caixa e conferir" → confirmar no diálogo
+    ("a contagem não pode mais ser alterada") → "Registrar explicação"
+    (obrigatória acima de R$2 de diferença) → motivo. Console checado
+    depois de CADA passo (abrir caixa, vender, digitar cada cédula,
+    fechar, confirmar, registrar explicação) — zero erro em todos.
+
+    Verificado no Postgres: `cash_registers` fechado com
+    `closing_amount=190`, `expected_amount=195`, `difference_amount=-5`,
+    `count_breakdown` batendo exato com as cédulas digitadas
+    (`{"2000":2,"5000":1,"10000":1}` em centavos), `difference_reason`
+    gravado, `difference_explained_at`/`_by` preenchidos — e o detalhe que
+    PROVA a contagem cega de verdade: `expected_revealed_at` ficou `null`
+    (nunca revelei o esperado antes de fechar). Na tela, a mesma coisa:
+    "Falta R$5,00", "Conferência cega", aviso de que diferença acima de
+    R$2 precisa de explicação (bate com `CASH_DIFFERENCE_TOLERANCE=2`),
+    breakdown de cédulas exibido igual ao digitado. 4 linhas novas de
+    auditoria (`cash_register.open`, `sale.create`, `cash_register.close`,
+    `cash_register.explain-difference`).
+
+    Venda, pagamento, movimento de estoque, movimento de caixa, produto,
+    variante, estoque, caixa fechado e as 4 linhas de auditoria removidos
+    depois; empresa 4 voltou a zero em tudo e às 13 linhas de auditoria.
+
+    Terceiro fluxo completo (venda, devolução, fechamento de caixa) testado
+    com console aberto sem achado — registrado pelo mesmo motivo de
+    transparência dos itens 81/82.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
