@@ -3480,6 +3480,94 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha as correções desta sessão
     depois de atualizado.
 
+86. **Revisão de NFC-e (código, não fluxo ao vivo — a emissão está
+    estruturalmente inativa no piloto: `companies.document` nulo,
+    `company_settings.nfce_enabled = false`, `FOCUS_NFE_TOKEN` não
+    configurado, tudo confirmado de novo nesta sessão, igual ao item 38).
+    Sem isso dá pra testar a UI/leitura, não uma emissão de verdade contra
+    o Focus NFe/SEFAZ — por isso esta rodada foi revisão de código mais
+    verificação ao vivo só da parte que é lógica pura, não um fluxo
+    ponta a ponta como os itens 81-85.**
+
+    **Achado real: Presumido e Lucro Real emitiriam nota fiscalmente
+    incompleta, sem aviso nenhum na tela.** Em Configurações → Empresa, o
+    seletor "Regime tributário" oferece as 4 opções (MEI, Simples,
+    Presumido, Lucro Real) como se todas emitissem igual. Não emitem:
+    `buildNfcePayload` (`src/lib/nfce.ts`) só monta o grupo de ICMS da
+    forma que o Simples/MEI usa (CSOSN "102", sem detalhar imposto por
+    item). Presumido/Real usam CST "00" ("tributado integralmente"), que
+    pelo manual da NF-e (grupo ICMS00) exige TAMBÉM base de cálculo,
+    alíquota e valor do ICMS por item — nenhum desses três campos é
+    montado, pra regime nenhum. Confirmei a exigência na documentação
+    pública de campos da própria Focus NFe (`campos.focusnfe.com.br`),
+    não só por dedução: pra CST "00" ela lista `icms_modalidade_base_calculo`,
+    `icms_base_calculo`, `icms_aliquota` e `icms_valor` como esperados;
+    pra CSOSN "102" esses campos nem se aplicam. Resultado prático pra
+    uma loja Presumido/Real que ligasse a emissão: toda nota seria
+    recusada pela Focus/SEFAZ por campo obrigatório faltando — ou, pior
+    hipótese, autorizada com ICMS zerado se algum dia o grupo ICMS00 for
+    completado errado. Ou seja, exatamente a classe de erro que o resto
+    deste subsistema foi desenhado pra evitar (o comentário de
+    `ncm.ts`: "o erro não aparece no cadastro... aparece na recusa do
+    SEFAZ, no balcão, com o cliente esperando a nota").
+
+    Esse achado também cobre de brinde outra simplificação já documentada
+    no código (`pisCofinsCst` sempre devolve CST "49", certo só pro
+    Simples/MEI): com o bloqueio novo, nenhum regime fora do Simples/MEI
+    chega perto de emitir, então as duas simplificações (ICMS e PIS/COFINS)
+    ficam cobertas pelo mesmo bloqueio em vez de precisar de dois avisos
+    separados.
+
+    **Correção**: novo bloqueio `regime-icms` em `nfceBlockers`
+    (`src/lib/nfce-readiness.ts`), disparado quando `crtForRegime(regime)
+    === 3` (Presumido/Real). Entra no grupo "Resolve aqui no sistema" do
+    painel de pré-checagem (`NfceReadinessPanel`), com texto explicando que
+    é uma limitação do sistema, não um campo pra preencher. Precisou de
+    `regime: TaxRegime` novo em `ReadinessInput`, passado por
+    `nfceReadinessFn` a partir do `company.tax_regime` já consultado
+    (mesma conversão seguro-padrão que `loadEmitInput` já fazia:
+    `isTaxRegime(...) ? ... : "simples"`).
+
+    Verificado ao vivo contra o módulo REAL (não uma reimplementação): um
+    script chamando `nfceBlockers` direto do `src/lib/nfce-readiness.ts`
+    do projeto, variando só o campo `regime`, confirmou Simples/MEI sem
+    bloqueio (`prontoParaValer: true` com o resto ok) e Presumido/Real
+    com `["regime-icms"]` e `prontoParaValer: false`. Conferido também
+    que o piloto (empresa 4) está em `tax_regime='simples'` — este fix
+    não muda nada do estado atual dele, só fecha a porta pra quem
+    escolher os outros dois regimes no futuro. `typecheck`/`lint` (0
+    erros, os mesmos 5 avisos antigos) limpos; `npm test` foi de 481 pra
+    483 (dois `it()` novos: bloqueio dispara pra presumido/real, não
+    dispara pra simples/mei).
+
+    **Segundo achado, menor: `focusRequest` (a função que chama a Focus
+    NFe) não tinha timeout.** Uma resposta travada do Focus/SEFAZ
+    seguraria a chamada pra sempre — e `emitNfceFn`/`cancelNfceFn` não são
+    disparar-e-esquecer, quem clicou em "Emitir"/"Cancelar" fica esperando
+    a resposta. Corrigido com `AbortSignal.timeout(30_000)` e uma mensagem
+    em português pro caso de disparar. Testado o mecanismo em si (não
+    contra a Focus NFe de verdade, que exigiria o token que o piloto não
+    tem): um servidor HTTP local que nunca responde, com o mesmo padrão
+    de código, confirmou `e.name === "TimeoutError"` depois de 1,5s —
+    o `catch` novo reconhece esse nome exato.
+
+    **Revisado e confirmado correto, sem mudança**: idempotência da
+    emissão via `buildNfceRef` (ambiente entra na referência) + índice
+    único `sales_nfce_ref_uidx` no banco; chamada ao SEFAZ ficar DE
+    PROPÓSITO fora da transação de cancelamento/devolução de venda em
+    `commerce.ts` (comentário já explica: transação aberta esperando rede
+    seguraria lock da tabela de vendas); a checagem de permissão do
+    `refreshNfceStatusFn` (achado e corrigido numa sessão anterior) segue
+    no lugar; validação de NCM/CFOP (`src/lib/ncm.ts`, também corrigida
+    antes) segue robusta.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado
+    — e como a emissão de NFC-e está desligada e sem credencial no piloto
+    hoje, nada deste item muda o comportamento dele agora; é uma correção
+    pra quando/se a loja virar emissão de verdade ou se outro cliente do
+    sistema usar Presumido/Real.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

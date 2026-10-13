@@ -15,6 +15,7 @@ const pronto: ReadinessInput = {
   hasIe: true,
   produtosTotal: 48,
   produtosSemNcm: 0,
+  regime: "simples",
 };
 
 describe("nfceBlockers", () => {
@@ -32,6 +33,7 @@ describe("nfceBlockers", () => {
       hasIe: false,
       produtosTotal: 48,
       produtosSemNcm: 48,
+      regime: "simples",
     };
     const ids = nfceBlockers(zerado).map((b) => b.id);
     assert.deepEqual(ids, ["token", "cnpj", "ie", "ncm", "enabled"]);
@@ -63,6 +65,19 @@ describe("nfceBlockers", () => {
     // Sem isto a tela ficaria "tudo certo" e a ação nem apareceria em Vendas.
     const ids = nfceBlockers({ ...pronto, enabled: false }).map((b) => b.id);
     assert.deepEqual(ids, ["enabled"]);
+  });
+
+  it("Presumido e Lucro Real bloqueiam: ICMS por item não é modelado", () => {
+    // buildNfcePayload só manda CSOSN (Simples/MEI); CST 00 (Presumido/Real)
+    // exige base de cálculo e alíquota por item, que o payload não monta --
+    // sem este bloqueio a tela diria "pronto" e a recusa apareceria no SEFAZ.
+    assert.deepEqual(nfceBlockers({ ...pronto, regime: "presumido" }).map((b) => b.id), ["regime-icms"]);
+    assert.deepEqual(nfceBlockers({ ...pronto, regime: "real" }).map((b) => b.id), ["regime-icms"]);
+  });
+
+  it("Simples e MEI não disparam o bloqueio de regime", () => {
+    assert.deepEqual(nfceBlockers({ ...pronto, regime: "simples" }), []);
+    assert.deepEqual(nfceBlockers({ ...pronto, regime: "mei" }), []);
   });
 });
 

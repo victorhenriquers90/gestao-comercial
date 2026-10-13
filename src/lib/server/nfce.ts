@@ -49,6 +49,12 @@ function focusToken(): string | undefined {
   return process.env.FOCUS_NFE_TOKEN || undefined;
 }
 
+// Sem isto, uma Focus NFe/SEFAZ que nao responde segura a requisicao (e,
+// no emitNfceFn sincrono, o operador no balcao) pra sempre -- nao ha timeout
+// padrao no fetch do Node. 30s cobre o round-trip real contra o SEFAZ
+// (minutos sao sinal de problema, nao de lentidao normal).
+const FOCUS_TIMEOUT_MS = 30_000;
+
 async function focusRequest(
   path: string,
   method: "POST" | "GET" | "DELETE",
@@ -56,14 +62,23 @@ async function focusRequest(
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const token = focusToken();
   if (!token) throw new Error("Emissão de nota fiscal não configurada (FOCUS_NFE_TOKEN ausente).");
-  const res = await fetch(`${FOCUS_BASE_URL[focusEnv()]}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${FOCUS_BASE_URL[focusEnv()]}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(FOCUS_TIMEOUT_MS),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      throw new Error("A Focus NFe não respondeu em 30s. Tente de novo em alguns instantes.");
+    }
+    throw e;
+  }
   const parsed = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, body: parsed as Record<string, unknown> };
 }
@@ -130,6 +145,7 @@ export const nfceReadinessFn = createServerFn({ method: "GET" })
       hasIe: Boolean(nullableStr(company?.ie)),
       produtosTotal: num(produtos?.total),
       produtosSemNcm: num(produtos?.sem_ncm),
+      regime: isTaxRegime(company?.tax_regime) ? company.tax_regime : "simples",
     };
 
     return {

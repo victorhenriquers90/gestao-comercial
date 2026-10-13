@@ -21,6 +21,7 @@
  * lista parecer uma fila de tarefas do lojista quando metade dela nao esta
  * no sistema -- e ele ficaria preenchendo campo achando que ia emitir no fim.
  */
+import { crtForRegime, type TaxRegime } from "./nfce.ts";
 
 export type BlockerScope = "sistema" | "fora";
 
@@ -41,6 +42,7 @@ export type ReadinessInput = {
   hasIe: boolean;
   produtosTotal: number;
   produtosSemNcm: number;
+  regime: TaxRegime;
 };
 
 export function nfceBlockers(input: ReadinessInput): Blocker[] {
@@ -71,6 +73,28 @@ export function nfceBlockers(input: ReadinessInput): Blocker[] {
       id: "ie",
       label: "Inscrição Estadual não cadastrada",
       detail: "Configurações → Empresa. A NFC-e é um documento estadual e a IE é obrigatória.",
+      scope: "sistema",
+    });
+  }
+
+  /*
+    CSOSN "102" (Simples/MEI) nao detalha ICMS por item -- e o unico caminho
+    que `buildNfcePayload` monta hoje. CST "00" (Presumido/Real) exige junto
+    base de calculo, aliquota e valor do ICMS por item (manual da NF-e,
+    grupo ICMS00); sem isso a nota sai incompleta e a SEFAZ recusa -- ou,
+    pior, alguem preenche esses campos errado depois e a nota AUTORIZA com
+    ICMS zerado. Bloquear aqui, antes do balcao, e o mesmo raciocinio do
+    bloqueio de NCM acima.
+  */
+  if (crtForRegime(input.regime) === 3) {
+    out.push({
+      id: "regime-icms",
+      label: "ICMS deste regime ainda não é calculado por item",
+      detail:
+        "Presumido e Lucro Real tributam o ICMS por item (base de cálculo e alíquota próprias por produto), " +
+        "e este sistema hoje só monta a nota pelo Simples Nacional/MEI, sem esse detalhamento. Emitir assim " +
+        "seria recusado no SEFAZ ou saída com ICMS zerado. Avise quem mantém o sistema antes de ligar a " +
+        "emissão com este regime.",
       scope: "sistema",
     });
   }
