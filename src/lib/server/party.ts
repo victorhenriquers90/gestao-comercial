@@ -305,7 +305,12 @@ export const getCustomerFn = createServerFn({ method: "POST" })
                coalesce(sum(ri.amount), 0) as returned_amount
           from return_items ri where ri.sale_item_id = si.id
       ) ret on true
-      where s.customer_id = ${data.id} and s.status in ('finalizada','devolvida_parcial')
+      -- Mesmo filtro do CUSTOMER_AGGREGATES (company_id + deleted_at):
+      -- sales.deleted_at nunca e gravado hoje, mas o dia que alguem ligar
+      -- "excluir venda", esta consulta e a de "stats" abaixo tinham que
+      -- parar de contar venda excluida igual as outras telas ja fazem.
+      where s.customer_id = ${data.id} and s.company_id = ${tenant.companyId}
+        and s.status in ('finalizada','devolvida_parcial') and s.deleted_at is null
       group by si.description
       order by total desc
       limit 20
@@ -332,7 +337,8 @@ export const getCustomerFn = createServerFn({ method: "POST" })
           join sale_items si on si.id = ri.sale_item_id
          where si.sale_id = sales.id
       ) ret on true
-      where customer_id = ${data.id} and status in ('finalizada','devolvida_parcial')
+      where customer_id = ${data.id} and company_id = ${tenant.companyId}
+        and status in ('finalizada','devolvida_parcial') and deleted_at is null
     `;
     return dump({
       customer: {

@@ -549,46 +549,9 @@ export const checkoutFn = createServerFn({ method: "POST" })
       };
     });
 
-    /*
-      Limite de credito do cliente, conferido ANTES de gravar qualquer coisa.
-
-      `credit_limit` existia no cadastro, aparecia na ficha e nunca era olhado
-      numa venda: dava pra vender 5 mil no crediario pra quem tem limite de
-      500. Controle que existe na tela e nao existe no servidor e pior que
-      nao ter, porque o lojista acredita estar protegido.
-
-      Conta o que o cliente JA deve (titulos pendentes e parciais, de
-      qualquer origem) mais o crediario desta venda. Limite zero significa
-      "nao configurado" -- ver src/lib/crediario.ts.
-    */
     const totalCrediario = pagamentos
       .filter((p) => p.method === "crediario")
       .reduce((a, p) => a + p.amount, 0);
-    if (totalCrediario > 0 && customerId) {
-      const [cli] = await sql<{ credit_limit: string | number }>`
-        select credit_limit from customers
-         where id = ${customerId} and company_id = ${tenant.companyId}
-      `;
-      const [aberto] = await sql<{ v: string | number }>`
-        select coalesce(sum(amount - received_amount), 0) as v
-          from accounts_receivable
-         where company_id = ${tenant.companyId} and customer_id = ${customerId}
-           and deleted_at is null and status in ('pendente', 'parcial', 'vencido')
-      `;
-      /*
-        A lista de status e a MESMA do `open_balance` que a ficha do cliente
-        mostra (party.ts). Se divergisse, o lojista veria um numero na tela e
-        o bloqueio usaria outro -- e a divergencia cairia pro lado errado:
-        'vencido' e derivado na leitura e nunca chega a ser gravado, mas
-        deixa-lo de fora aqui daria MAIS credito a quem esta atrasado.
-      */
-      const check = checkCreditLimit({
-        limite: num(cli?.credit_limit),
-        emAberto: num(aberto?.v),
-        novo: totalCrediario,
-      });
-      if (!check.ok) throw new Error(check.motivo);
-    }
     const taxasCartao = pagamentos.some((p) => isCardMethod(p.method))
       ? await loadCardRates(sql, tenant.companyId)
       : [];
@@ -613,6 +576,56 @@ export const checkoutFn = createServerFn({ method: "POST" })
     */
     try {
       const gravado = await sql.transaction(async (sql) => {
+        /*
+          Limite de credito do cliente, conferido AQUI DENTRO (nao antes da
+          transacao abrir) e com `for update` na linha do cliente -- de
+          proposito.
+
+          `credit_limit` existia no cadastro, aparecia na ficha e nunca era
+          olhado numa venda: dava pra vender 5 mil no crediario pra quem tem
+          limite de 500. Controle que existe na tela e nao existe no
+          servidor e pior que nao ter, porque o lojista acredita estar
+          protegido.
+
+          Sem o `for update`: dois caixas vendendo pro MESMO cliente no
+          crediario, quase ao mesmo tempo, cada um le "ja deve X" ANTES do
+          outro commitar o seu -- os dois veem espaço sob o limite, os dois
+          passam, a soma dos dois pode furar o limite sem o servidor nunca
+          perceber. Travar a linha do cliente serializa: o segundo caixa
+          espera o primeiro terminar (commit ou rollback) e só então lê o
+          saldo JÁ incluindo a venda dele.
+
+          Conta o que o cliente JA deve (titulos pendentes e parciais, de
+          qualquer origem) mais o crediario desta venda. Limite zero
+          significa "nao configurado" -- ver src/lib/crediario.ts.
+        */
+        if (totalCrediario > 0 && customerId) {
+          const [cli] = await sql<{ credit_limit: string | number }>`
+            select credit_limit from customers
+             where id = ${customerId} and company_id = ${tenant.companyId}
+             for update
+          `;
+          const [aberto] = await sql<{ v: string | number }>`
+            select coalesce(sum(amount - received_amount), 0) as v
+              from accounts_receivable
+             where company_id = ${tenant.companyId} and customer_id = ${customerId}
+               and deleted_at is null and status in ('pendente', 'parcial', 'vencido')
+          `;
+          /*
+            A lista de status e a MESMA do `open_balance` que a ficha do
+            cliente mostra (party.ts). Se divergisse, o lojista veria um
+            numero na tela e o bloqueio usaria outro -- e a divergencia
+            cairia pro lado errado: 'vencido' e derivado na leitura e nunca
+            chega a ser gravado, mas deixa-lo de fora aqui daria MAIS
+            credito a quem esta atrasado.
+          */
+          const check = checkCreditLimit({
+            limite: num(cli?.credit_limit),
+            emAberto: num(aberto?.v),
+            novo: totalCrediario,
+          });
+          if (!check.ok) throw new Error(check.motivo);
+        }
         const number = await nextNumber(sql, tenant.companyId, "sale");
         const [sale] = await sql<{ id: number }>`
           insert into sales (

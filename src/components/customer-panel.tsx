@@ -73,10 +73,15 @@ export function CustomerPanel({
     void qc.invalidateQueries({ queryKey: ["crm-tasks"] });
   }
 
-  const openRec = (detail.data?.receivables ?? []).reduce(
-    (a, r) => a + Math.max(0, r.amount - r.received),
-    0,
-  );
+  // Mesma lista de status que o bloqueio de limite de credito usa no
+  // checkout (commerce.ts): cancelar um titulo so muda o status, nunca
+  // reduz `amount` -- um titulo parcialmente pago e depois cancelado
+  // (ex.: venda cancelada com parte ja recebida) ainda tinha a diferenca
+  // somada aqui, mostrando o cliente "no vermelho" por uma divida que o
+  // proprio sistema nao contaria mais contra o limite dele.
+  const openRec = (detail.data?.receivables ?? [])
+    .filter((r) => r.status === "pendente" || r.status === "parcial" || r.status === "vencido")
+    .reduce((a, r) => a + Math.max(0, r.amount - r.received), 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

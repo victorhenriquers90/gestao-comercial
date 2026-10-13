@@ -3740,6 +3740,88 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
 
 
+89. **Revisão de Clientes/CRM. Achado principal: condição de corrida real
+    no limite de crédito do crediário — dois caixas vendendo pro MESMO
+    cliente quase ao mesmo tempo podiam juntos furar o limite sem o
+    servidor notar.** A checagem de `credit_limit` (introduzida no commit
+    `6a694a0`, nunca tinha ganhado uma entrada própria no HANDOFF nem
+    passado por esta rodada de revisão) lia o limite e a dívida já aberta
+    do cliente ANTES de `sql.transaction` abrir, sem `for update` em
+    lugar nenhum — ao contrário de toda outra checagem "lê saldo, decide,
+    grava" deste mesmo arquivo (cancelamento, devolução, promoções todas
+    travam a linha primeiro). Concretamente: caixa A e caixa B, mesmo
+    cliente, cada um lê "já deve X" no mesmo instante, os dois veem espaço
+    sob o limite, os dois commitam a venda deles — a soma das duas pode
+    passar o limite configurado e o sistema nunca percebe.
+
+    Corrigido: a checagem (limite + soma do que já está aberto) passou
+    pra DENTRO da transação do checkout, com `select credit_limit from
+    customers ... for update` antes de qualquer coisa — trava a linha do
+    cliente, então o segundo caixa espera o primeiro terminar (commit ou
+    rollback) e só então lê o saldo já incluindo a venda dele.
+
+    **Verificado ao vivo contra o Postgres real, reproduzindo a race de
+    verdade** (cliente descartável, limite R$500): simulei duas
+    transações concorrentes sem a trava (o texto antigo, rodado lado a
+    lado) — as duas leram "aberto = 0" ao mesmo tempo, as duas commitaram
+    uma dívida de R$400 cada, dívida final R$800 contra um limite de
+    R$500, sem erro nenhum. Depois, com a trava (texto novo): abri a
+    transação A, travei a linha do cliente, disparei a mesma consulta na
+    transação B sem esperar — B ficou parado por 1025ms (confirmado: não
+    retornou antes de 1s de sleep), só liberou depois que A commitou a
+    venda dela, e nesse momento B já via "aberto = 400" (o commit de A),
+    não mais zero. `checkCreditLimit(500, 400, 150)` nessas condições
+    recusaria (550 > 500) — exatamente o comportamento que faltava.
+
+    **Achado 2, ao vivo, não é hipotético**: o KPI "Em aberto" na ficha do
+    cliente (`customer-panel.tsx`) somava TODO `accounts_receivable`,
+    status nenhum excluído — um título parcialmente pago e DEPOIS
+    cancelado (cancelar só muda `status` pra `'cancelado'`, nunca ajusta
+    `amount`/`received_amount` — confirmado lendo `commerce.ts` linha
+    ~1153) continuava contando a diferença como dívida aberta. Isso é
+    DIFERENTE do número que realmente bloqueia o crediário no checkout
+    (que já filtra `status in ('pendente','parcial','vencido')`) — a
+    ficha do cliente podia mostrar o cliente "no vermelho" por uma dívida
+    que o próprio sistema nem levaria em conta. Corrigido filtrando pelos
+    mesmos 3 status antes de somar. Verificado ao vivo: título R$100 com
+    R$40 pago e cancelado — painel antigo somava R$60 de "Em aberto";
+    painel novo soma R$0 (correto, título cancelado não é dívida).
+
+    **Achado 3, latente (não afeta o piloto hoje, corrigido por
+    consistência)**: três consultas calculam "total comprado"/"produtos
+    favoritos" de um cliente (`CUSTOMER_AGGREGATES`, compartilhada por
+    lista e quadro CRM; e as duas consultas próprias de `getCustomerFn`
+    que alimentam a ficha de detalhe). As duas de `getCustomerFn` não
+    filtravam `company_id`/`deleted_at is null` em `sales` como a
+    primeira já filtra. Hoje `sales.deleted_at` nunca é gravado por
+    nenhum código (confirmado por grep), então as três concordam — mas no
+    dia que "excluir venda" existir, a ficha do cliente divergiria da
+    lista/quadro CRM pro mesmo número, igual ao bug já corrigido no item
+    2 (mas que não cobriu estas duas consultas). Corrigido pra já nascer
+    consistente.
+
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (483, inalterado) limpos. Limpeza de todo o dado de teste confirmada:
+    `customers`/`accounts_receivable`/`sales` de volta a 0 pra empresa 4,
+    `audit_logs` em 13.
+
+    **Confirmado, sem bug**: não existe funcionalidade de fidelidade,
+    cashback ou pontos neste sistema (grep não achou nada — não é lacuna
+    escondida, é recurso que nunca foi construído). Rastro de auditoria
+    de `saveCustomerFn` (itens 56/69) segue intacto, inclusive pra mudança
+    de limite de crédito. Não existe `deleteCustomerFn`/botão de excluir
+    cliente na UI hoje — os filtros `deleted_at is null` espalhados pelo
+    código são defensivos pra um recurso que ainda não foi ligado a nada
+    (o item 67 testou o efeito via SQL direto, não um botão real).
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado
+    — e a condição de corrida do limite de crédito é o tipo de bug que só
+    aparece com MAIS de um caixa ativo ao mesmo tempo, o que pode nunca
+    ter acontecido ainda no piloto (hoje só tem 1 usuário cadastrado, por
+    isto do item 38) — mas é exatamente o cenário do dia a dia com duas
+    lojas (Centro e Shopping) rodando PDV em paralelo.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
