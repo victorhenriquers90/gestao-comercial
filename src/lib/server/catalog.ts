@@ -3,7 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { ncmValidSql, parseCfop, parseNcm } from "@/lib/ncm";
 import { num } from "@/lib/utils";
-import { assertOwned, assertStore, assertVariants, audit, nextNumber, requireTenant } from "./context";
+import { assertOwned, assertStore, assertVariants, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
 import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
@@ -877,11 +877,27 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
       antes de regravar. Um erro entre o delete e os inserts deixava o
       pedido existindo, com valor total, e sem item nenhum dentro.
     */
+    // Mesma forma que listTargetsFn/saveSupplierFn usam pro resumo de
+    // auditoria: so os campos que importam pra reconstruir o que mudou, nao
+    // o registro inteiro (itens entram so como contagem -- diferenca de
+    // quantidade/custo linha a linha e demais pra uma linha de auditoria).
+    const after = {
+      supplierId: data.supplierId ?? null,
+      storeId: data.storeId,
+      status: data.status,
+      itemCount: itens.length,
+      freight: frete,
+      tax: imposto,
+      discount: desconto,
+      total,
+    };
     const purchaseId = await sql.transaction(async (sql) => {
       let id = data.id;
       if (id) {
-        const cur = await sql<{ status: string }>`
-          select status from purchases where id = ${id} and company_id = ${tenant.companyId} for update
+        const cur = await sql<Row>`
+          select status, supplier_id, store_id, freight, tax, discount, total,
+                 (select count(*)::int from purchase_items where purchase_id = ${id}) as item_count
+          from purchases where id = ${id} and company_id = ${tenant.companyId} for update
         `;
         if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
         await sql`
@@ -891,6 +907,23 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
           where id = ${id} and company_id = ${tenant.companyId}
         `;
         await sql`delete from purchase_items where purchase_id = ${id}`;
+        await auditUpdate(
+          sql,
+          tenant,
+          "purchase",
+          id,
+          {
+            supplierId: cur[0].supplier_id,
+            storeId: cur[0].store_id,
+            status: cur[0].status,
+            itemCount: num(cur[0].item_count),
+            freight: num(cur[0].freight),
+            tax: num(cur[0].tax),
+            discount: num(cur[0].discount),
+            total: num(cur[0].total),
+          },
+          after,
+        );
       } else {
         const number = await nextNumber(sql, tenant.companyId, "purchase");
         const [row] = await sql<{ id: number }>`
@@ -902,6 +935,7 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
           ) returning id
         `;
         id = row!.id;
+        await audit(sql, tenant, "create", "purchase", id, null, after);
       }
       for (const item of itens) {
         await sql`

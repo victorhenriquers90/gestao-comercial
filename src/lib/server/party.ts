@@ -650,8 +650,15 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
     const rows = await sql.query<Row>(
       `select count(*) over() as total,
               s.*,
-              coalesce((select sum(p.total) from purchases p where p.supplier_id = s.id),0) as total_bought,
-              (select count(*) from purchases p where p.supplier_id = s.id)::int as orders,
+              -- "Comprado" so conta pedido RECEBIDO: orcamento (cotacao, nunca
+              -- virou compra) e cancelado nao tiraram dinheiro do bolso --
+              -- contar os dois inflava "Comprado" de fornecedor com cotacao
+              -- aberta ou pedido cancelado, sem nunca ter comprado nada dele.
+              coalesce((select sum(p.total) from purchases p where p.supplier_id = s.id and p.status = 'recebido'),0) as total_bought,
+              -- "Pedidos" ja e mais largo (inclui pedido em andamento, nao so
+              -- recebido), mas orcamento e cancelado continuam de fora: nenhum
+              -- dos dois e um pedido de verdade feito a este fornecedor.
+              (select count(*) from purchases p where p.supplier_id = s.id and p.status not in ('orcamento','cancelado'))::int as orders,
               coalesce((select sum(ap.amount - ap.paid_amount) from accounts_payable ap
                          where ap.supplier_id = s.id and ap.status in ('pendente','parcial','vencido')),0) as open_balance
          from suppliers s
@@ -709,16 +716,22 @@ export const getSupplierFn = createServerFn({ method: "POST" })
       order by due_date
     `;
     const products = await sql<Row>`
+      -- so pedido RECEBIDO: item de orcamento/pedido cancelado nunca foi
+      -- comprado de verdade, mesmo raciocinio do stats.total abaixo.
       select p.name, count(*)::int as times, coalesce(sum(pi.total),0) as total
       from purchase_items pi
       join purchases pu on pu.id = pi.purchase_id
       join products p on p.id = pi.product_id
-      where pu.supplier_id = ${data.id} and pu.company_id = ${tenant.companyId}
+      where pu.supplier_id = ${data.id} and pu.company_id = ${tenant.companyId} and pu.status = 'recebido'
       group by p.name
       order by times desc limit 15
     `;
+    // Mesma regra do listSuppliersFn: "total" (dinheiro de verdade) so conta
+    // recebido; "n" (pedidos) tambem aceita em andamento, so exclui orcamento
+    // e cancelado -- nenhum dos dois chegou a ser um pedido de verdade.
     const stats = await sql<{ total: string | number; n: number }>`
-      select coalesce(sum(total),0) as total, count(*)::int as n
+      select coalesce(sum(total) filter (where status = 'recebido'), 0) as total,
+             count(*) filter (where status not in ('orcamento','cancelado'))::int as n
       from purchases
       where supplier_id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
     `;

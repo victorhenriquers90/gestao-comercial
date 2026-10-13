@@ -2,6 +2,7 @@ import {
   COMMISSION_KIND_LABELS,
   PAYMENT_LABELS,
   PROMO_KIND_LABELS,
+  PURCHASE_STATUS_LABELS,
   RECEIPT_METHOD_LABELS,
   TARGET_BONUS_LABELS,
   TIER_BASIS_LABELS,
@@ -93,7 +94,8 @@ type FieldKind =
   | "commissionKind"
   | "tierBasis"
   | "bonusKind"
-  | "tiers";
+  | "tiers"
+  | "purchaseStatus";
 
 type FieldDef = { label: string; kind: FieldKind };
 
@@ -180,6 +182,16 @@ const ENTITY_FIELDS: Record<string, Record<string, FieldDef>> = {
     bonusKind: { label: "bônus", kind: "bonusKind" },
     bonusValue: { label: "valor do bônus", kind: "text" },
   },
+  purchase: {
+    supplierId: { label: "fornecedor", kind: "ref" },
+    storeId: { label: "loja", kind: "ref" },
+    status: { label: "situação", kind: "purchaseStatus" },
+    itemCount: { label: "itens", kind: "text" },
+    freight: { label: "frete", kind: "money" },
+    tax: { label: "imposto", kind: "money" },
+    discount: { label: "desconto", kind: "money" },
+    total: { label: "total", kind: "money" },
+  },
 };
 
 /** Alguns campos mudam de unidade conforme o tipo do registro: valor por peça não é percentual. */
@@ -201,6 +213,7 @@ function omitOnCreate(def: FieldDef, value: unknown, rec: Record<string, unknown
   if (def.kind === "tiers" && Array.isArray(value) && value.length === 0) return true;
   if (def.kind === "tierBasis" && value === "none") return true;
   if ((key === "minAmount" || key === "priority") && Number(value) === 0) return true;
+  if ((key === "freight" || key === "tax" || key === "discount") && Number(value) === 0) return true;
   if (key === "bonusKind" && value === "none") return true;
   if (key === "bonusValue" && rec.bonusKind === "none") return true;
   return false;
@@ -255,6 +268,8 @@ function show(kind: FieldKind, v: unknown): string {
       return TIER_BASIS_LABELS[String(v)] ?? String(v);
     case "bonusKind":
       return TARGET_BONUS_LABELS[v as TargetBonusKind] ?? String(v);
+    case "purchaseStatus":
+      return PURCHASE_STATUS_LABELS[String(v)] ?? String(v);
     case "tiers": {
       if (!Array.isArray(v) || v.length === 0) return "nenhuma";
       return v

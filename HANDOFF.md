@@ -3657,6 +3657,89 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     dinheiro de comissão de verdade, não só o que aparece na tela.
 
 
+88. **Revisão de Compras/Fornecedores. Dois achados corrigidos: estatística
+    de fornecedor contava orçamento e pedido cancelado como "comprado", e
+    salvar/editar um pedido de compra (antes de receber) não deixava
+    rastro de auditoria nenhum.**
+
+    **Achado 1**: `listSuppliersFn` (cards "Comprado"/"Pedidos" em
+    Fornecedores) e `getSupplierFn` (os mesmos dois números + "produtos
+    mais comprados" na tela de detalhe) somavam/contavam TODA linha de
+    `purchases` do fornecedor, status nenhum excluído. `orcamento`
+    (cotação, nunca virou pedido de verdade) e `cancelado` entravam igual
+    a `recebido` — um fornecedor com 3 cotações de R$1.000 e nenhuma
+    compra de verdade mostrava "Comprado: R$3.000,00". É alcançável hoje:
+    a aba "Sugestão de compra" já gera pedidos em `orcamento`
+    automaticamente, e o seletor de status no diálogo "Novo pedido"
+    permite criar direto como `cancelado`. Corrigido com a mesma regra nos
+    dois lugares: "Comprado" (dinheiro de verdade) só conta
+    `status='recebido'`; "Pedidos" (contagem) aceita pedido em andamento,
+    só exclui `orcamento` e `cancelado` — nenhum dos dois chegou a ser um
+    pedido de verdade feito ao fornecedor. Mesma regra aplicada na lista
+    de "produtos mais comprados" do `getSupplierFn`.
+
+    **Achado 2**: `savePurchaseFn` (criar/editar pedido antes de receber)
+    nunca chamava `audit()`/`auditUpdate()` — só `receivePurchaseFn`
+    registrava alguma coisa (o "recebeu"). A mesma lacuna já tinha sido
+    fechada pra cliente/fornecedor/vendedor (itens 56/69), mas o sweep da
+    época não cobriu Compras. Corrigido: `audit`/`auditUpdate` nos dois
+    ramos (criar e editar), com um `ENTITY_FIELDS.purchase` novo em
+    `audit-label.ts` (fornecedor, loja, situação, nº de itens, frete,
+    imposto, desconto, total) — sem isso, a entrada de auditoria apareceria
+    no título ("Fulano criou compra #X") mas sem detalhe nenhum, porque
+    nenhum desses nomes de campo existia no mapa genérico usado por
+    entidades sem mapa próprio. `freight`/`tax`/`discount` ficam de fora
+    na criação quando são zero (maioria dos pedidos só usa frete, e mesmo
+    esse é raro) — mesma regra de silenciar campo vazio que `minAmount`/
+    `priority` já tinham.
+
+    **Verificado ao vivo contra o Postgres real** (empresa 4, zerada antes
+    e depois): fornecedor descartável com 4 pedidos (`orcamento`,
+    `pedido`, `cancelado`, `recebido` de R$1.000/300/500/200) — a consulta
+    corrigida devolveu `Comprado=R$200` e `Pedidos=2`; a consulta antiga,
+    rodada lado a lado, devolveria `R$2.000` e `4`. O módulo
+    `audit-label.ts` é puro (sem I/O), então testei `auditChanges`/
+    `auditTitle` de verdade (não uma cópia): criação mostrou "fornecedor:
+    nº 5 · loja: nº 7 · situação: Pedido · itens: 3 · total: R$ 450,50"
+    (frete/imposto/desconto corretamente omitidos, todos zero); uma edição
+    mudando só o status mostrou só "situação: Pedido → Cancelado", nada
+    mais — confirma que o diff não teria ruído com campo que não mudou.
+    Limpeza confirmada: fornecedor e os 4 pedidos de teste removidos,
+    todas as tabelas (`sellers`/`categories`/`products`/`suppliers`/
+    `purchases`/`sales`/etc.) de volta a 0 pra empresa 4, `audit_logs` em
+    13 (os testes rodaram fora de `audit()`, direto no banco).
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (483, inalterado) limpos.
+
+    **Achado maior, NÃO corrigido — fica para decisão de produto, não é
+    bug pra IA resolver sozinha**: não existe NENHUMA forma de desfazer um
+    pedido de compra recebido por engano. `savePurchaseFn` recusa qualquer
+    edição depois de `status='recebido'`; não existe `cancelPurchaseFn`
+    nem devolução-ao-fornecedor em lugar nenhum do código;
+    `cancelPayableFn` recusa explicitamente cancelar a conta a pagar
+    gerada por uma compra ("Conta gerada pelo recebimento de uma compra
+    não pode ser cancelada aqui"), deixando implícito que o desfazer seria
+    "no pedido" — caminho que não existe. Receber um pedido errado (botão
+    errado, pedido duplicado, quantidade errada já confirmada) infla
+    estoque e cria uma dívida sem jeito nenhum de reverter pelo sistema —
+    só ajuste manual de estoque + uma conta a pagar que ninguém consegue
+    cancelar pela tela. Isto é lacuna de funcionalidade (desfazer
+    recebimento), não bug de lógica existente — decidir se/como construir
+    isso é escolha de produto, não algo pra eu decidir sozinho numa
+    revisão de bugs. Também fica registrado, menor: se um pedido tiver
+    duas linhas da MESMA variante (nada no formulário impede), o custo
+    final gravado no produto ao receber é o da linha que o Postgres
+    devolver por último — sem `order by`, não é nem média nem
+    determinístico; edge case raro, não corrigido nesta rodada.
+
+    Confirmado, não re-decidido: o rateio de frete/imposto no custo do
+    produto (`receivePurchaseFn` ainda faz `cost = unit_cost`, sem somar
+    frete/imposto proporcional) continua sendo a decisão deliberada do
+    item 17 — não é bug, não toquei.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
