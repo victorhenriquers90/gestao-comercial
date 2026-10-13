@@ -942,8 +942,15 @@ export const listSalesFn = createServerFn({ method: "POST" })
     // Antes: `limit 200` fixo e sem total -- a partir da 201a venda o historico
     // simplesmente nao mostrava as mais antigas (a nao ser que alguem filtrasse
     // por data), sem nenhum aviso de que havia mais.
+    // `row_count`, nao `total`: a query ja seleciona `s.total` (o valor da
+    // venda) -- duas colunas chamadas `total` faz a ultima (s.total) vencer
+    // no objeto da linha, e o destructure abaixo ESVAZIA `total` de cada
+    // item (tira o campo errado) em vez de so tirar a contagem de paginacao.
+    // Reproduzido ao vivo: toda venda da lista aparecia "R$ 0,00",
+    // independente do valor real gravado -- a mesma causa do item 78
+    // (listPurchasesFn), que este arquivo nao tinha herdado ainda.
     const rows = await sql.query<Row>(
-        `select count(*) over() as total,
+        `select count(*) over() as row_count,
               s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
               c.name as customer_name, sl.name as seller_name, st.name as store_name
          from sales s
@@ -978,8 +985,8 @@ export const listSalesFn = createServerFn({ method: "POST" })
           data.page.offset,
         ],
       );
-    const total = rows.length ? num(rows[0]!.total) : 0;
-    return { items: dump(rows.map(({ total: _t, ...r }) => r)), total };
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    return { items: dump(rows.map(({ row_count: _rc, ...r }) => r)), total };
   });
 
 export const getSaleFn = createServerFn({ method: "POST" })

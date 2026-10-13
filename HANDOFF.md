@@ -3385,6 +3385,101 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     com console aberto sem achado — registrado pelo mesmo motivo de
     transparência dos itens 81/82.
 
+84. **`listSalesFn` mostrava "R$ 0,00" pra TODA venda na tela Vendas,
+    independente do valor real — achado testando o cancelamento de venda
+    (não procurando esse bug especificamente).** Mesma causa raiz do item
+    78 (`listPurchasesFn`): a consulta soma `count(*) over() as total`
+    pra paginação E também seleciona `s.total` (o valor em R$ da venda)
+    — duas colunas chamadas `total` no mesmo `select`. O driver do
+    Postgres faz a última coluna repetida vencer no objeto da linha
+    (`s.total` sobrescreve a contagem), e o destructure que tira o campo
+    de paginação (`{ total: _t, ...r }`) estava tirando o VALOR DA VENDA,
+    não a contagem — o item devolvido pro cliente ficava sem `total`
+    nenhum, e `formatBRL(num(undefined))` virava "R$ 0,00" na tela.
+
+    Como achei: ia cancelar a venda nº 15 (R$50,00) pra testar o fluxo de
+    cancelamento (ver item seguinte) e a lista de Vendas mostrou "R$
+    0,00" pra ela. Conferi o Postgres direto — `sales.total` estava
+    correto (50.00) — então o defeito era só na leitura, não na escrita.
+
+    Essa é a MESMA classe de bug do item 78, mas `listSalesFn` não tinha
+    sido revisada naquela varredura porque na hora eu só grepei por
+    `count(*) over() as total` e conferi se a tabela correspondente tinha
+    uma coluna `total` — fiz isso pra `purchases`/`expenses`/`commissions`,
+    mas essa função específica (de `commerce.ts`, não `catalog.ts`/
+    `finance.ts`) tinha ficado fora do escopo da varredura na ocasião.
+    Rodei a mesma varredura agora em TODO `src/lib/server`: achei 5
+    ocorrências de `count(*) over() as total`, conferi as 5 contra o
+    schema de cada tabela — só `sales.total` colide de verdade (as outras
+    4: `listProductsFn`, `listStockFn`, `listMovementsFn`, `listCustomersFn`,
+    `listSuppliersFn` não têm coluna `total` na tabela de origem, sem
+    risco). `listSalesFn` era a única pendente.
+
+    Correção: mesmo alias `row_count` dos itens 76-78, nas duas pontas
+    (query e destructure).
+
+    Verificado ao vivo: venda nº 15 (R$50,00) aparecia "R$ 0,00" na lista
+    ANTES da correção; depois, "R$ 50,00" — confirmado por
+    `get_page_text`, não só visual. `typecheck` + `lint` (0 erros, 5
+    avisos antigos) + `npm test` (481, inalterado — é leitura de lista,
+    não regra pura) limpos.
+
+    O serviço instalado (NSSM, :8080) só ganha isso depois de atualizado
+    (sem migração nova) — **e esse é justamente o tipo de bug que um
+    operador real do piloto teria notado na hora**, já que a tela de
+    Vendas é olhada o tempo todo.
+
+85. **Os dois últimos fluxos completos pendentes — cancelamento de venda
+    finalizada e cobrança de parcela vencida — testados ao vivo com
+    console aberto. Limpos (foi testando o primeiro deles que o item 84
+    apareceu).** Fecha a rodada de fluxos completos pedida pelo usuário
+    (itens 81 venda, 82 devolução, 83 fechamento de caixa, este aqui
+    cancelamento + cobrança).
+
+    **Cancelamento** — empresa 4, aba nova: abrir caixa R$100 → vender
+    "ZZTESTE Produto Cancelamento" R$50 em dinheiro (venda nº 15) →
+    Vendas → abrir a venda → motivo → "Cancelar venda". Console limpo em
+    cada passo. Verificado no Postgres: `sales.status='cancelada'`,
+    `cancelled_at`/`cancel_reason` gravados, estoque voltou ao valor
+    original (10, não 9), DOIS `stock_movements` (venda -1, devolução
+    +1), DOIS `cash_movements` (venda +50, cancelamento +50 — o segundo
+    entra do lado "refunds" da fórmula de `expectedCash`, cancelando o
+    primeiro, igual ao que já tinha sido conferido nos itens 81/82), e
+    `audit_logs` com `sale.cancel`.
+
+    **Cobrança de título vencido** — venda de "ZZTESTE Produto Cobrança"
+    R$80 no crediário 1x (venda nº 16) pro cliente descartável; a única
+    parte que não veio do fluxo real: o PDV sempre cria a parcela daqui a
+    30 dias, então pra simular o título JÁ vencido eu alterei só a
+    `due_date` da parcela pra 10 dias atrás direto no banco (não dava pra
+    simular isso avançando o relógio do sistema) — a partir daí, 100% UI
+    real: Financeiro → Cobrança mostrou "R$80,00 vencido · 10 dia(s)",
+    "Ver parcelas" → "Receber" → confirmar em dinheiro. Console limpo.
+    Verificado no Postgres: `accounts_receivable.status='pago'`,
+    `received_amount=80`, `account_settlements` com o recebimento,
+    `cash_movements` tipo "recebimento" (+80, soma no esperado da gaveta
+    — dinheiro que entrou de verdade no balcão).
+
+    Dado de teste (2 vendas, 2 produtos, 1 cliente, 1 caixa, parcelas,
+    pagamentos, settlements, movimentos de caixa e estoque, 5 linhas de
+    auditoria) removido depois; empresa 4 voltou a zero em tudo e às 13
+    linhas de auditoria.
+
+    **Balanço final da rodada de 5 fluxos completos (itens 81-85)**: 4
+    saíram limpos sem achado (venda, devolução, fechamento de caixa,
+    cancelamento+cobrança neste item) e 1 achou um bug real e
+    significativo (item 84, Vendas sempre mostrando R$0,00) — a
+    metodologia de testar fluxo inteiro com console aberto e conferir
+    cada passo no Postgres, não só na tela, se provou valendo o esforço:
+    o bug do item 84 não aparecia em nenhuma das varreduras anteriores
+    (console em carregamento de página, overflow, paginação) porque só se
+    manifesta numa tela que PRECISA de pelo menos uma venda de verdade
+    pra testar — e o piloto nunca teve venda nenhuma até esta sessão
+    começar a testar fluxos completos.
+
+    O serviço instalado (NSSM, :8080) só ganha as correções desta sessão
+    depois de atualizado.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
