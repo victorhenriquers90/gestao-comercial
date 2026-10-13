@@ -218,6 +218,13 @@ export async function loadSellerTargetBonuses(
     pequena fazia a venda inteira sumir da meta (o vendedor perdia o
     progresso da venda toda por causa de uma peca), quando so o valor
     devolvido deveria sair da conta.
+
+    `t.deleted_at is null`: faltava. `deleteTargetFn` so faz soft delete
+    (comentario de la: "nada referencia targets.id, sem risco de orfao") --
+    mas esta funcao referencia, sim, so que por consulta ao vivo, nao por
+    chave estrangeira. Sem o filtro, apagar uma meta errada em Metas nao
+    tirava o bonus dela do checkout: ela seguia valendo pro PDV (e virando
+    comissao de verdade) ate o period_end passar.
   */
   const rows = await sql.query<Row>(
     `select t.id, t.name, t.amount, t.bonus_kind, t.bonus_value,
@@ -243,6 +250,7 @@ export async function loadSellerTargetBonuses(
        ) r on true
       where t.company_id = $1
         and t.seller_id = $2
+        and t.deleted_at is null
         and t.period_start <= current_date and t.period_end >= current_date
         and ($3::int is null or t.store_id is null or t.store_id = $3)
       order by t.id`,

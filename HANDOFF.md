@@ -3568,6 +3568,95 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     sistema usar Presumido/Real.
 
 
+87. **Revisão de Dashboard/BI/relatórios. Achado principal: meta de vendas
+    apagada em Metas continuava dando bônus de comissão de verdade no
+    PDV — não era só um card do painel, era dinheiro.** `deleteTargetFn`
+    (`finance.ts`) só faz soft delete (`deleted_at = now()`), com um
+    comentário que diz "nada referencia targets.id, sem risco de órfão" —
+    verdade pra chave estrangeira, falso pra consulta ao vivo: tanto
+    `loadSellerTargetBonuses` (`commission.ts`, chamada no `checkoutFn` de
+    toda venda pra calcular bônus de comissão de verdade) quanto a lista de
+    metas do card do Dashboard (`insight.ts`) liam `targets` SEM filtrar
+    `deleted_at is null` — só `listTargetsFn` (a tela de Metas em si) tinha
+    esse filtro. Resultado: um gerente cria uma meta com valor/período
+    errado, percebe, apaga em Metas (que mostra "sumiu", corretamente) — e
+    ela continua valendo pro vendedor até o `period_end` passar: bônus
+    calculado e gravado na comissão de cada venda dele, e o card de Metas
+    do Dashboard continuava mostrando a barra de progresso da meta
+    "apagada". Achado comparando as 3 implementações que leem `targets`
+    pra calcular "realizado" (`listTargetsFn` em finance.ts,
+    `loadSellerTargetBonuses` em commission.ts, a query do Dashboard em
+    insight.ts) — a primeira tinha o filtro certo, as outras duas não.
+
+    Correção: `and t.deleted_at is null` nas duas consultas que faltavam
+    (`commission.ts` linha ~253, `insight.ts` linha ~254).
+
+    **Achado 2, mesma área: meta de categoria tinha o filtro de categoria
+    em 2 de 3 lugares, não nos 3.** `targets.category_id` existe e
+    `saveTargetFn` grava (ainda sem campo na UI de Metas pra setar, só
+    alcançável chamando a função direto — por isso não é um bug ao vivo
+    hoje, mas o código já tem a divergência pronta pra quando a UI ganhar
+    esse campo). `listTargetsFn` e `loadSellerTargetBonuses` já filtram
+    `(t.category_id is null or exists (... p.category_id = t.category_id))`
+    no cálculo de "realizado"; a query do Dashboard em `insight.ts` não
+    tinha esse filtro — uma meta de categoria contaria TODA venda do
+    período/loja/vendedor, categoria nenhuma incluída, divergindo das
+    outras duas telas pro mesmo número. Corrigido com o mesmo filtro,
+    copiado literal de `listTargetsFn`.
+
+    **Achado 3, menor: relatório "Estoque abaixo do mínimo" não tinha o
+    guard `> 0` que o card de estoque baixo do Dashboard já tinha.**
+    `insight.ts` exclui corretamente variante com `min_stock=0` em ambos
+    os lados (produto e loja) — quantidade zero sem mínimo configurado não
+    é "abaixo do mínimo", é ausência de mínimo. `reports.ts` (tipo
+    "minimo") não tinha esse segundo guard, então uma variante zerada sem
+    mínimo aparecia como pendência no relatório enquanto o Dashboard, pro
+    mesmo produto, dizia que não tinha pendência nenhuma. Corrigido com o
+    mesmo guard.
+
+    **Verificado ao vivo contra o Postgres real do piloto** (empresa 4,
+    zerada antes e depois): vendedor, categoria, 2 produtos (1 dentro da
+    categoria, 1 fora), 1 meta de categoria com bônus, 1 venda de verdade
+    do produto DE FORA da categoria, tudo descartável. Rodei o texto EXATO
+    da consulta corrigida contra o texto EXATO de antes (sem o filtro),
+    lado a lado, pros 3 achados:
+    - Categoria: corrigida devolveu `realized=0` (venda fora da
+      categoria não conta); a versão antiga contaria o valor errado.
+    - `deleted_at`: depois de apagar a meta, a versão corrigida de
+      `loadSellerTargetBonuses` devolveu `[]`; a antiga devolveria o id da
+      meta apagada — ela ainda daria bônus.
+    - Mesma coisa pro card do Dashboard: corrigida exclui a meta apagada
+      da lista; a antiga ainda incluiria.
+    - Estoque: produto com `min_stock=0`/`quantity=0` — corrigida exclui
+      do relatório "mínimo"; a antiga incluiria.
+    Limpeza confirmada: todas as tabelas de teste voltaram a 0 pra empresa
+    4, `audit_logs` continua em 13 (nada disto passou por `audit()`, é
+    tudo INSERT/DELETE direto de dado de teste). `typecheck`/`lint` (0
+    erros, os mesmos 5 avisos antigos) e `npm test` (483, inalterado — são
+    consultas SQL, não lógica pura testável) limpos.
+
+    **Não corrigido, fica como nota pra próxima IA/decisão de produto**:
+    o card de Metas do Dashboard lista as metas da empresa inteira sem
+    aplicar o filtro de Loja/Vendedor que o resto do painel aplica (KPIs,
+    gráfico, comissão, etc. todos reagem ao seletor de topo; Metas não).
+    Pode ser intencional (ver as metas da empresa inteira mesmo filtrando
+    uma loja específica) ou pode ser o mesmo tipo de esquecimento já
+    corrigido nos itens 42/43/48 — não decidi sozinho porque é julgamento
+    de produto, não bug óbvio, e o piloto não tem meta nenhuma hoje pra
+    servir de exemplo real. Também fica registrado: `commission.ts` tem
+    uma QUARTA forma de somar "quanto voltou numa devolução"
+    (`sellerMonthRevenue`/`loadSellerTargetBonuses` somam `returns.total`
+    direto, enquanto `insight.ts`/`reports.ts`/`finance.ts` somam
+    `return_items.amount`) — hoje batem porque `createReturnFn` grava
+    `returns.total` como a soma exata dos `return_items` da mesma
+    transação, mas é um quarto caminho não compartilhado pro mesmo número;
+    se um dia divergirem, aqui está o motivo.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+    Esse é o achado mais sério desta sessão depois do item 84: afeta
+    dinheiro de comissão de verdade, não só o que aparece na tela.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

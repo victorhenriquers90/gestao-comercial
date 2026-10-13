@@ -252,6 +252,7 @@ export const dashboardFn = createServerFn({ method: "POST" })
         `select id, name, amount, period_start, period_end, store_id, seller_id, bonus_kind, bonus_value
            from targets
           where company_id = $1
+            and deleted_at is null
             and period_start <= current_date and period_end >= current_date
           order by case when bonus_kind <> 'none' then 0 else 1 end, amount desc
           limit 6`,
@@ -304,6 +305,10 @@ export const dashboardFn = createServerFn({ method: "POST" })
                 and s.sold_at < (t.period_end + interval '1 day')
                 and (t.store_id is null or s.store_id = t.store_id)
                 and (t.seller_id is null or s.seller_id = t.seller_id)
+                and (t.category_id is null or exists (
+                  select 1 from sale_items si join products p on p.id = si.product_id
+                   where si.sale_id = s.id and p.category_id = t.category_id
+                ))
                ${RETURN_BY_SALE}
               where t.company_id = $1 and t.id = any($2::int[])
               group by t.id`,

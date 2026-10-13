@@ -583,7 +583,15 @@ export const reportFn = createServerFn({ method: "POST" })
              join products p on p.id = v.product_id
              join stores st on st.id = i.store_id
             where i.company_id = $1 and p.deleted_at is null
-              and ($2::text <> 'minimo' or i.quantity <= greatest(i.min_stock, p.min_stock))
+              -- "> 0": igual ao card de estoque baixo do Dashboard (insight.ts).
+              -- Sem minimo configurado (0 e 0), quantidade 0 nao e "abaixo do
+              -- minimo" -- e ausencia de minimo. Sem este guard, variante sem
+              -- minimo e sem estoque entrava no relatorio que o Dashboard,
+              -- do mesmo jeito, decide que nao e pendencia.
+              and ($2::text <> 'minimo' or (
+                i.quantity <= greatest(i.min_stock, p.min_stock)
+                and greatest(i.min_stock, p.min_stock) > 0
+              ))
               and ($3::int is null or i.store_id = $3)
             order by p.name`,
           [cid, type, storeId],
