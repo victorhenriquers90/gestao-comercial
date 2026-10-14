@@ -9,6 +9,7 @@ import { parseBarcode } from "@/lib/check-digit";
 import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
+import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
 import { parsePaging } from "@/lib/paging";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
@@ -1011,6 +1012,127 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
         )
       `;
       await audit(sql, tenant, "receive", "purchase", p.id);
+    });
+    return { ok: true };
+  });
+
+/**
+ * Desfaz o recebimento de um pedido -- versao estreita, ver
+ * `src/lib/purchase-undo.ts` pro que isto resolve e pro que nao resolve.
+ *
+ * As DUAS travas de verdade (nao a janela de tempo, que e so o primeiro
+ * filtro) sao: nenhum estoque das variantes do pedido pode ter se mexido
+ * desde o recebimento, e a conta a pagar gerada nao pode ter pagamento
+ * registrado. Sem as duas, "desfazer" teria que inventar de onde tirar o
+ * estoque que ja foi vendido, ou estornar um pagamento que ja saiu do
+ * caixa -- duas operacoes bem mais arriscadas que um clique errado.
+ */
+export const undoReceivePurchaseFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    assertCan(tenant.role, "purchases.receive");
+    await sql.transaction(async (sql) => {
+      const [p] = await sql<{
+        id: number;
+        status: string;
+        store_id: number;
+        received_at: string | null;
+        number: number;
+      }>`
+        select id, status, store_id, received_at, number from purchases
+         where id = ${data.id} and company_id = ${tenant.companyId}
+         for update
+      `;
+      if (!p) throw new Error("Pedido não encontrado.");
+      if (p.status !== "recebido") throw new Error("Este pedido não está recebido.");
+
+      const janela = checkUndoReceiveWindow(p.received_at);
+      if (!janela.ok) throw new Error(janela.motivo);
+
+      const items = await sql<{ variant_id: number; quantity: string | number }>`
+        select variant_id, quantity from purchase_items where purchase_id = ${p.id}
+      `;
+      const variantIds = items.map((i) => i.variant_id);
+
+      // Qualquer movimentacao do estoque destas variantes DEPOIS do
+      // recebimento -- menos a do proprio recebimento -- derruba o
+      // desfazer. "Depois", nao "diferente de zero": a peca pode ter sido
+      // vendida e devolvida, e o saldo fechar igual, mas algo aconteceu
+      // com ela que este botao nao tem como saber se ainda vale desfazer.
+      const [mexeu] = await sql<{ id: number }>`
+        select id from stock_movements
+         where company_id = ${tenant.companyId} and store_id = ${p.store_id}
+           and variant_id = any(${variantIds}::int[])
+           and created_at > ${p.received_at}
+           and not (reference_type = 'purchase' and reference_id = ${p.id})
+         limit 1
+      `;
+      if (mexeu) {
+        throw new Error("O estoque de algum item já mudou desde o recebimento — não dá pra desfazer. Ajuste manualmente em Estoque.");
+      }
+
+      /*
+        `purchase_id = p.id` sozinho nao basta: um pedido ja recebido,
+        desfeito e recebido de novo deixa a conta a pagar CANCELADA do
+        ciclo anterior ainda na tabela (historico, nunca apagada) ao lado
+        da conta ATIVA do recebimento atual -- duas linhas pro mesmo
+        purchase_id. Sem o filtro de status, a consulta podia devolver a
+        cancelada (sempre com paid_amount=0) e deixar a checagem de
+        pagamento cega pra conta de verdade, que tem o pagamento. So pode
+        haver uma nao-cancelada por vez (cada ciclo recebe-desfaz cancela a
+        anterior antes de a proxima existir), mas o `order by ... limit 1`
+        fica como segunda trava, nao so a primeira.
+      */
+      const [pagavel] = await sql<{ id: number; paid_amount: string | number; status: string }>`
+        select id, paid_amount, status from accounts_payable
+         where purchase_id = ${p.id} and company_id = ${tenant.companyId} and status <> 'cancelado'
+         order by id desc
+         limit 1
+         for update
+      `;
+      if (pagavel && (pagavel.status === "pago" || num(pagavel.paid_amount) > 0.009)) {
+        throw new Error(
+          "A conta a pagar desta compra já tem pagamento registrado — não dá pra desfazer. Estorne o pagamento em Financeiro primeiro.",
+        );
+      }
+
+      /*
+        Sem `allowNegative`, de proposito -- ao contrario do recebimento
+        original. Ja conferimos acima que nada mexeu nestas variantes desde
+        o recebimento, entao subtrair a mesma quantidade nunca deveria
+        passar de zero; se passar (uma condicao que a checagem de cima nao
+        previu, ou uma corrida bem estreita), o proprio applyStockChange
+        recusa em vez de deixar o estoque negativo.
+      */
+      for (const item of items) {
+        await applyStockChange(sql, {
+          companyId: tenant.companyId,
+          storeId: p.store_id,
+          variantId: item.variant_id,
+          delta: -num(item.quantity),
+          type: "compra",
+          userId: tenant.userId,
+          referenceType: "purchase",
+          referenceId: p.id,
+          note: "Estorno de recebimento",
+        });
+      }
+
+      if (pagavel) {
+        await sql`update accounts_payable set status = 'cancelado' where id = ${pagavel.id}`;
+      }
+
+      // Volta pra 'enviado' (nao pro status original, que nao fica
+      // gravado): se foi recebido, o fornecedor ja tinha enviado -- e o
+      // pedido reaparece em Compras com o botao "Receber" disponivel de
+      // novo, pronto pra corrigir e tentar outra vez.
+      await sql`
+        update purchases set status = 'enviado', received_at = null, updated_at = now()
+        where id = ${p.id}
+      `;
+      await audit(sql, tenant, "undo-receive", "purchase", p.id);
     });
     return { ok: true };
   });

@@ -15,7 +15,15 @@ import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDate, formatDateTime, formatQty } from "@/lib/format";
-import { getPurchaseFn, listPurchasesFn, receivePurchaseFn, savePurchaseFn, searchPosFn } from "@/lib/server/catalog";
+import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
+import {
+  getPurchaseFn,
+  listPurchasesFn,
+  receivePurchaseFn,
+  savePurchaseFn,
+  searchPosFn,
+  undoReceivePurchaseFn,
+} from "@/lib/server/catalog";
 
 export const Route = createFileRoute("/app/compras")({ component: ComprasPage });
 
@@ -33,6 +41,7 @@ function ComprasPage() {
    */
   const [salvandoPedido, setSalvandoPedido] = useState(false);
   const [recebendoId, setRecebendoId] = useState<number | null>(null);
+  const [desfazendoId, setDesfazendoId] = useState<number | null>(null);
   const [supplier, setSupplier] = useState<PickedSupplier | null>(null);
   const [status, setStatus] = useState("pedido");
   const [freight, setFreight] = useState("0");
@@ -83,6 +92,24 @@ function ComprasPage() {
       toast.error(e instanceof Error ? e.message : "Falha");
     } finally {
       setRecebendoId(null);
+    }
+  }
+
+  async function undoReceive(id: number) {
+    if (desfazendoId != null) return;
+    setDesfazendoId(id);
+    try {
+      await undoReceivePurchaseFn({ data: { id } });
+      toast.success("Recebimento desfeito. Estoque e conta a pagar revertidos.");
+      void qc.invalidateQueries({ queryKey: ["purchases"] });
+      void qc.invalidateQueries({ queryKey: ["purchase"] });
+      void qc.invalidateQueries({ queryKey: ["stock"] });
+      void qc.invalidateQueries({ queryKey: ["ap"] });
+      void qc.invalidateQueries({ queryKey: ["suppliers"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha");
+    } finally {
+      setDesfazendoId(null);
     }
   }
 
@@ -329,11 +356,29 @@ function ComprasPage() {
                 </div>
               </div>
               {p.status !== "recebido" && p.status !== "cancelado" ? (
-                <Button className="w-full" onClick={() => void receive(p.id)}>
-                  Receber pedido
+                <Button className="w-full" disabled={recebendoId === p.id} onClick={() => void receive(p.id)}>
+                  {recebendoId === p.id ? "Recebendo…" : "Receber pedido"}
                 </Button>
               ) : p.receivedAt ? (
-                <p className="text-xs text-muted-foreground">Recebido em {formatDateTime(p.receivedAt)}</p>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Recebido em {formatDateTime(p.receivedAt)}</p>
+                  {/* So mostra o botao dentro da janela: o servidor e quem
+                      decide de verdade (tambem confere estoque e pagamento),
+                      mas nao adianta oferecer um botao que vai recusar na
+                      certa pra quem abriu um pedido recebido ha dias. */}
+                  {checkUndoReceiveWindow(p.receivedAt).ok ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={desfazendoId === p.id}
+                      onClick={() => void undoReceive(p.id)}
+                    >
+                      {desfazendoId === p.id
+                        ? "Desfazendo…"
+                        : `Desfazer recebimento (${checkUndoReceiveWindow(p.receivedAt).minutosRestantes} min restantes)`}
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

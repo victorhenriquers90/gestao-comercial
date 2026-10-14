@@ -3963,6 +3963,103 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
 
 
+92. **Segundo ponto da pauta decidido pelo usuário: "desfazer recebimento,
+    faz a versão com janela curta."** Implementado `undoReceivePurchaseFn`
+    (`catalog.ts`) seguindo o mesmo molde dos 30 minutos de cancelamento
+    de NFC-e (`nfce-cancel.ts`) — mesma janela, mesmo raciocínio ("quanto
+    mais tempo passa, maior a chance de o estoque já ter sido vendido ou
+    o pagamento já ter sido feito"), só que aqui é bloqueio de verdade,
+    não aviso: não existe um SEFAZ externo pra decidir se ainda vale a
+    pena tentar, então passado o prazo o botão nem aparece. Lógica pura
+    nova em `src/lib/purchase-undo.ts` (`checkUndoReceiveWindow`, 8 testes
+    novos, incluindo o contraste explícito com `cancelWindow` da NFC-e no
+    comentário do teste — lá "na dúvida, deixa tentar" porque o SEFAZ
+    decide de verdade; aqui não tem segunda trava externa, então data
+    ilegível BLOQUEIA em vez de liberar).
+
+    As duas travas de verdade (a janela é só o primeiro filtro, mais
+    barato de checar): **nenhum estoque das variantes do pedido pode ter
+    se mexido** desde o recebimento (consulta em `stock_movements` com
+    `created_at > received_at`, excluindo o próprio movimento do
+    recebimento) e **a conta a pagar gerada não pode ter pagamento
+    registrado** (`paid_amount > 0` ou `status = 'pago'` recusa). Sem as
+    duas, desfazer teria que inventar de onde tirar estoque já vendido ou
+    estornar um pagamento que já saiu — duas operações mais arriscadas que
+    um clique errado. O reversal do estoque não usa `allowNegative`, ao
+    contrário do recebimento original — de propósito: se por algum motivo
+    a checagem de cima não pegou tudo, o próprio `applyStockChange` recusa
+    em vez de deixar o estoque negativo. Status volta pra `'enviado'`
+    (nenhum histórico grava o status original) e o pedido reaparece em
+    Compras com "Receber" disponível de novo. **Não reverte
+    `products.cost`/`product_variants.cost`** — não há histórico de custo
+    gravado em lugar nenhum, reverter seria inventar um valor, documentado
+    como limitação conhecida no cabeçalho do módulo novo.
+
+    **Bug real achado testando ao vivo, corrigido antes de qualquer
+    commit**: a consulta que busca a conta a pagar da compra
+    (`where purchase_id = p.id`) não filtrava por status. Um pedido
+    recebido, desfeito e recebido de novo deixa DUAS linhas de
+    `accounts_payable` pro mesmo `purchase_id` — a cancelada do ciclo
+    anterior (histórico, nunca apagada) e a ativa do recebimento atual.
+    Sem o filtro, a consulta podia devolver a cancelada (sempre com
+    `paid_amount=0`), cegando a checagem de pagamento pra conta de
+    verdade — testei exatamente esse cenário (recebi, registrei um
+    pagamento parcial de R$100 na conta ativa, tentei desfazer) e o
+    desfazer PASSOU quando devia recusar, sem reverter a conta certa.
+    Corrigido com `and status <> 'cancelado' order by id desc limit 1`.
+
+    **Verificado ao vivo contra o Postgres real, pela UI de verdade**
+    (não só consulta direta) — produto/pedido descartáveis, Loja Centro:
+    - Fluxo feliz: criar pedido → receber → "Desfazer recebimento (30 min
+      restantes)" aparece → clicar → estoque volta a 0, conta a pagar vai
+      pra `cancelado`, pedido volta pra `enviado`/`received_at=null`,
+      dois `stock_movements` limpos (recebimento +10, estorno -10,
+      `note='Estorno de recebimento'`), `audit_logs` com `create` →
+      `receive` → `undo-receive`.
+    - Bloqueio por estoque mexido: recebi, simulei uma venda de 1 unidade
+      (`stock_movements` com `reference_type='sale'`, `created_at` depois
+      do recebimento), cliquei "Desfazer recebimento" → recusou com "O
+      estoque de algum item já mudou desde o recebimento", nada mudou no
+      banco.
+    - Bloqueio por pagamento (achou o bug acima): recebi, registrei
+      pagamento parcial, tentei desfazer → recusou certo DEPOIS da
+      correção, confirmado que nada mudou (conta continuou parcial/R$100,
+      estoque continuou 10).
+    - Mesmo cenário repetido (recebi → desfiz → recebi de novo, criando a
+      SEGUNDA linha de `accounts_payable`) → desfazer de novo cancelou a
+      linha CERTA (a segunda, ativa) e deixou a primeira (já cancelada)
+      intocada — confirma a correção do bug.
+    - Janela expirada: recuei `received_at` 31 minutos via SQL, recarreguei
+      a tela — o botão "Desfazer recebimento" simplesmente não aparece
+      mais (só "Recebido em ..."), confirmando o gate client-side; o
+      bloqueio server-side equivalente já está coberto pelos 8 testes de
+      `checkUndoReceiveWindow` (mesma função usada nos dois lados).
+    Limpeza confirmada: todas as tabelas de teste de volta a 0 pra empresa
+    4, inclusive os 11 `audit_logs` gerados pelos testes (create/receive/
+    undo-receive repetidos), `audit_logs` de volta a 13.
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (491, +8 novos de `purchase-undo.test.ts`) limpos.
+
+    **Nota de ferramental, não do produto**: a interação via browser pane
+    nesta tela teve bastante atrito — cliques em coordenada e mesmo
+    `ref` de `find`/`read_page` repetidamente foquaram o campo de
+    FORNECEDOR em vez do campo de produto logo abaixo dele (um dropdown
+    de autocomplete do fornecedor parece interceptar cliques nos campos
+    seguintes quando aberto), e `screenshot` mostrou o campo de fornecedor
+    como vazio quando o DOM real (conferido por `javascript_tool`) tinha
+    texto — mais uma reincidência da instabilidade de screenshot já
+    registrada antes nesta sessão. O que funcionou de forma confiável:
+    `form_input` com um `ref` obtido na hora por `find` (não reaproveitado
+    de uma leitura anterior) pra setar o valor, e `javascript_tool`
+    (nunca `screenshot`/`get_page_text` sozinhos) pra confirmar o estado
+    real antes do próximo passo.
+
+    **Resta 1 dos 3 pontos da pauta**: controle de acesso por loja (item
+    90) — ainda depende de informação de negócio que só o usuário tem.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

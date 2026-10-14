@@ -61,6 +61,7 @@ const ACTION: Record<string, string> = {
   "cancel-failed": "tentou cancelar sem sucesso",
   discount: "aplicou desconto em",
   receive: "recebeu",
+  "undo-receive": "desfez o recebimento de",
   pay: "pagou",
   "reverse-receive": "estornou recebimento de",
   "reverse-pay": "estornou pagamento de",
