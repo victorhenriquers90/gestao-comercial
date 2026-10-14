@@ -441,7 +441,7 @@ export const searchPosFn = createServerFn({ method: "POST" })
   .validator((d: { q: string; storeId: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     /*
       O custo so vai pra quem ja pode ve-lo em outro lugar do sistema (a tela
       de Produtos mostra custo e margem sob products.read).
@@ -650,7 +650,7 @@ export const adjustStockFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     await assertVariants(sql, tenant.companyId, [data.variantId]);
     // parseStockQuantity no lugar de `<= 0`: NaN <= 0 e false, entao a
     // checagem anterior deixava passar e o estoque virava NaN.
@@ -677,8 +677,8 @@ export const transferStockFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
     if (data.fromStoreId === data.toStoreId) throw new Error("Selecione lojas diferentes.");
-    await assertStore(sql, tenant.companyId, data.fromStoreId);
-    await assertStore(sql, tenant.companyId, data.toStoreId);
+    await assertStore(sql, tenant, data.fromStoreId);
+    await assertStore(sql, tenant, data.toStoreId);
     await assertVariants(sql, tenant.companyId, [data.variantId]);
     // Aqui nao havia validacao NENHUMA de quantidade -- nem a de "maior que
     // zero" que o ajuste tinha.
@@ -832,7 +832,7 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     if (!(PURCHASE_STATUS as readonly string[]).includes(data.status) || data.status === "recebido") {
       throw new Error("Status de pedido inválido.");
     }
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
     await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
     /*

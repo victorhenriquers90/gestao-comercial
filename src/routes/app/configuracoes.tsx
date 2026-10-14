@@ -518,6 +518,28 @@ function ConfigPage() {
                       </option>
                     ))}
                   </Select>
+                  <Select
+                    value={m.store_id == null ? "" : String(m.store_id)}
+                    className="w-40"
+                    aria-label="Loja"
+                    disabled={!m.is_active || !(papel && can(papel, "users.write"))}
+                    onChange={(e) => {
+                      const storeId = e.target.value ? Number(e.target.value) : null;
+                      void updateMemberFn({ data: { id: m.id, storeId } })
+                        .then(() => {
+                          toast.success(storeId == null ? "Acesso liberado para todas as lojas." : "Loja atualizada.");
+                          void qc.invalidateQueries({ queryKey: ["settings"] });
+                        })
+                        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                    }}
+                  >
+                    <option value="">Todas as lojas</option>
+                    {((settings.data?.stores as Record<string, unknown>[] | undefined) ?? []).map((s) => (
+                      <option key={Number(s.id)} value={Number(s.id)}>
+                        {String(s.name)}
+                      </option>
+                    ))}
+                  </Select>
                   {papel && can(papel, "users.write") && m.user_id !== tenant.data?.userId ? (
                     <Button
                       size="sm"
@@ -545,6 +567,10 @@ function ConfigPage() {
             {papel && can(papel, "users.write") ? (
               <InvitePanel
                 convites={(settings.data?.invites ?? []) as unknown as Parameters<typeof InvitePanel>[0]["convites"]}
+                stores={((settings.data?.stores as Record<string, unknown>[] | undefined) ?? []).map((s) => ({
+                  id: Number(s.id),
+                  name: String(s.name),
+                }))}
               />
             ) : null}
           </Card>

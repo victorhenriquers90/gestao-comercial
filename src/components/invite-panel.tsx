@@ -13,6 +13,7 @@ type Convite = {
   id: number;
   label: string;
   role: string;
+  store_id: number | null;
   expires_at: string | null;
   vencido: boolean;
 };
@@ -26,14 +27,24 @@ const papelLabel = (r: string) => ROLE_LABELS[r as Role] ?? r;
   Ele aparece uma vez, na hora de gerar; no banco fica so o hash, entao
   perdeu o link, gera outro (o antigo para de valer).
 */
-export function InvitePanel({ convites }: { convites: Convite[] }) {
+export function InvitePanel({
+  convites,
+  stores,
+}: {
+  convites: Convite[];
+  stores: { id: number; name: string }[];
+}) {
   const qc = useQueryClient();
   const [para, setPara] = useState("");
   const [papel, setPapel] = useState<string>("vendedor");
+  // "" = empresa inteira (nenhuma loja fixa). O valor vira null no envio,
+  // nao a string vazia -- memberships.store_id e int ou null, sem meio-termo.
+  const [lojaId, setLojaId] = useState<string>("");
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [link, setLink] = useState<LinkGerado | null>(null);
 
   const montarLink = (token: string) => `${window.location.origin}/login?convite=${token}`;
+  const nomeDaLoja = (id: number | null) => (id == null ? null : stores.find((s) => s.id === id)?.name);
 
   async function acao(chave: string, fn: () => Promise<void>) {
     if (ocupado) return;
@@ -50,7 +61,9 @@ export function InvitePanel({ convites }: { convites: Convite[] }) {
 
   const gerar = () =>
     acao("novo", async () => {
-      const res = await inviteMemberFn({ data: { label: para, role: papel } });
+      const res = await inviteMemberFn({
+        data: { label: para, role: papel, storeId: lojaId ? Number(lojaId) : null },
+      });
       setLink({ para: para.trim(), papel, url: montarLink(res.token), dias: res.expiresInDays });
       setPara("");
     });
@@ -97,6 +110,16 @@ export function InvitePanel({ convites }: { convites: Convite[] }) {
             ))}
           </Select>
         </Field>
+        <Field label="Loja (deixe em branco para acesso a todas)">
+          <Select value={lojaId} onChange={(e) => setLojaId(e.target.value)}>
+            <option value="">Todas as lojas</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Button disabled={ocupado !== null} onClick={() => void gerar()}>
           <Link2 />
           Gerar link de convite
@@ -137,7 +160,8 @@ export function InvitePanel({ convites }: { convites: Convite[] }) {
               <div>
                 <p className="font-medium">{c.label || "Sem identificação"}</p>
                 <p className="text-xs text-muted-foreground">
-                  {papelLabel(c.role)} ·{" "}
+                  {papelLabel(c.role)}
+                  {nomeDaLoja(c.store_id) ? ` · ${nomeDaLoja(c.store_id)}` : " · todas as lojas"} ·{" "}
                   {c.vencido
                     ? "link vencido: gere outro"
                     : c.expires_at

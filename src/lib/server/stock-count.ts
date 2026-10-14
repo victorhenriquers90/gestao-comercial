@@ -54,7 +54,7 @@ export const openStockCountFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     try {
       const [row] = await sql<{ id: number }>`
         insert into stock_counts (company_id, store_id, status, note, user_id)

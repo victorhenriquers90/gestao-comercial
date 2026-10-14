@@ -4060,6 +4060,113 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
 
 
+93. **Terceiro e último ponto da pauta decidido pelo usuário: "na loja,
+    cada um só mexe na própria."** Implementado controle de acesso por
+    loja — quem tem loja fixa no cadastro (`memberships.store_id`
+    preenchido) e não é admin só consegue agir na loja dele; admin sempre
+    acessa a empresa inteira, e quem não tem loja fixa (`store_id` nulo)
+    também — mesma convenção de "nulo = sem filtro" já usada em todo o
+    resto do sistema.
+
+    **Achado crítico ANTES de escrever qualquer código**: conferi o
+    cadastro do admin real do piloto e `memberships.store_id = 7` (Loja
+    Centro) — NÃO era nulo. Se a trava usasse esse campo direto pra
+    decidir quem é restrito, o próprio admin do piloto ficaria sem acesso
+    à Loja Shopping assim que isto fosse pro ar. Por isso a regra final é
+    "admin sempre passa, não importa o que `store_id` diga" — o campo dele
+    guarda só a loja padrão do seletor, igual sempre guardou, nunca foi
+    pensado como restrição.
+
+    **Achado 2: o campo `tenant.defaultStoreId` que já existia não serve
+    pra decidir quem é restrito.** Ele sempre resolve pra um número
+    concreto (`m.store_id ?? stores[0]?.id ?? 0` — cai na primeira loja da
+    empresa quando `store_id` é nulo), que é o comportamento certo pro
+    valor inicial do seletor mas apagaria a diferença entre "sem loja
+    fixa, acesso livre" e "loja fixa, só essa". Precisou de um campo NOVO
+    no `Tenant` (`homeStoreId: number | null`), com o valor cru de
+    `m.store_id`, só pra essa decisão — `defaultStoreId` continua
+    exatamente como estava, usado nos mesmos lugares de sempre.
+
+    **Achado 3, o mais economizador de trabalho: metade do backend da
+    feature já existia, nunca ligada a nada.** `pending_invites.store_id`
+    e a lógica de `acceptInvite` (invite-gate.ts) que já lê esse campo e
+    grava em `memberships.store_id` ao aceitar o convite já estavam
+    prontos — só `inviteMemberFn` nunca recebia esse campo do cliente, e
+    `updateMemberFn` não tinha como editar a loja de alguém já membro.
+    Sobrou só a "última milha": validator + UI dos dois.
+
+    **O que foi implementado**:
+    - `assertStore` (context.ts) — ponto único por onde quase todo
+      `storeId` do sistema passa (18 chamadas em `catalog.ts`,
+      `commerce.ts`, `finance.ts`, `purchase-suggestion.ts`,
+      `stock-count.ts`) — agora recebe o `tenant` inteiro (não só
+      `companyId`) e recusa quando `role !== 'admin' && homeStoreId !=
+      null && homeStoreId !== storeId`. Travar aqui cobre TODOS os módulos
+      de uma vez, sem mexer módulo por módulo.
+    - `updateMemberFn` — `storeId?: number | null` novo (mesma convenção
+      undefined-mantém/null-libera-pra-empresa-toda já usada em
+      saveCustomerFn), valida com `assertStore` antes de gravar.
+    - `inviteMemberFn` — mesmo campo novo, grava em `pending_invites`
+      (coluna que já existia, nunca escrita).
+    - `getSettingsFn` — `members`/`invites` passam a devolver `store_id`.
+    - **UI**: seletor de loja novo por membro em Configurações → Usuários
+      (mesmo gate de `users.write` do seletor de papel ao lado — mesma
+      correção do item 90, replicada aqui de propósito); seletor de loja
+      novo no formulário "Convidar pessoa" (`InvitePanel`), com "Todas as
+      lojas" como padrão; convites pendentes agora mostram a loja.
+    - **`StorePicker`** (app-shell.tsx, o seletor de loja no topo) —
+      quem é restrito não vê mais o `<select>` com as duas lojas: vê só o
+      nome da própria loja, texto fixo, sem a aparência de escolha que não
+      funcionaria. O efeito que sincroniza a seleção global
+      (`useSelection`, salva no localStorage) agora também CORRIGE uma
+      loja errada em cache pra quem é restrito — sem isso, alguém que
+      trocou de loja antes de virar restrito (ou testando em navegador
+      compartilhado) ficaria com a loja errada presa até o servidor
+      recusar a primeira ação.
+
+    **Verificado ao vivo contra o Postgres real, sem nenhum risco ao
+    admin de verdade** (toda simulação de usuário restrito rodou com
+    dado descartável, nunca mexendo na membership real do admin):
+    - Replicei a lógica EXATA de `assertStore` (mesma consulta, mesmo
+      condicional) contra o banco real: admin com `homeStoreId=7`
+      acessa as duas lojas; vendedor com `homeStoreId=7` acessa só a 7,
+      recusa a 8 com "Você só tem acesso à loja onde está cadastrado.";
+      financeiro com `homeStoreId=null` acessa as duas; loja de id
+      inexistente recusa sempre, independente de papel.
+    - Pelo navegador de verdade (sessão já autenticada do admin real):
+      conferido que o seletor de loja do topo continua mostrando as duas
+      lojas pra ele (não ficou restrito por engano) e que trocar de loja
+      continua funcionando sem erro; carreguei PDV com Loja Shopping
+      selecionada, sem erro no console.
+    - Criei um convite de teste pela tela de verdade com "Loja Centro"
+      selecionada → `pending_invites.store_id = 7` confirmado gravado no
+      banco, e a lista de convites pendentes mostrou "Vendedor · Loja
+      Centro" corretamente.
+    - Criei uma membership de teste descartável (não-admin, loja 7) e,
+      pela tela de Usuários de verdade, troquei a loja dela pra Loja
+      Shopping pelo `<select>` novo → confirmado no banco
+      (`store_id=8`).
+    Limpeza confirmada: toda membership/usuário/convite de teste removido,
+    a membership do admin real intocada (`role=admin`, `store_id=7`,
+    `is_active=true`), `audit_logs` de volta a 13.
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (491, inalterado — é checagem de acesso, não lógica pura isolável)
+    limpos.
+
+    **Decisão de escopo, registrada**: a trava entra só onde `assertStore`
+    já era chamado — isto é, ações que ESCREVEM ou operam numa loja
+    específica (PDV, caixa, estoque, compras, financeiro). Telas de
+    leitura com filtro de loja OPCIONAL (Dashboard, Relatórios) não
+    passam por `assertStore` hoje e não ganharam a restrição nesta
+    rodada — o pedido do usuário foi "mexe", não "vê", e estender pra
+    leitura seria uma decisão de produto separada, não implícita nesta.
+
+    Com isso, os 3 pontos da pauta de decisão (itens 87/91 Metas, 88/92
+    desfazer recebimento, 90/93 acesso por loja) estão todos resolvidos.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -346,7 +346,7 @@ export const checkoutFn = createServerFn({ method: "POST" })
       if (existing) return buildCheckoutReceipt(sql, tenant, existing.id);
     }
 
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     await assertOwned(sql, tenant.companyId, "customers", data.customerId);
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     if (!data.items.length) throw new Error("Inclua ao menos um item.");
@@ -1598,7 +1598,7 @@ export const holdSaleFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     await assertOwned(sql, tenant.companyId, "customers", data.customerId);
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     let parsed: HeldPayload;
@@ -1626,7 +1626,7 @@ export const listHeldFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     const rows = await sql<Row>`
       select h.id, h.created_at, h.discount, h.notes, h.payload, c.name as customer_name, s.name as seller_name
         from held_sales h

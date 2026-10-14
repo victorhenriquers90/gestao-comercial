@@ -216,12 +216,37 @@ function SidebarBody({
 function StorePicker({ tenant }: { tenant: Tenant }) {
   const storeId = useSelection((s) => s.storeId);
   const setStoreId = useSelection((s) => s.setStoreId);
-  const current =
-    storeId && tenant.stores.some((s) => s.id === storeId) ? storeId : tenant.defaultStoreId;
+  // Mesma regra do assertStore (servidor): admin sempre ve o seletor
+  // inteiro; quem tem loja fixa no cadastro (homeStoreId != null) e nao e
+  // admin so tem a propria. `useSelection` persiste no localStorage --
+  // alguem que ja tinha trocado de loja antes de virar restrito (ou
+  // testando em navegador compartilhado) ficava com outra loja em cache,
+  // e cada tela que le o seletor direto (nao so este componente) herdava
+  // o valor errado ate o servidor recusar a acao.
+  const restrito = tenant.role !== "admin" && tenant.homeStoreId != null;
+  const current = restrito
+    ? tenant.homeStoreId!
+    : storeId && tenant.stores.some((s) => s.id === storeId)
+      ? storeId
+      : tenant.defaultStoreId;
 
   useEffect(() => {
+    if (restrito) {
+      if (storeId !== tenant.homeStoreId) setStoreId(tenant.homeStoreId);
+      return;
+    }
     if (storeId == null && tenant.defaultStoreId) setStoreId(tenant.defaultStoreId);
-  }, [storeId, tenant.defaultStoreId, setStoreId]);
+  }, [restrito, storeId, tenant.homeStoreId, tenant.defaultStoreId, setStoreId]);
+
+  if (restrito) {
+    const nome = tenant.stores.find((s) => s.id === tenant.homeStoreId)?.name ?? "Loja";
+    return (
+      <div className="store-picker flex w-48 items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <Store className="size-3.5 shrink-0" />
+        <span className="truncate">{nome}</span>
+      </div>
+    );
+  }
 
   return (
     <label className="store-picker relative flex w-48 items-center">

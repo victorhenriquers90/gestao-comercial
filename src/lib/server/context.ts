@@ -18,6 +18,16 @@ export type Tenant = {
   role: Role;
   discountLimit: number;
   defaultStoreId: number;
+  /**
+   * `memberships.store_id` cru, sem o fallback que `defaultStoreId` aplica.
+   *
+   * `defaultStoreId` sempre resolve pra um numero concreto (cai na primeira
+   * loja da empresa quando `store_id` e null) -- certo pro valor inicial do
+   * seletor, errado pra decidir quem so pode mexer na propria loja: um null
+   * aqui significa "acesso a empresa inteira", e `defaultStoreId` apagaria
+   * essa diferenca. Ver `assertStore`.
+   */
+  homeStoreId: number | null;
   stores: StoreRef[];
 };
 
@@ -58,16 +68,36 @@ async function clearInviteCookie(): Promise<void> {
   }
 }
 
+/*
+  Confere a loja E, de quebra, se quem esta chamando tem acesso a ela.
+
+  `homeStoreId` nulo (admin tipicamente, mas vale pra qualquer papel sem
+  loja fixa no cadastro) e acesso a empresa inteira -- mesma regra que o
+  resto do sistema ja usa pra "sem filtro = tudo". Admin SEMPRE passa,
+  mesmo com `homeStoreId` preenchido: o cadastro dele guarda a loja padrao
+  do seletor, nao uma restricao -- o admin real do piloto tem
+  `store_id = 7` (Loja Centro) e precisa continuar acessando a Loja
+  Shopping tambem.
+
+  Quem tem `homeStoreId` preenchido e nao e admin so passa pra ESSA loja.
+  Pedir a loja errada (de proposito, trocando o seletor, ou por payload
+  direto) recusa aqui -- unico ponto de entrada de `storeId` de quase todo
+  modulo ja escrito (compras, estoque, caixa, PDV, financeiro), entao
+  travar aqui cobre todos eles de uma vez.
+*/
 export async function assertStore(
   sql: Sql,
-  companyId: number,
+  tenant: Pick<Tenant, "companyId" | "role" | "homeStoreId">,
   storeId: number,
 ): Promise<void> {
   const rows = await sql<{ id: number }>`
     select id from stores
-    where id = ${storeId} and company_id = ${companyId} and deleted_at is null
+    where id = ${storeId} and company_id = ${tenant.companyId} and deleted_at is null
   `;
   if (!rows.length) throw new Error("Loja inválida para esta empresa.");
+  if (tenant.role !== "admin" && tenant.homeStoreId != null && tenant.homeStoreId !== storeId) {
+    throw new Error("Você só tem acesso à loja onde está cadastrado.");
+  }
 }
 
 const OWNED = {
@@ -237,6 +267,7 @@ async function loadTenant(sql: Sql, userId: string): Promise<Tenant | null> {
     role,
     discountLimit,
     defaultStoreId: m.store_id ?? stores[0]?.id ?? 0,
+    homeStoreId: m.store_id,
     stores,
   };
 }

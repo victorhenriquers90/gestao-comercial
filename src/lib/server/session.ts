@@ -5,7 +5,7 @@ import { APP_NAME } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { assertCan, can, isRole, type Role, DEFAULT_DISCOUNT_LIMIT } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { audit, requireTenant } from "./context";
+import { assertStore, audit, requireTenant } from "./context";
 import { acceptInvite, findOpenInvite } from "./invite-gate";
 import { getSql } from "@/lib/db";
 import { hashInviteToken, inviteExpiry, newInviteToken } from "@/lib/invite";
@@ -396,8 +396,9 @@ export const getSettingsFn = createServerFn({ method: "GET" })
       is_active: boolean;
       name: string | null;
       email: string | null;
+      store_id: number | null;
     }>`
-      select m.id, m.user_id, m.role, m.discount_limit, m.is_active, u.name, u.email
+      select m.id, m.user_id, m.role, m.discount_limit, m.is_active, u.name, u.email, m.store_id
       from memberships m
       left join "user" u on u.id = m.user_id
       where m.company_id = ${tenant.companyId}
@@ -406,7 +407,7 @@ export const getSettingsFn = createServerFn({ method: "GET" })
     const invites = !podeVerEquipe
       ? []
       : await sql<Row>`
-          select id, email as label, role, created_at, expires_at,
+          select id, email as label, role, store_id, created_at, expires_at,
                  (token_hash is null or expires_at <= now()) as vencido
             from pending_invites
            where company_id = ${tenant.companyId} and accepted_at is null
@@ -427,6 +428,7 @@ export const getSettingsFn = createServerFn({ method: "GET" })
         is_active: m.is_active,
         name: m.name,
         email: m.email,
+        store_id: m.store_id,
       })),
       invites,
       stores,
@@ -700,7 +702,7 @@ export const closeStoreFn = createServerFn({ method: "POST" })
 */
 export const inviteMemberFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { label?: string; role: string }) => ({
+  .validator((d: { label?: string; role: string; storeId?: number | null }) => ({
     ...d,
     label: optionalLine(d.label, 120) ?? "",
   }))
@@ -708,14 +710,20 @@ export const inviteMemberFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "users.write");
     const role: Role = isRole(data.role) ? data.role : "vendedor";
+    // Sem loja = acesso a empresa inteira (mesma convencao de
+    // updateMemberFn). `acceptInvite` (invite-gate.ts) ja le este campo e
+    // grava em memberships.store_id ao aceitar -- so faltava a invite em
+    // si poder carregar um valor.
+    const storeId = data.storeId ?? null;
+    if (storeId != null) await assertStore(sql, tenant, storeId);
     const token = newInviteToken();
     const [row] = await sql<{ id: number }>`
-      insert into pending_invites (company_id, email, role, invited_by, token_hash, expires_at)
-      values (${tenant.companyId}, ${data.label}, ${role}, ${tenant.userId},
+      insert into pending_invites (company_id, email, role, store_id, invited_by, token_hash, expires_at)
+      values (${tenant.companyId}, ${data.label}, ${role}, ${storeId}, ${tenant.userId},
               ${hashInviteToken(token)}, ${inviteExpiry().toISOString()})
       returning id
     `;
-    await audit(sql, tenant, "invite", "membership", row!.id, null, { role, label: data.label });
+    await audit(sql, tenant, "invite", "membership", row!.id, null, { role, label: data.label, storeId });
     return { token, expiresInDays: INVITE_TTL_DAYS };
   });
 
@@ -845,11 +853,21 @@ export const markNotificationReadFn = createServerFn({ method: "POST" })
 export const updateMemberFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { id: number; role?: string; discountLimit?: number | null; isActive?: boolean }) => d,
+    (d: {
+      id: number;
+      role?: string;
+      discountLimit?: number | null;
+      isActive?: boolean;
+      storeId?: number | null;
+    }) => d,
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "users.write");
+    // Quem tem users.write e admin (unica role com essa permissao), entao
+    // sempre passa pelo assertStore -- nao ha como um papel restrito
+    // atribuir loja a ninguem por aqui.
+    if (data.storeId != null) await assertStore(sql, tenant, data.storeId);
     return sql.transaction(async (sql) => {
       /*
         Trava, numa consulta so, o alvo E todo admin ativo da empresa -- nao
@@ -874,8 +892,9 @@ export const updateMemberFn = createServerFn({ method: "POST" })
         role: string;
         is_active: boolean;
         discount_limit: string | number | null;
+        store_id: number | null;
       }>`
-        select id, user_id, role, is_active, discount_limit from memberships
+        select id, user_id, role, is_active, discount_limit, store_id from memberships
         where company_id = ${tenant.companyId}
           and (id = ${data.id} or (role = 'admin' and is_active = true))
         order by id
@@ -901,11 +920,17 @@ export const updateMemberFn = createServerFn({ method: "POST" })
           : role === member.role && member.discount_limit != null
             ? member.discount_limit
             : DEFAULT_DISCOUNT_LIMIT[role as Role];
+      // undefined = mantem a loja atual; null = libera pra empresa inteira
+      // (mesma convencao de "ausente guarda, presente e vazio apaga" ja
+      // usada em saveCustomerFn/saveSupplierFn) -- so que aqui "vazio" e
+      // um valor valido de verdade (acesso amplo), nao um campo em branco.
+      const storeId = data.storeId === undefined ? member.store_id : data.storeId;
       await sql`
         update memberships
            set role = ${role},
                discount_limit = ${limit},
-               is_active = ${isActive}
+               is_active = ${isActive},
+               store_id = ${storeId}
          where id = ${member.id}
       `;
       await audit(
@@ -914,8 +939,8 @@ export const updateMemberFn = createServerFn({ method: "POST" })
         "update",
         "membership",
         member.id,
-        { role: member.role, isActive: member.is_active },
-        { role, limit, isActive },
+        { role: member.role, isActive: member.is_active, storeId: member.store_id },
+        { role, limit, isActive, storeId },
       );
       return { ok: true };
     });

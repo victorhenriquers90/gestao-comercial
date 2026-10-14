@@ -23,7 +23,7 @@ export const suggestPurchaseFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "purchases.read");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
 
     const cobertura = parsePositiveDays(data.coberturaDias ?? 30, "a cobertura", 365);
     const janela = parsePositiveDays(data.janelaDias ?? 60, "a janela de histórico", 365);

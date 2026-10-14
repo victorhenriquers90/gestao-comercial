@@ -238,7 +238,7 @@ export const settlePayableFn = createServerFn({ method: "POST" })
       if (metodo === "dinheiro") {
         const lojaId = data.storeId ?? row.store_id ?? null;
         if (!lojaId) throw new Error("Selecione a loja que está pagando em dinheiro.");
-        await assertStore(sql, tenant.companyId, lojaId);
+        await assertStore(sql, tenant, lojaId);
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers
            where company_id = ${tenant.companyId} and store_id = ${lojaId} and status = 'open'
@@ -464,7 +464,7 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
       if (metodo === "dinheiro") {
         const lojaId = data.storeId ?? row.store_id ?? null;
         if (!lojaId) throw new Error("Selecione a loja que está recebendo o dinheiro.");
-        await assertStore(sql, tenant.companyId, lojaId);
+        await assertStore(sql, tenant, lojaId);
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers
            where company_id = ${tenant.companyId} and store_id = ${lojaId} and status = 'open'
@@ -965,7 +965,7 @@ export const getRegisterFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.read");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     return dump(
       await loadOpenRegister(sql, tenant.companyId, data.storeId, {
         canReveal: can(tenant.role, "cash.reveal"),
@@ -991,7 +991,7 @@ export const revealExpectedCashFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.reveal");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     const [reg] = await sql<{ id: number }>`
       select id from cash_registers
        where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
@@ -1072,7 +1072,7 @@ export const openRegisterFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     const breakdown = normalizeBreakdown(data.breakdown ?? null);
     // Ficha preenchida MANDA, igual no fechamento: o valor sai das cedulas.
     const contado = breakdown ? breakdownExactTotal(breakdown) : Number(data.amount);
@@ -1174,7 +1174,7 @@ export const closeRegisterFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     // Fora da transacao: ficha malformada nao merece abrir transacao nem
     // travar a linha do caixa.
     const breakdown = normalizeBreakdown(data.breakdown ?? null);
@@ -1402,7 +1402,7 @@ export const cashMoveFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
-    await assertStore(sql, tenant.companyId, data.storeId);
+    await assertStore(sql, tenant, data.storeId);
     await sql.transaction(async (sql) => {
       const [reg] = await sql<{ id: number }>`
         select id from cash_registers
@@ -1492,7 +1492,7 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
       let cashMovementId: number | null = null;
       if (data.method === "dinheiro") {
         if (!data.storeId) throw new Error("Selecione a loja para lançar a despesa em dinheiro.");
-        await assertStore(sql, tenant.companyId, data.storeId);
+        await assertStore(sql, tenant, data.storeId);
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers
            where company_id = ${tenant.companyId} and store_id = ${data.storeId} and status = 'open'
