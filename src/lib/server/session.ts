@@ -654,17 +654,24 @@ export const closeStoreFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "settings.write");
     return sql.transaction(async (sql) => {
-      const [cur] = await sql<{ name: string }>`
-        select name from stores
-        where id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
+      /*
+        Trava TODA loja ativa da empresa, em ordem de id, nao so a que esta
+        fechando -- mesmo raciocinio do updateMemberFn logo abaixo (guarda
+        de "nao pode chegar a zero" depende do conjunto inteiro, nao so da
+        linha que muda). Sem isto: empresa com 2 lojas ativas, duas
+        chamadas concorrentes fechando a loja A e a loja B cada uma ve
+        "ainda tem 2" antes da outra commitar, as duas passam, a empresa
+        fica sem loja nenhuma.
+      */
+      const ativas = await sql<{ id: number; name: string }>`
+        select id, name from stores
+        where company_id = ${tenant.companyId} and deleted_at is null
+        order by id
         for update
       `;
+      const cur = ativas.find((s) => s.id === data.id);
       if (!cur) throw new Error("Loja não encontrada.");
-      const [{ n: ativas }] = await sql<{ n: number }>`
-        select count(*)::int as n from stores
-        where company_id = ${tenant.companyId} and deleted_at is null
-      `;
-      if (num(ativas) <= 1) {
+      if (ativas.length <= 1) {
         throw new Error("Não é possível fechar a única loja ativa da empresa.");
       }
       const [caixaAberto] = await sql<{ id: number }>`
@@ -843,53 +850,73 @@ export const updateMemberFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "users.write");
-    const [member] = await sql<{
-      id: number;
-      user_id: string;
-      role: string;
-      is_active: boolean;
-      discount_limit: string | number | null;
-    }>`
-      select id, user_id, role, is_active, discount_limit from memberships
-      where id = ${data.id} and company_id = ${tenant.companyId}
-    `;
-    if (!member) throw new Error("Usuário não encontrado.");
-    if (data.isActive === false && member.user_id === tenant.userId) {
-      throw new Error("Você não pode desativar a si mesmo.");
-    }
-    // O que nao veio no pedido fica como esta. Antes `isActive ?? true`
-    // reativava quem estivesse desativado a cada troca de papel, e o limite de
-    // desconto voltava ao padrao do papel mesmo sem o papel mudar.
-    const role = data.role && isRole(data.role) ? data.role : member.role;
-    const isActive = data.isActive ?? member.is_active;
-    if (member.is_active && member.role === "admin" && (role !== "admin" || !isActive)) {
-      const [admins] = await sql<{ n: number }>`
-        select count(*)::int as n from memberships
-        where company_id = ${tenant.companyId} and is_active = true and role = 'admin'
+    return sql.transaction(async (sql) => {
+      /*
+        Trava, numa consulta so, o alvo E todo admin ativo da empresa -- nao
+        so a linha que esta mudando.
+
+        A contagem "ainda sobra admin?" depende de TODAS as linhas de admin,
+        nao so da que esta sendo editada: travar so o alvo nao impede duas
+        chamadas concorrentes rebaixando/desativando DOIS admins DIFERENTES
+        ao mesmo tempo, cada uma vendo "ainda tem 2" antes da outra
+        commitar -- a empresa fica sem admin nenhum sem o servidor notar
+        (mesma classe de corrida ja corrigida no limite de credito do
+        cliente, em commerce.ts).
+
+        Ordem de id igual nas duas pontas evita deadlock: as duas chamadas
+        tentam travar o MESMO conjunto na MESMA ordem, entao uma sempre
+        espera a outra terminar em vez de cada uma travar metade do
+        conjunto e truncar a outra.
+      */
+      const rows = await sql<{
+        id: number;
+        user_id: string;
+        role: string;
+        is_active: boolean;
+        discount_limit: string | number | null;
+      }>`
+        select id, user_id, role, is_active, discount_limit from memberships
+        where company_id = ${tenant.companyId}
+          and (id = ${data.id} or (role = 'admin' and is_active = true))
+        order by id
+        for update
       `;
-      if (num(admins?.n) <= 1) throw new Error("Mantenha ao menos um administrador.");
-    }
-    const limit =
-      data.discountLimit != null
-        ? data.discountLimit
-        : role === member.role && member.discount_limit != null
-          ? member.discount_limit
-          : DEFAULT_DISCOUNT_LIMIT[role as Role];
-    await sql`
-      update memberships
-         set role = ${role},
-             discount_limit = ${limit},
-             is_active = ${isActive}
-       where id = ${member.id}
-    `;
-    await audit(
-      sql,
-      tenant,
-      "update",
-      "membership",
-      member.id,
-      { role: member.role, isActive: member.is_active },
-      { role, limit, isActive },
-    );
-    return { ok: true };
+      const member = rows.find((r) => r.id === data.id);
+      if (!member) throw new Error("Usuário não encontrado.");
+      if (data.isActive === false && member.user_id === tenant.userId) {
+        throw new Error("Você não pode desativar a si mesmo.");
+      }
+      // O que nao veio no pedido fica como esta. Antes `isActive ?? true`
+      // reativava quem estivesse desativado a cada troca de papel, e o limite de
+      // desconto voltava ao padrao do papel mesmo sem o papel mudar.
+      const role = data.role && isRole(data.role) ? data.role : member.role;
+      const isActive = data.isActive ?? member.is_active;
+      if (member.is_active && member.role === "admin" && (role !== "admin" || !isActive)) {
+        const admins = rows.filter((r) => r.role === "admin" && r.is_active).length;
+        if (admins <= 1) throw new Error("Mantenha ao menos um administrador.");
+      }
+      const limit =
+        data.discountLimit != null
+          ? data.discountLimit
+          : role === member.role && member.discount_limit != null
+            ? member.discount_limit
+            : DEFAULT_DISCOUNT_LIMIT[role as Role];
+      await sql`
+        update memberships
+           set role = ${role},
+               discount_limit = ${limit},
+               is_active = ${isActive}
+         where id = ${member.id}
+      `;
+      await audit(
+        sql,
+        tenant,
+        "update",
+        "membership",
+        member.id,
+        { role: member.role, isActive: member.is_active },
+        { role, limit, isActive },
+      );
+      return { ok: true };
+    });
   });

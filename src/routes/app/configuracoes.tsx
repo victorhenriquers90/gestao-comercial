@@ -496,7 +496,13 @@ function ConfigPage() {
                   <Select
                     value={m.role}
                     className="w-40"
-                    disabled={!m.is_active}
+                    // gerente ve a equipe (users.read) mas nao gerencia
+                    // (users.write) -- sem este segundo termo, o <select>
+                    // parecia funcionar pra ele, o servidor recusava
+                    // (certo), e o valor voltava sozinho no refetch, sem
+                    // aviso nenhum do motivo. Mesmo gate do botao Desativar
+                    // logo abaixo.
+                    disabled={!m.is_active || !(papel && can(papel, "users.write"))}
                     onChange={(e) => {
                       void updateMemberFn({ data: { id: m.id, role: e.target.value } })
                         .then(() => {

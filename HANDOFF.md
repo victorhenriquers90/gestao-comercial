@@ -3822,6 +3822,104 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     lojas (Centro e Shopping) rodando PDV em paralelo.
 
 
+90. **Revisão de Configurações/Permissões/Equipe. Achou a MESMA classe de
+    condição de corrida do item 89 (limite de crédito), agora em dois
+    lugares que protegem "não deixe a empresa sem admin" e "não deixe a
+    empresa sem loja ativa".** Depois de corrigir a corrida do limite de
+    crédito, fui conferir se o mesmo padrão ("lê contagem, decide, grava",
+    sem travar a linha) se repetia em outras guardas "não pode chegar a
+    zero" do sistema — e tinha, nas duas guardas mais sensíveis deste
+    módulo.
+
+    **`updateMemberFn`** (rebaixar/desativar um admin): contava quantos
+    admins ativos a empresa tinha com um `select count(*)` solto, sem
+    `for update`, fora de transação. Duas chamadas concorrentes
+    rebaixando/desativando DOIS admins DIFERENTES ao mesmo tempo (dois
+    administradores se desativando um ao outro ao mesmo tempo, ou duas
+    abas do mesmo admin) cada uma via "ainda tem 2" antes da outra
+    commitar — as duas passavam, a empresa ficava sem admin nenhum, sem
+    ninguém pra gerenciar usuário ou configuração.
+
+    **`closeStoreFn`** (fechar loja): mesma estrutura, só que já estava
+    DENTRO de uma transação com `for update` — mas travava só a linha da
+    loja sendo fechada, não o conjunto de lojas ativas. Duas chamadas
+    concorrentes fechando DUAS lojas diferentes (as últimas duas ativas)
+    cada uma via "ainda tem 2" antes da outra commitar, as duas passavam,
+    a empresa ficava sem loja nenhuma.
+
+    **Correção, nas duas**: trocar a trava de "só a linha alvo" (ou
+    contagem sem trava nenhuma) por uma única consulta que trava, em
+    ordem de id, o alvo MAIS todo o conjunto que a contagem depende
+    (todo admin ativo da empresa; toda loja ativa da empresa) — uma só
+    consulta, não duas travas separadas em sequência, de propósito: travar
+    em passos (primeiro o alvo, depois o conjunto) permitiria duas
+    chamadas concorrentes travarem metade do conjunto cada uma e
+    bloquearem uma a outra pra sempre (deadlock). Com tudo numa consulta
+    só, ordenada por id, as duas chamadas concorrentes tentam travar o
+    MESMO conjunto na MESMA ordem — uma sempre espera a outra terminar.
+
+    **Verificado ao vivo contra o Postgres real, reproduzindo as duas
+    catástrofes de verdade** — numa empresa descartável isolada (não a
+    piloto, pra não arriscar o admin de verdade), criada só pro teste e
+    apagada no fim:
+    - 2 admins, 2 transações concorrentes rebaixando cada um pro papel
+      vendedor, texto ANTIGO: as duas commitaram, **0 admins ativos
+      restantes** — empresa sem ninguém pra gerenciar nada. Texto NOVO:
+      a segunda transação ficou bloqueada ~1s esperando a primeira
+      terminar, aí recontou e viu só 1 admin restante — recusaria.
+    - 2 lojas ativas, 2 transações concorrentes fechando cada uma, texto
+      ANTIGO: as duas commitaram, **0 lojas ativas restantes**. Texto
+      NOVO: a segunda ficou bloqueada ~1s, recontou e viu só 1 loja
+      ativa — recusaria.
+    Limpeza confirmada: nenhuma empresa/usuário/membership de teste
+    sobrou, empresa 4 (piloto) com a mesma 1 membership de sempre (o
+    usuário real), `audit_logs` em 13.
+
+    **Achado 2, menor, só UI**: o `<select>` de papel na aba Equipe
+    aparecia habilitado pra `gerente` (que vê a equipe mas não
+    administra, por desenho — `users.read` sem `users.write`), e trocar o
+    papel ali disparava a chamada, o servidor recusava certo (confirmado
+    lendo o código, não é brecha de segurança), mas a tela não avisava
+    por quê — o valor só "voltava sozinho" no próximo refetch, parecendo
+    um bug visual sem explicação. O botão Desativar ao lado já tinha o
+    gate certo (`can(papel, "users.write")`); o `<select>` não. Corrigido
+    pra usar o mesmo gate.
+
+    **Confirmado, não é bug**: o modelo de permissão em si (`src/lib/
+    permissions.ts`) é um mapa estático papel→permissões, sem override
+    por usuário — conferido token de convite (192 bits de entropia, só
+    hash gravado, de uso único, corretamente travado contra aceitar duas
+    vezes ao mesmo tempo — já tinha sido testado ao vivo nos itens 41/74),
+    revogação/renovação de convite, e que nenhum papel consegue se
+    autopromover via chamada direta ao servidor (`assertCan` presente e
+    correto em toda função sensível, não só escondido na UI).
+
+    **Achado maior, NÃO corrigido — registrado como pergunta de produto,
+    não bug**: não existe NENHUM controle de acesso por loja. O campo
+    `memberships.store_id` existe e é usado só como loja padrão do
+    seletor (conveniência de UI) — toda função do servidor que recebe um
+    `storeId` (`PDV`, caixa, estoque, financeiro, compras) só confere se
+    a loja pertence à MESMA EMPRESA (`assertStore`), nunca se é a loja
+    daquele usuário. Ou seja, hoje um papel como `caixa`/`vendedor`/
+    `estoque` com `store_id` cadastrado na Loja Centro consegue, de
+    propósito ou por engano na tela, mexer em venda/estoque/caixa da Loja
+    Shopping — qualquer loja da mesma empresa, sem restrição nenhuma. Não
+    sei se isso é intencional (acesso multi-loja por desenho, já que o
+    seletor de loja no topo deixa qualquer papel trocar livremente) ou
+    uma lacuna — e seria uma mudança ampla, não local desta tela (teria
+    que entrar em `assertStore`/`requireTenant`, usado por praticamente
+    todo módulo já revisado nesta rodada). Fica pra decisão do usuário.
+
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (483, inalterado) limpos.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado
+    — e, igual ao limite de crédito, é o tipo de corrida que só aparece
+    com mais de uma pessoa mexendo em Configurações ao mesmo tempo, o que
+    pode nunca ter acontecido no piloto (hoje só tem 1 usuário cadastrado,
+    item 38) — mas protege contra o dia em que tiver mais de um admin.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
