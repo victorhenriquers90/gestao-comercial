@@ -3920,6 +3920,49 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     item 38) — mas protege contra o dia em que tiver mais de um admin.
 
 
+91. **Primeiro dos 3 pontos da pauta de decisão (card de Metas não
+    respeitava o filtro de Loja/Vendedor do Dashboard, item 87)
+    corrigido.** O usuário respondeu só "continuar" depois da pauta
+    (não decidiu os 3 pontos um a um) — segui com este por ser o de
+    menor risco e recomendação já clara (consistência com o resto da
+    tela), e NÃO estendi essa interpretação aos outros dois (desfazer
+    recebimento de compra, controle de acesso por loja), que dependem de
+    informação de negócio ou de escopo que só o usuário decide — ver
+    pendência registrada logo abaixo. Trocar o seletor de Loja no topo do
+    Dashboard mudava KPIs, gráfico e comissões, mas o card de Metas
+    continuava mostrando todas as metas ativas da empresa — podia
+    aparecer uma meta de "Loja Centro" lado a lado com números já
+    filtrados pra "Loja Shopping", sem nada indicando que eram escopos
+    diferentes.
+
+    Correção: mesma regra "nulo = vale pra qualquer um" que o cálculo de
+    realizado de cada meta já usa (`t.store_id is null or s.store_id =
+    t.store_id`), só que aplicada na hora de escolher QUAIS metas
+    aparecem, não no valor de cada uma — meta geral (sem loja) sempre
+    aparece; meta de uma loja específica só aparece quando nenhuma loja
+    está selecionada ou quando é a loja selecionada. Mesmo raciocínio pro
+    filtro de vendedor.
+
+    Verificado ao vivo contra o Postgres real: 3 metas descartáveis
+    (geral, Loja Centro, Loja Shopping) — sem filtro, as 3 aparecem;
+    filtrando Loja Centro, aparecem geral + Centro (Shopping some);
+    filtrando Loja Shopping, aparecem geral + Shopping (Centro some).
+    Limpeza confirmada, `targets` de volta a 0 pra empresa 4, `audit_logs`
+    em 13. `typecheck`/`lint` (0 erros, os mesmos avisos antigos) e
+    `npm test` (483, inalterado) limpos.
+
+    **Os outros dois pontos da pauta seguem em aberto, aguardando decisão
+    do usuário** — item 88 (desfazer recebimento de compra) e item 90
+    (controle de acesso por loja), ambos documentados acima com as opções
+    já levantadas. Não decidi nenhum dos dois sozinho: o primeiro muda de
+    tamanho conforme a opção escolhida (feature grande vs. janela curta
+    tipo NFC-e vs. não fazer); o segundo depende de como a equipe de loja
+    realmente circula entre Centro e Shopping, informação que só o
+    usuário tem.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

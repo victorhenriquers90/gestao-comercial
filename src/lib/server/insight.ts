@@ -249,14 +249,25 @@ export const dashboardFn = createServerFn({ method: "POST" })
         bonus_kind: string | null;
         bonus_value: string | number | null;
       }>(
+        /*
+          Mesmo filtro "nulo = vale pra qualquer um" que o calculo de
+          realizado logo abaixo ja usa, so que aqui filtrando QUAIS metas
+          aparecem, nao o valor de cada uma. Sem isto o card de Metas era o
+          unico da tela que o seletor de Loja/Vendedor do topo nao
+          alcancava -- trocar pra "Loja Shopping" continuava mostrando uma
+          meta de "Loja Centro" lado a lado com KPIs ja filtrados pra
+          Shopping, sem nada indicando que eram escopos diferentes.
+        */
         `select id, name, amount, period_start, period_end, store_id, seller_id, bonus_kind, bonus_value
            from targets
           where company_id = $1
             and deleted_at is null
             and period_start <= current_date and period_end >= current_date
+            and ($2::int is null or store_id is null or store_id = $2)
+            and ($3::int is null or seller_id is null or seller_id = $3)
           order by case when bonus_kind <> 'none' then 0 else 1 end, amount desc
           limit 6`,
-        [tenant.companyId],
+        [tenant.companyId, storeId, sellerId],
       ),
       sql.query<{ net: string | number; gross: string | number }>(
         `select coalesce(sum(coalesce(c.net_amount, c.amount)),0) as net,
