@@ -4167,6 +4167,85 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
 
 
+94. **Bug real no INSTALADOR, achado tentando atualizar o serviço da loja
+    piloto com as correções desta sessão: toda atualização futura ia
+    abortar sozinha, sem avisar por quê.** `Invoke-AppMigrations`
+    (`installer\lib\Database.ps1`) roda `CREATE TABLE IF NOT EXISTS
+    _migrations (...)` toda vez que o instalador confere o schema — na
+    primeira instalação a tabela não existe e cria normal; em QUALQUER
+    atualização seguinte ela já existe, e o Postgres responde com um
+    NOTICE ("relação \"_migrations\" já existe, ignorando"), não um erro.
+    No Windows PowerShell 5.1 (o que a loja usa — confirmado pelo prompt
+    `PS C:\Windows\system32>` que o usuário colou), stderr de comando
+    nativo vira erro TERMINANTE sob `$ErrorActionPreference = "Stop"`
+    mesmo com código de saída 0. O script morria bem nessa linha, toda
+    vez — backup já tirado, nenhum arquivo trocado, serviço preso na
+    versão antiga, e a tela mostrava só a mensagem crua do psql (uma NOTA
+    em português, formatada como "NativeCommandError"), sem nada dizendo
+    que era inofensiva.
+
+    **Como foi achado**: pedi pro usuário rodar a atualização real (não
+    simulação) depois de implementar os itens 90-93. Primeira tentativa
+    sem admin — recusou direto, esperado. Segunda tentativa como admin —
+    o usuário disse "deu certo", mas conferindo `install-state.json`
+    (campo `lastUpdated`) e comparando hash do `index.mjs` implantado
+    contra o buildado agora, nada tinha mudado — a "aparência" de sucesso
+    era só o serviço continuar respondendo (a versão ANTIGA nunca parou
+    de responder). Pedi um log completo (`Tee-Object`) na terceira
+    tentativa, e aí a mensagem de erro real apareceu.
+
+    **A ironia**: este EXATO bug (stderr de comando nativo virando erro
+    terminante no PowerShell 5.1 da loja) já tinha sido encontrado e
+    corrigido duas vezes antes, em `installer\lib\Backup.ps1`
+    (verificação de dump e ensaio de restauração) — comentário lá já
+    documenta "Windows PowerShell 5.1 (o que o lojista usa)" explicitamente.
+    `Invoke-AppMigrations`, escrito depois ou em paralelo, não recebeu o
+    mesmo tratamento — ninguém tinha rodado uma atualização de verdade
+    (com a tabela `_migrations` já existente) contra a loja piloto desde
+    que esse código existe, então o bug nunca tinha aparecido antes de
+    agora.
+
+    **Correção**: mesmo remédio em duas camadas já usado em `Backup.ps1`
+    — (1) `$env:PGOPTIONS = "-c client_min_messages=warning"` antes de
+    qualquer chamada de `psql`, calando o NOTICE na origem (o Postgres
+    nunca manda pro stderr); (2) `$ErrorActionPreference = "Continue"` em
+    volta do bloco inteiro, com `finally` restaurando o valor anterior —
+    defesa em segunda camada pra qualquer outro aviso inofensivo que
+    apareça no futuro. Quem decide sucesso/falha continua sendo
+    `$LASTEXITCODE`, que já estava checado certo — só nunca era alcançado.
+
+    Revisei a outra função deste arquivo que chama `psql`
+    (`New-AppDatabaseRole`, criação de role/banco na instalação nova) e
+    **não precisa da mesma correção**: ela já usa um bloco `DO $$ ... IF
+    NOT EXISTS ... END $$` em PL/pgSQL em vez de um `CREATE ... IF NOT
+    EXISTS` direto — Postgres não tem `CREATE ROLE IF NOT EXISTS`, e por
+    isso quem escreveu já tinha sido forçado pro caminho que não gera
+    NOTICE de "já existe, ignorando". Confirmado lendo o código, não
+    bug novo.
+
+    **Verificado contra o Postgres real do piloto** (não contra uma cópia
+    — a tabela `_migrations` de produção, com `psql.exe` de verdade):
+    rodei o `CREATE TABLE IF NOT EXISTS _migrations` sem `PGOPTIONS` e
+    reproduzi a NOTA exata que o usuário colou, código de saída 0; rodei
+    de novo com `PGOPTIONS = "-c client_min_messages=warning"` e a NOTA
+    simplesmente não apareceu — só "CREATE TABLE", nada em stderr.
+    Confirma a correção na raiz (calar o aviso), que resolve o problema
+    independente de qual versão de PowerShell roda o script depois (não
+    consegui reproduzir o `$ErrorActionPreference=Stop` virando erro
+    terminante com a ferramenta de PowerShell desta sessão porque ela
+    roda PowerShell 7.6 Core, não a 5.1 da loja — mas a causa raiz
+    [NOTICE em stderr] é a mesma documentada e já corrigida nas duas
+    outras ocorrências em `Backup.ps1`, e eliminá-la na origem resolve
+    para qualquer versão). Sintaxe do arquivo conferida com o parser do
+    PowerShell (`[System.Management.Automation.Language.Parser]::
+    ParseFile`), sem erro.
+
+    **Ainda não confirmado ao vivo contra o serviço da loja**: depois
+    desta correção, o próximo passo é o usuário rodar a atualização mais
+    uma vez (quarta tentativa) — essa, sim, deve aplicar de verdade os
+    itens 90-93 no serviço instalado.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

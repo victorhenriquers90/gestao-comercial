@@ -122,6 +122,20 @@ function Invoke-AppMigrations {
     if ($arquivos.Count -eq 0) { return }
 
     $env:PGPASSWORD = $RolePassword
+    # PGOPTIONS cala o NOTICE ("relacao _migrations ja existe, ignorando")
+    # que o CREATE TABLE IF NOT EXISTS emite em toda atualizacao -- a tabela
+    # so nao existe na primeira vez. ErrorActionPreference=Continue e a
+    # segunda camada, mesmo remedio ja usado em Backup.ps1 (verificacao de
+    # dump e ensaio de restauracao): no Windows PowerShell 5.1 (o que a loja
+    # usa), stderr de comando nativo vira erro TERMINANTE sob Stop mesmo com
+    # codigo de saida 0 -- quem decide se deu certo e o $LASTEXITCODE
+    # checado logo abaixo, nao a presenca de qualquer texto em stderr.
+    # Sem isto, a atualizacao abortava bem aqui: backup tirado, nenhum
+    # arquivo trocado, servico preso na versao antiga -- e a tela mostrava
+    # so a mensagem crua do psql, sem pista do motivo real.
+    $env:PGOPTIONS = "-c client_min_messages=warning"
+    $erroAntes = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
         & $PsqlPath -U $RoleName -h $PgHost -p $Port -d $DatabaseName -v ON_ERROR_STOP=1 --no-psqlrc -c `
             "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
@@ -152,6 +166,8 @@ COMMIT;
             Write-Host "  Aplicado $($arquivo.Name)"
         }
     } finally {
+        $ErrorActionPreference = $erroAntes
         Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        Remove-Item Env:\PGOPTIONS -ErrorAction SilentlyContinue
     }
 }
