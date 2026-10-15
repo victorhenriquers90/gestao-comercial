@@ -4240,10 +4240,14 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     PowerShell (`[System.Management.Automation.Language.Parser]::
     ParseFile`), sem erro.
 
-    **Ainda não confirmado ao vivo contra o serviço da loja**: depois
-    desta correção, o próximo passo é o usuário rodar a atualização mais
-    uma vez (quarta tentativa) — essa, sim, deve aplicar de verdade os
-    itens 90-93 no serviço instalado.
+    **Confirmado ao vivo**: quarta tentativa, depois desta correção —
+    `lastUpdated` em `install-state.json` virou a hora real da
+    atualização, e o hash SHA-256 do `index.mjs` implantado em
+    `C:\Apps\GestaoComercial` bateu exatamente com o buildado na máquina
+    do Victor. Serviço `Running`, `http://localhost:8080` respondendo
+    200, `stderr.log` sem nada além do ciclo normal de parar/subir. Os
+    itens 90-93 (e todo o resto desta sessão) estão agora no serviço de
+    produção de verdade, não só no ambiente de desenvolvimento.
 
 
 ## Como a próxima IA deve trabalhar
