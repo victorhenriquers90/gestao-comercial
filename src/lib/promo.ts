@@ -20,6 +20,23 @@ export type Promo = {
 
 export type PromoHit = { id: number; name: string; discount: number; unitPrice: number };
 
+/**
+ * Preço de venda "de agora" de um produto -- o promocional direto no
+ * cadastro (`products.promo_price`, separado do sistema de Promoção desta
+ * tela), só vale quando é positivo E menor que o preço cheio.
+ *
+ * O "menor que" importa: sem ele, um preço promocional digitado maior que
+ * o preço normal por engano (ex.: preço 19,90, promocional 199,00) virava
+ * o preço cobrado de verdade em vez de ficar sinalizando um erro de
+ * cadastro -- a única coisa que hoje impede isso é a tela de Produtos nunca
+ * deixar salvar esse estado (ver saveProductFn), então esta função é a
+ * segunda trava, não a primeira: protege dado que já estava errado no
+ * banco antes da validação existir.
+ */
+export function effectivePrice(price: number, promoPrice: number): number {
+  return promoPrice > 0 && promoPrice < price ? promoPrice : price;
+}
+
 function ymd(value: string) {
   return value.slice(0, 10);
 }

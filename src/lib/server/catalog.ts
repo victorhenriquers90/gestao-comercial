@@ -10,6 +10,7 @@ import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/sto
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
+import { effectivePrice } from "@/lib/promo";
 import { parsePaging } from "@/lib/paging";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
@@ -278,6 +279,13 @@ export const saveProductFn = createServerFn({ method: "POST" })
     const cost = parseUnitCost(data.cost, "custo");
     const price = parseUnitCost(data.price, "preço");
     const promoPrice = data.promoPrice == null ? null : parseUnitCost(data.promoPrice, "preço promocional");
+    // "Promocional" maior ou igual ao preco cheio nao e promocao -- e
+    // provavelmente um numero no campo errado. Sem esta trava, um preco
+    // promocional digitado errado aparecia como o preco de venda na busca
+    // do PDV (searchPosFn) e, uma vez cobrado, cobraria MAIS que o normal.
+    if (promoPrice != null && promoPrice >= price) {
+      throw new Error("O preço promocional precisa ser menor que o preço normal.");
+    }
 
     /*
       Produto, marca, variantes e auditoria numa transacao so.
@@ -495,7 +503,7 @@ export const searchPosFn = createServerFn({ method: "POST" })
       model: strN(r.model),
       sku: strN(r.sku),
       barcode: strN(r.barcode),
-      price: num(r.promo_price) > 0 ? num(r.promo_price) : num(r.price),
+      price: effectivePrice(num(r.price), num(r.promo_price)),
       listPrice: num(r.price),
       cost: podeVerCusto ? num(r.cost) : 0,
       unit: String(r.unit ?? "UN"),

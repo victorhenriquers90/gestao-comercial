@@ -153,7 +153,19 @@ export function usePdvSale() {
   }, [activeStore]);
 
   const priced = cart.map((l) => {
-    const sellPrice = l.override ?? l.listPrice ?? l.price;
+    /*
+      `l.price` ja e o preco promocional do produto quando ha um
+      (searchPosFn/resumeHeldFn: promo_price se > 0 e < preco cheio, senao
+      o preco cheio mesmo -- ver effectivePrice em lib/promo.ts). `l.listPrice`
+      e SEMPRE o preco cheio, nunca null -- por isso `l.listPrice ?? l.price`
+      nunca chegava a olhar pra `l.price`: o fallback nunca disparava, e um
+      produto com preco promocional aparecia com o preco certo na busca e
+      cobrava o preco CHEIO no carrinho, sem aviso nenhum (nem pro operador,
+      nem pro cliente). `override` e o unico caso de verdade que deve pisar
+      no preco promocional (ninguem ainda seta isto na UI, mas o campo existe
+      pra quando pdv.price_override ganhar um controle de verdade).
+    */
+    const sellPrice = l.override ?? l.price;
     const hit = bestPromo(
       promos.data ?? [],
       l.productId,

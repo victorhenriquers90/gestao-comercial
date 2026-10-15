@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computePromo, parsePromoInput, type Promo } from "./promo.ts";
+import { computePromo, effectivePrice, parsePromoInput, type Promo } from "./promo.ts";
 
 function promo(overrides: Partial<Promo>): Promo {
   return {
@@ -21,6 +21,26 @@ function promo(overrides: Partial<Promo>): Promo {
     ...overrides,
   };
 }
+
+describe("effectivePrice", () => {
+  it("usa o promocional quando é positivo e menor que o preço cheio", () => {
+    assert.equal(effectivePrice(199.9, 149.9), 149.9);
+  });
+
+  it("ignora promocional zero ou negativo (não configurado)", () => {
+    assert.equal(effectivePrice(199.9, 0), 199.9);
+    assert.equal(effectivePrice(199.9, -10), 199.9);
+  });
+
+  it("ignora promocional maior ou igual ao preço cheio -- provável erro de digitação", () => {
+    // Bug real: searchPosFn/checkoutFn confiavam em "promo_price > 0" sem
+    // comparar com o preço cheio. saveProductFn agora recusa salvar esse
+    // estado, mas esta função é a segunda trava -- protege dado que já
+    // estava errado no banco antes da validação existir.
+    assert.equal(effectivePrice(19.9, 199), 19.9);
+    assert.equal(effectivePrice(100, 100), 100);
+  });
+});
 
 describe("computePromo", () => {
   it("percentual acima de 100 não vira desconto maior que a própria linha", () => {

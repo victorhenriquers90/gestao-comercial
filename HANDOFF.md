@@ -4250,6 +4250,104 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     produção de verdade, não só no ambiente de desenvolvimento.
 
 
+95. **Revisão de Promoções. Achado principal, dinheiro de verdade: produto
+    com preço promocional (`products.promo_price`, o campo direto no
+    cadastro — não o sistema de Promoção/campanha) mostrava o preço
+    descontado na busca do PDV e cobrava o preço CHEIO no fechamento, sem
+    aviso nenhum.** `searchPosFn` (`catalog.ts`) sempre calculou os dois
+    campos certos — `price` (promocional, se houver) e `listPrice` (cheio)
+    — e a busca do PDV sempre mostrou `price` (o promocional) no
+    dropdown. Mas o carrinho (`use-pdv-sale.ts`) decidia o preço de
+    verdade com `l.override ?? l.listPrice ?? l.price` — como `listPrice`
+    nunca é `null`/`undefined`, o `?? l.price` depois dele é código morto:
+    o preço cobrado era SEMPRE o cheio, nunca o promocional. O servidor
+    (`checkoutFn`) já aceitava o preço promocional sem pedir permissão
+    especial (`allowed = productPromo > 0 ? productPromo : list`, linha
+    já existente) — o problema inteiro era só o cliente nunca mandar esse
+    valor. Resultado: cliente via R$70 na tela do operador, pagava R$100,
+    sem erro, sem aviso, sem permissão extra pedida (porque o preço
+    cobrado batia com o preço cheio "normal" do produto, nenhuma das duas
+    checagens de desvio disparava).
+
+    **Por que não é o mesmo bug do item 9**: o item 9 era sobre uma
+    *Promoção* (campanha, tabela `promotions`) mal configurada gerando
+    desconto maior que a própria linha — já corrigido e testado
+    (`computePromo`). Este é sobre o campo `promo_price` direto no
+    cadastro do produto (sem Promoção nenhuma envolvida) nunca chegar a
+    ser cobrado — dado perfeitamente válido, caminho de leitura errado.
+    Também não é o mesmo bug já documentado em `catalog.ts` (NaN gravado
+    no `promo_price` fazendo ele ser lido como 0) — lá o preço
+    promocional *não aplicava* por dado corrompido; aqui ele não aplicava
+    mesmo com dado correto, porque o carrinho nunca olhava pro campo
+    certo.
+
+    **Corrigido junto, porque um fix ingênuo do bug principal abriria um
+    segundo**: não existia nenhuma trava impedindo `promo_price` de ser
+    maior ou igual ao preço cheio (um erro de digitação, ex. preço
+    19,90/promocional 199,00). Hoje isso só é inofensivo porque o bug
+    acima IMPEDE o promocional de ser cobrado — corrigir só o bug
+    principal, sem essa trava, trocaria "nunca cobra o promocional" por
+    "cobra um promocional mais caro que o preço normal" na primeira vez
+    que alguém digitasse errado. Nova função pura `effectivePrice(price,
+    promoPrice)` em `src/lib/promo.ts` (só considera o promocional válido
+    quando `> 0` E `< price`), usada nos TRÊS lugares que calculavam isso
+    sem essa trava: `searchPosFn`, `checkoutFn` e a função que retoma
+    venda guardada (`resumeHeldFn`-equivalente, mesmo comentário "mesma
+    regra do searchPosFn" já apontava a duplicação). `saveProductFn`
+    agora recusa salvar `promoPrice >= price` com erro claro — a trava na
+    origem; `effectivePrice` é a segunda camada, protegendo dado que já
+    estivesse errado no banco antes desta validação existir.
+
+    **Dois achados menores, mesma função (`checkoutFn`), só alcançáveis
+    chamando o servidor direto (sem UI hoje), mas a mesma classe de ameaça
+    que este arquivo já leva a sério** (o comentário já existente sobre
+    `descontoOperador` explica exatamente esse raciocínio — um operador
+    pode montar a chamada à mão): `item.unitPrice` não tinha a mesma
+    guarda de `Number.isFinite` que `item.quantity` já tinha — um
+    `unitPrice` NaN fazia `line`/`subtotal`/`total` virarem NaN, e
+    `total < 0` nunca pega NaN (`NaN < 0` é `false`), então a venda
+    passaria com total NaN gravado no banco; `unitPrice` negativo também
+    não tinha piso. E o desconto da linha (`item.discount`, manual ou de
+    promoção, o maior dos dois) não tinha teto contra o próprio bruto da
+    linha — um `item.discount` maior que `unitPrice*quantity` deixava
+    aquela linha negativa, mascarada por outra linha positiva maior no
+    mesmo carrinho (total agregado e percentual de desconto do operador
+    ficavam dentro do limite normalmente). Corrigido: `unitPrice` agora
+    exige `Number.isFinite` e `>= 0`; o desconto da linha agora usa
+    `Math.min(brutoDaLinha, Math.max(descontoManual, descontoPromo))`.
+
+    **Verificado ao vivo contra o Postgres real do piloto, fluxo completo
+    pela UI de verdade** (não só leitura de código): produto descartável
+    "ZZTESTE Produto Promo" (preço R$100, promocional R$70) — (1) tentei
+    editar pra promocional R$150 (inválido): recusado, `promo_price`
+    continuou R$70 no banco; (2) busquei no PDV: dropdown mostrou R$70,00
+    (o promocional); (3) adicionei ao carrinho: linha e subtotal já
+    mostravam R$70,00 — ANTES desta correção teria mostrado R$100,00; (4)
+    finalizei a venda em dinheiro: `sales.total = 70.00`,
+    `sale_items.unit_price = 70.00`, `sale_items.total = 70.00` —
+    confirma a correção ponta a ponta, da busca até o que fica gravado.
+    Limpeza confirmada: produto, variante, estoque, venda, item de venda,
+    pagamento, movimento de caixa, caixa aberto e os 3 `audit_logs` de
+    teste removidos; `audit_logs` de volta a 13.
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (494, +3 novos de `effectivePrice`) limpos.
+
+    **Achados do mapeamento, confirmados corretos, sem bug**: `bxgy`
+    ("leve X pague Y") não tem risco de divisão por zero
+    (`parsePromoInput` já exige `buyQty>0`); data de validade
+    (`startsAt`/`endsAt`) da Promoção é aplicada identicamente no cliente
+    e no servidor via `isPromoLive` compartilhado; o `promo_price` de uma
+    Promoção (campanha) já tinha a checagem `< unitPrice` desde antes —
+    só o campo homônimo direto no produto não tinha, até agora.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado
+    — e este é provavelmente o achado de maior impacto financeiro direto
+    desta sessão inteira: qualquer loja que já usasse o campo "preço
+    promocional" do cadastro de produto (sem passar pelo sistema de
+    Promoção) estava cobrando o preço cheio de todo cliente que via o
+    preço anunciado como menor.
+
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

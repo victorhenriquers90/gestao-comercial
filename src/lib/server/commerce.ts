@@ -20,7 +20,7 @@ import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan, can } from "@/lib/permissions";
 import { parsePaging } from "@/lib/paging";
-import { bestPromo, parsePromoInput, type Promo } from "@/lib/promo";
+import { bestPromo, effectivePrice, parsePromoInput, type Promo } from "@/lib/promo";
 import { cancelWindow, pendenciaForReturn, pendenciaText } from "@/lib/nfce-cancel";
 import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
 import { num } from "@/lib/utils";
@@ -458,12 +458,20 @@ export const checkoutFn = createServerFn({ method: "POST" })
       if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
         throw new Error("Quantidade inválida.");
       }
+      // Mesma classe de bug: unitPrice NaN fazia line/subtotal/total virarem
+      // NaN, e "total < 0" (mais abaixo) nunca pega NaN -- NaN < 0 e false,
+      // entao a venda passava com total NaN gravado no banco. unitPrice
+      // negativo so e alcancavel chamando o servidor direto (sem controle
+      // nenhum na UI que mande um preco negativo), mas nada aqui barrava.
+      if (!Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
+        throw new Error("Preço inválido no carrinho.");
+      }
       if (!allowNeg && num(cat.stock) < item.quantity) {
         throw new Error(`Estoque insuficiente: ${cat.name}.`);
       }
       const list = num(cat.price);
       const productPromo = num(cat.promo_price);
-      const allowed = productPromo > 0 ? productPromo : list;
+      const allowed = effectivePrice(list, productPromo);
       const promo = bestPromo(
         promos,
         cat.product_id,
@@ -480,8 +488,19 @@ export const checkoutFn = createServerFn({ method: "POST" })
         assertCan(tenant.role, "pdv.price_override");
       }
       const descontoPromo = promo?.discount ?? 0;
-      const disc = Math.max(num(item.discount), descontoPromo);
-      const line = Number((item.unitPrice * item.quantity - disc).toFixed(2));
+      const lineGross = Number((item.unitPrice * item.quantity).toFixed(2));
+      // O desconto da linha (manual ou de promocao, o maior dos dois) nunca
+      // passa do proprio bruto dela. Sem este teto, um item.discount maior
+      // que unitPrice*quantity (so alcancavel chamando o servidor direto --
+      // nao existe campo de desconto por linha na UI) deixava aquela linha
+      // com total negativo, mascarado por outra linha positiva maior no
+      // mesmo carrinho: o total agregado e o percentual de desconto do
+      // operador (calculados mais abaixo) ficavam dentro do limite do
+      // papel mesmo com uma linha "vendendo ao contrario" -- mesma familia
+      // do bug que uma promocao mal configurada ja causava (corrigido antes
+      // em computePromo/promo.ts), so que pelo lado do desconto manual.
+      const disc = Math.min(lineGross, Math.max(num(item.discount), descontoPromo));
+      const line = Number((lineGross - disc).toFixed(2));
       descontoOperador += Math.max(0, disc - descontoPromo);
       subtotal += line;
       costTotal += num(cat.cost) * item.quantity;
@@ -1717,7 +1736,7 @@ export const resumeHeldFn = createServerFn({ method: "POST" })
       // Mesma regra do searchPosFn: preco = promocional do produto se houver.
       current: atuais.map((a) => ({
         variantId: num(a.variant_id),
-        price: num(a.promo_price) > 0 ? num(a.promo_price) : num(a.price),
+        price: effectivePrice(num(a.price), num(a.promo_price)),
         listPrice: num(a.price),
         stock: num(a.stock),
       })),
