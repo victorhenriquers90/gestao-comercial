@@ -4641,6 +4641,46 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
     (494) limpos.
 
+100. **Continuação dos itens 98-99: o quadro Kanban do CRM, e um limite
+     deliberado — onde a mesma ideia NÃO deveria ser aplicada.**
+
+     As 6 colunas do funil (`.board-col` em `crm.tsx`, uma por
+     `CRM_STAGES`: Novo contato/Interessado/Orçamento/Negociação/Venda/
+     Perdido) nasciam sem transição, igual tudo que o item 99 já cobriu.
+     Número fixo de colunas, igual ao `.kpi-card` — mesma receita, mesmo
+     `.enter-fade`-equivalente com atraso crescente por `:nth-child`
+     (30ms cada, até 150ms na sexta em diante). **Os CARTÕES dentro de
+     cada coluna não escalonam entre si** — mesmo raciocínio do item 99
+     para linha de tabela: uma coluna pode ter de 0 a dezenas de clientes,
+     escalonar cartão por cartão viraria uma cascata longa e lenta em vez
+     de discreta; a coluna inteira (cabeçalho + cartões) entra junto, como
+     uma unidade. O card solitário "Agenda de follow-ups", acima do
+     quadro, ganhou o `.enter-fade` padrão (não tinha nenhum tratamento,
+     nem o da tabela nem o do board).
+
+     **Onde parei de propósito, antes de mexer**: o dropdown de busca do
+     PDV (`product-search.tsx`, `.pdv-search-panel`) é o lugar na tela
+     inteira onde eu mais cogitei aplicar isto — aparece a cada produto
+     buscado, múltiplas vezes por venda — e é exatamente por isso que
+     **não** mexi. É tela de operador em ritmo de leitor de código de
+     barras: o painel não nasce uma vez só (como um Dashboard ou uma
+     tabela), ele atualiza a CADA TECLA digitada, e qualquer atraso de
+     entrada, por mais discreto que pareça num teste isolado, vira atrito
+     real numa tela que o próprio HANDOFF já trata com mais cuidado que
+     qualquer outra do sistema (histórico de bugs reais só no PDV: chave
+     de idempotência, trava de troca de loja, guard de duplo clique —
+     tudo priorizando correção e velocidade acima de polimento visual).
+     "Dar vida" a uma tela que precisa ser instantânea seria desfazer essa
+     prioridade, não reforçá-la. Fica registrado como limite deliberado,
+     não como lacuna esquecida, pra próxima IA não "corrigir" isto sem
+     saber que já foi considerado e descartado por um motivo concreto.
+
+     **Verificado ao vivo** (`/app/crm`, banco no baseline — funil vazio,
+     mas as 6 colunas aparecem mesmo vazias): `getComputedStyle` confirma
+     as 6 colunas com `animation-name: page-enter` e atraso crescente
+     (0, 30, 60, 90, 120, 150ms); sem quebra de layout. `typecheck`/`lint`
+     (0 erros, os mesmos 5 avisos antigos) e `npm test` (494) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

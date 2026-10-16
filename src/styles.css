@@ -648,7 +648,19 @@
     display: flex;
     min-width: 0;
     flex-direction: column;
+    /* Mesma ideia do `.kpi-card` (ver comentario la): numero fixo de
+       colunas (uma por etapa do funil, `CRM_STAGES`), entao escalonar por
+       posicao e seguro aqui -- diferente dos cartoes dentro de cada
+       coluna, que sao uma lista de tamanho variavel e por isso NAO
+       escalonam (a coluna inteira, com os cartoes dentro, entra junto). */
+    animation: page-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
+  .board-col:nth-child(2) { animation-delay: 30ms; }
+  .board-col:nth-child(3) { animation-delay: 60ms; }
+  .board-col:nth-child(4) { animation-delay: 90ms; }
+  .board-col:nth-child(5) { animation-delay: 120ms; }
+  .board-col:nth-child(n + 6) { animation-delay: 150ms; }
 
   .board-cards {
     display: flex;

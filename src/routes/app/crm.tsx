@@ -54,7 +54,7 @@ function CrmPage() {
       </div>
 
       {(tasks.data ?? []).length ? (
-        <Card className="mb-5 p-5">
+        <Card className="enter-fade mb-5 p-5">
           <p className="mb-3 ed-title">Agenda de follow-ups</p>
           <ul className="space-y-2">
             {(tasks.data ?? []).slice(0, 8).map((t) => {
