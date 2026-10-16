@@ -4743,6 +4743,57 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      O serviço instalado não precisa de atualização por este item (nada
      mudou no código).
 
+102. **Continuação do item 101: Configurações > Lojas, a única área
+     sugerida que ainda não tinha sido tocada.** Dado o risco diferente
+     desta área (ao contrário de produto/cliente/venda, "Empresa" e
+     "Usuários" mexem em dado real do piloto — o cadastro da empresa de
+     verdade e a única membership admin de verdade — não dado descartável),
+     escolhi deliberadamente testar só o que dá pra fazer com dado 100%
+     descartável sem tocar nada real: criei uma loja de teste
+     ("ZZTESTE Loja Teste"), editei (telefone/cidade/UF) e fechei — não
+     editei o cadastro da empresa nem mexi na membership do admin real,
+     que exigiriam alterar e depois reverter dado de produção em vez de
+     só apagar dado de teste.
+
+     **Os três passos (criar, editar, fechar) funcionaram corretos**,
+     cada um verificado no Postgres, não só pelo toast: "Loja criada."
+     gravou a linha e ela apareceu no seletor de loja do topo (confirma
+     que uma loja nova entra em todo lugar que lista loja, não só na
+     própria tela de Configurações); "Loja atualizada." persistiu
+     telefone/cidade/UF; "Loja fechada." fez a loja sumir da lista e do
+     seletor.
+
+     **Achado que PARECIA bug e não era** (mesma classe de engano do item
+     101, desta vez sobre schema, não sobre dígito verificador): depois de
+     "Loja fechada.", consultei `stores.is_active` esperando `false` e
+     achei `true` — pareceu que o fechamento não persistiu. Conferindo o
+     schema (`\d stores`), a tabela tem DOIS campos independentes:
+     `is_active` (nunca mexido por `closeStoreFn`) e `deleted_at`
+     (soft-delete, que SIM foi preenchido). O texto do próprio diálogo de
+     confirmação já dizia a regra certa — "some do seletor... mas vendas,
+     estoque e caixas antigos continuam no histórico normalmente" — que é
+     exatamente o que soft-delete faz e `is_active=false` não garantiria
+     sozinho. Checar `deleted_at` em vez de `is_active` confirmou: sem
+     bug, suposição errada minha sobre qual coluna valia.
+
+     **Por que parei aqui, sem testar Empresa/Usuários**: as duas únicas
+     formas de testar aquelas abas seriam (a) editar e reverter o cadastro
+     real da empresa, ou (b) mexer na membership do único admin real
+     (mudar role/loja, ou tentar e esperar o guard do item 90 bloquear) —
+     os dois caminhos tocam dado de produção, não dado `ZZTESTE`
+     descartável, o que quebra a disciplina que esta sessão inteira seguiu
+     (dado de teste prefixado, criado e apagado, nunca o registro real do
+     piloto). Fica como lacuna explícita, não esquecida, pra quando fizer
+     sentido testar com uma segunda empresa de teste inteira (não só linhas
+     dentro da empresa 4).
+
+     **Limpeza confirmada**: a loja de teste apagada de verdade (não só
+     soft-delete — `DELETE` direto, já que não é dado que precise ficar no
+     histórico) e os 3 `audit_logs` que as três ações geraram (397-399)
+     removidos; `stores` de volta às 2 lojas reais (Loja Centro, Loja
+     Shopping), `audit_logs` de volta a 13. Nenhum arquivo de código mudou
+     (só verificação).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
