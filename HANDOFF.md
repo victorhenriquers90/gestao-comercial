@@ -4681,6 +4681,68 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (0, 30, 60, 90, 120, 150ms); sem quebra de layout. `typecheck`/`lint`
      (0 erros, os mesmos 5 avisos antigos) e `npm test` (494) limpos.
 
+101. **Terceira camada: fluxos de EDIÇÃO com dado pré-existente (não só
+     criação/lista), pendência deixada explícita no item 97.** Populei de
+     novo um lote pequeno e descartável (3 produtos, 3 clientes, 1
+     fornecedor, 1 categoria, 1 pedido de compra, 1 meta, 1 promoção, 2
+     vendas de verdade pelo PDV) e testei, um a um, contra o Postgres real:
+     editar produto existente (nome/preço/categoria/fornecedor
+     pré-preenchidos, salvar), editar cliente (dados + limite de crédito),
+     editar fornecedor, receber um pedido de compra (`pedido` →
+     `recebido`), ajuste manual de estoque (`saída`), cancelar uma venda
+     finalizada, editar uma meta, e quitar uma conta a pagar em dinheiro.
+     **Nenhum bug novo encontrado** — todos os oito fluxos persistiram
+     corretamente, com os efeitos colaterais certos (estoque, conta a
+     pagar, movimento de caixa, `audit_logs`) conferidos direto no banco,
+     não só pela tela. Resultado negativo documentado porque tem valor:
+     confirma que a camada de edição — a que faltava testar — está sólida,
+     não é suposição.
+
+     **Dois alarmes falsos que vale registrar, porque a causa é do MEU
+     dado de teste, não do produto**: tentei salvar edições em produto e
+     cliente usando código de barras/CPF sintéticos sem dígito verificador
+     válido (ex. `789200000001`, `123.123.123-12`) e as duas vezes o
+     `saveProductFn`/`saveCustomerFn` recusaram com mensagem clara
+     ("Código de barras inválido (dígito verificador).", "CPF inválido.")
+     — a validação funcionou exatamente como deveria; o erro era meu, não
+     do sistema. Corrigido gerando EAN-13/CPF/CNPJ com dígito verificador
+     de verdade (algoritmo calculado, não inventado) antes de repetir o
+     teste. Fica registrado pra próxima IA que for gerar `ZZTESTE *` com
+     documento ou código de barras: o item 96/97 (primeira leva de dado de
+     teste) já usava dígitos válidos por acaso — esta leva não, e por isso
+     pareceu bug até eu confirmar que não era.
+
+     **Achado incidental, confirma o item 97 de ponta a ponta com dado
+     real** (não só simulado via `UPDATE` direto): quitei de verdade, pela
+     UI, a conta a pagar gerada pelo recebimento da compra de teste —
+     coluna "Valor" mostrou R$300,00 (o valor do título) depois de pago,
+     não R$0,00. Antes do item 97 este teste teria reproduzido o bug ao
+     vivo; agora confirma a correção com uma conta paga de verdade através
+     do fluxo real (receber pedido → gerar conta → quitar), não só um
+     `UPDATE` manual simulando `paid_amount`.
+
+     **Tabela nova, não documentada antes, que entra na lista de limpeza**:
+     `account_settlements` (uma linha por baixa de conta a pagar/receber,
+     referencia `cash_movements`) — faltava na minha lista de tabelas pra
+     apagar e bloqueou a limpeza por FK na primeira tentativa (erro claro
+     do Postgres, nada quebrou). Adicionada à ordem de limpeza antes de
+     `cash_movements`.
+
+     **Limpeza confirmada**: as 2 vendas (com `sale_items`/`payments`/
+     `stock_movements`/`cash_movements`), a conta a pagar e seu
+     `account_settlement`, o pedido de compra recebido (com
+     `purchase_items`), os 3 produtos (variante + estoque), os 3 clientes,
+     1 fornecedor, 1 categoria, 1 meta, 1 promoção, o `cash_register` de
+     teste e os 11 `audit_logs` que a sessão gerou — todos removidos;
+     `company_id=4` de volta a zero em tudo, `audit_logs` de volta a 13.
+     `company_counters` ficou com os números já usados (purchase=9,
+     sale=25), mesma política dos itens anteriores. `typecheck` limpo
+     antes e depois (nenhum arquivo de código mudou nesta rodada — só
+     verificação, sem fix).
+
+     O serviço instalado não precisa de atualização por este item (nada
+     mudou no código).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
