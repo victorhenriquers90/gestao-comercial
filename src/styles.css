@@ -716,6 +716,16 @@
     animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
+  /* Mesmo keyframe/curva do `.page-enter`, mas pra conteudo que nasce
+     DEPOIS da troca de rota -- quando uma query termina e a tabela/estado
+     vazio/cartao substitui o skeleton. `.page-enter` so cobre o instante da
+     navegacao; sem isto, tudo que depende de dado (a maioria das telas do
+     sistema) aparecia sem nenhuma transicao. Ver tambem `.kpi-card`, que
+     usa a mesma ideia com atraso escalonado por cartao. */
+  .enter-fade {
+    animation: page-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .topbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -804,6 +814,24 @@
   .dash-sellers { grid-area: sellers; min-width: 0; }
   .dash-stock { grid-area: stock; min-width: 0; }
   .dash-monthly { grid-area: monthly; min-width: 0; }
+
+  /* Mesma entrada do `.kpi-card` (ver `.enter-fade`), pros outros 7
+     cartoes do painel -- sem isto eles nasciam sem transicao nenhuma
+     assim que a faixa de KPIs (unica que ja tinha) terminava de aparecer.
+     Atraso unico (depois do ultimo degrau da faixa de KPIs) em vez de
+     escalonado: sao cartoes de tipos diferentes em posicoes que mudam de
+     lugar conforme o breakpoint, nao uma lista repetida -- escalonar por
+     posicao ia variar o efeito a cada largura de tela. */
+  .dash-chart,
+  .dash-metas,
+  .dash-folha,
+  .dash-products,
+  .dash-sellers,
+  .dash-stock,
+  .dash-monthly {
+    animation: page-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 80ms;
+  }
 
   /*
     A coluna PRECISA ser declarada nestes grids de uma coluna so.

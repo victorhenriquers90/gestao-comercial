@@ -40,7 +40,7 @@ export function EmptyState({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="flex flex-col items-start justify-center gap-3 border-y border-border py-16">
+    <div className="enter-fade flex flex-col items-start justify-center gap-3 border-y border-border py-16">
       <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
         <Icon className="size-4" />
       </span>
@@ -116,7 +116,7 @@ export function KpiCard({
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto border-y border-border bg-card">
+    <div className="enter-fade overflow-x-auto border-y border-border bg-card">
       {children}
     </div>
   );

@@ -4588,6 +4588,59 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     (4 cartões) sem quebra de layout. `typecheck`/`lint`/`npm test` (494)
     limpos.
 
+99. **Continuação do item 98: mesma lacuna de "entrada sem transição" em
+    todo lugar que nasce depois de uma query, não só no KPI** — usuário
+    pediu pra continuar procurando onde faltava esse tipo de "vida" depois
+    de ver o efeito nos cartões do Dashboard. Mapeei os outros dois lugares
+    de maior alcance onde conteúdo troca de "esqueleto" pra "dado de
+    verdade" sem nenhuma transição:
+
+    **Toda tabela e todo estado vazio do sistema** — `DataTable`/
+    `TableWrap`/`EmptyState` (`src/components/shared.tsx`) são usados em 21
+    pontos, 16 arquivos (Produtos, Clientes, Vendas, Fornecedores, Compras,
+    Estoque, Financeiro×3, Devoluções, Promoções, Vendedores×2, Relatórios,
+    e os painéis de comissão/sugestão de compra/contagem de estoque/guia de
+    retenção) — ou seja, praticamente toda tela de lista do sistema inteiro.
+    Nenhuma tinha transição; a tabela ou a mensagem de "nenhum X cadastrado"
+    só aparecia de uma vez. **Não dava pra escalonar linha por linha**
+    como o KPI (`:nth-child` com atraso crescente) — uma tabela pode ter
+    de 1 a 100+ linhas (o teto já documentado no item 63/91), e escalonar
+    100 linhas levaria segundos pra terminar de entrar, o oposto de
+    discreto. Em vez disso, criei uma classe utilitária nova,
+    `.enter-fade` (`src/styles.css`), reaproveitando o MESMO keyframe/curva
+    do `.page-enter` e do `.kpi-card` (consistência de movimento, não um
+    terceiro idioma) — mas aplicada no CONTAINER inteiro da tabela/estado
+    vazio de uma vez só, não cada linha. Dois componentes mudados, os 21
+    pontos de uso ganham de graça.
+
+    **Os outros 7 cartões do Dashboard** (`.dash-chart`, `.dash-metas`,
+    `.dash-folha`, `.dash-products`, `.dash-sellers`, `.dash-stock`,
+    `.dash-monthly`) — o item 98 só tinha animado `.kpi-card`; esses sete
+    (o gráfico, metas, folha, produtos mais vendidos, vendedores, estoque
+    baixo, evolução mensal) continuavam nascendo sem nenhuma transição
+    assim que a faixa de KPI acima deles terminava de aparecer — mesmo
+    sendo irmãos no mesmo carregamento de dado. Mesmo `.enter-fade`,
+    aplicado direto nas classes de área do grid já existentes (não mexeu em
+    `index.tsx`). Atraso único (80ms, depois do último degrau da faixa de
+    KPI) em vez de escalonado por posição: são tipos de cartão diferentes
+    que trocam de lugar a cada breakpoint do `.dash-stage` (documentado nos
+    comentários da própria faixa), então escalonar por posição daria um
+    efeito diferente em cada largura de tela.
+
+    **Onde eu NÃO mexi, de propósito**: diálogo, aba e o card de login já
+    tinham animação de entrada própria (`tw-animate-css`, `data-[state=...]`
+    em `dialog.tsx`/`tabs.tsx`/`sheet.tsx`) — confirmado lendo o código
+    antes de mexer, não presumido; reaproveitar `.enter-fade` ali seria
+    duplicar uma transição que já existe e ainda por cima brigar com a dela
+    (as duas disputando `opacity`/`transform` do mesmo elemento).
+
+    **Verificado ao vivo**: `getComputedStyle` em `.dash-chart` até
+    `.dash-monthly` confirma os 7 com `animation-name: page-enter`,
+    `duration: 0.32s`, `delay: 0.08s`; em `/app/produtos` (baseline zerado,
+    mostra o `EmptyState`) confirma o container com a mesma animação.
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (494) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
