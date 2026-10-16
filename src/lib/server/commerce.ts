@@ -1641,27 +1641,41 @@ export const holdSaleFn = createServerFn({ method: "POST" })
 
 export const listHeldFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId: number }) => d)
+  .validator((d: { storeId: number; limit?: number }) => ({
+    ...d,
+    // `limit 40` sem contagem nem paginação era um teto silencioso (mesma
+    // classe de bug já corrigida em listSalesFn/listProductsFn, ver item
+    // 63/91 do HANDOFF): como a ordem é "mais recente primeiro", quem
+    // passasse de 40 vendas guardadas simultâneas nunca mais via nem
+    // conseguia Recuperar/Descartar as mais ANTIGAS -- ficavam presas pra
+    // sempre no banco, e resolver as 40 visíveis não ajudava a revelar as
+    // de baixo, porque a lista sempre mostra as mais novas. `total` deixa
+    // a tela avisar "há mais" e `limit` (crescente a cada "carregar mais")
+    // deixa alcançar as antigas de verdade, sem mudar a ordem padrão.
+    page: parsePaging(d, { defaultLimit: 40, maxLimit: 200 }),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.sell");
     await assertStore(sql, tenant, data.storeId);
     const rows = await sql<Row>`
-      select h.id, h.created_at, h.discount, h.notes, h.payload, c.name as customer_name, s.name as seller_name
+      select count(*) over() as row_count,
+             h.id, h.created_at, h.discount, h.notes, h.payload, c.name as customer_name, s.name as seller_name
         from held_sales h
         left join customers c on c.id = h.customer_id
         left join sellers s on s.id = h.seller_id
        where h.company_id = ${tenant.companyId} and h.store_id = ${data.storeId}
        order by h.created_at desc
-       limit 40
+       limit ${data.page.limit}
     `;
-    return rows.map((r) => {
-      let items = 0;
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows.map((r) => {
+      let itemCount = 0;
       try {
         const p = JSON.parse(String(r.payload ?? "{}")) as HeldPayload;
-        items = Array.isArray(p.cart) ? p.cart.length : 0;
+        itemCount = Array.isArray(p.cart) ? p.cart.length : 0;
       } catch {
-        items = 0;
+        itemCount = 0;
       }
       return {
         id: num(r.id),
@@ -1669,9 +1683,10 @@ export const listHeldFn = createServerFn({ method: "POST" })
         customerName: r.customer_name == null ? null : String(r.customer_name),
         sellerName: r.seller_name == null ? null : String(r.seller_name),
         notes: r.notes == null ? null : String(r.notes),
-        items,
+        items: itemCount,
       };
     });
+    return { items, total };
   });
 
 export const resumeHeldFn = createServerFn({ method: "POST" })

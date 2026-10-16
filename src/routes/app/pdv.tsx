@@ -64,6 +64,7 @@ function PdvPage() {
     holdCart,
     resumeHeld,
     discardHeld,
+    loadMoreHeld,
     busy,
     cancelarVenda,
     finish,
@@ -240,7 +241,7 @@ function PdvPage() {
         commission={commissionSummary}
         notes={notes}
         onNotes={setNotes}
-        heldCount={held.data?.length ?? 0}
+        heldCount={held.data?.total ?? 0}
         onHold={() => void holdCart()}
         onHeld={() => setHeldOpen(true)}
         onCancel={cancelarVenda}
@@ -252,7 +253,9 @@ function PdvPage() {
       <HeldSalesDialog
         open={heldOpen}
         onOpenChange={setHeldOpen}
-        held={held.data ?? []}
+        held={held.data?.items ?? []}
+        total={held.data?.total ?? 0}
+        onLoadMore={loadMoreHeld}
         onResume={(id) => void resumeHeld(id)}
         onDiscard={discardHeld}
       />

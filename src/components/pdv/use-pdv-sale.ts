@@ -63,6 +63,7 @@ export function usePdvSale() {
   const [custOpen, setCustOpen] = useState(false);
   const [discOpen, setDiscOpen] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [heldLimit, setHeldLimit] = useState(40);
   const [busy, setBusy] = useState(false);
   // `busy` e estado: dois disparos no mesmo tick (atalho + clique, duas
   // teclas rapidas) ainda leem false. A ref trava na hora, sincrona.
@@ -101,10 +102,17 @@ export function usePdvSale() {
     enabled: Boolean(activeStore),
   });
   const held = useQuery({
-    queryKey: ["held", activeStore],
-    queryFn: () => listHeldFn({ data: { storeId: activeStore } }),
+    queryKey: ["held", activeStore, heldLimit],
+    queryFn: () => listHeldFn({ data: { storeId: activeStore, limit: heldLimit } }),
     enabled: Boolean(activeStore),
   });
+  // Mesmo "carregar mais" de qualquer tabela paginada do app -- só que
+  // crescendo o próprio limite em vez de página por página, porque a lista
+  // é pequena (vendas guardadas de UMA loja) e sempre em ordem "mais nova
+  // primeiro": alcança as mais antigas sem reordenar nem duplicar linha.
+  function loadMoreHeld() {
+    setHeldLimit((n) => n + 40);
+  }
   const registerOpen = register.data ? Boolean(register.data.register) : null;
   const sellerPicked = useRef(false);
 
@@ -408,7 +416,7 @@ export function usePdvSale() {
           mudaram++;
         return [{ ...l, price: c.price, listPrice: c.listPrice, stock: c.stock }];
       });
-      const nome = held.data?.find((h) => h.id === id)?.customerName ?? null;
+      const nome = held.data?.items.find((h) => h.id === id)?.customerName ?? null;
       setCart(next);
       setSelectedId(next[next.length - 1]?.variantId ?? null);
       setHeaderDisc(row.discount || payload.headerDisc || 0);
@@ -710,6 +718,7 @@ export function usePdvSale() {
     holdCart,
     resumeHeld,
     discardHeld,
+    loadMoreHeld,
 
     busy,
     novaVenda,

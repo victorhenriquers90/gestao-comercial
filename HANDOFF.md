@@ -4881,6 +4881,66 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      NFC-e configurado. A primeira emissão real, quando acontecer, merece
      acompanhamento de perto mesmo com os achados desta revisão corrigidos.
 
+104. **Revisão dos cantos mais estreitos ainda não tocados (vendas em
+     espera do PDV, campo Observação, sugestão de compra, painéis de
+     comissão), achado real: vendas guardadas além da 40ª ficavam presas
+     pra sempre, sem nenhuma forma de ver, recuperar ou descartar.**
+     Delegado a uma exploração de código; três das quatro áreas já estavam
+     corretas ou já documentadas (Observação: item 35, persiste em
+     `sales.notes`, confirmado de novo; sugestão de compra: bem guardada
+     contra NaN/divisão por zero/escopo de loja, item 50 já testou ao
+     vivo; painéis de comissão: sinais e arredondamento batem com o que é
+     gravado, nenhum bug de exibição) — o quarto achado era novo e real,
+     verifiquei cada linha antes de aceitar.
+
+     **Causa raiz**: `listHeldFn` (`commerce.ts`) tinha `limit 40` fixo,
+     sem `count(*) over()` nem paginação — mesma classe de bug já corrigida
+     em `listProductsFn`/`listSalesFn` (itens 63/91), só que nunca
+     corrigida aqui. A lista ordena `created_at desc` (mais recente
+     primeiro), então o 41º registro em diante são sempre as mais ANTIGAS —
+     e como `resumeHeldFn`/`discardHeldFn` só operam por `id`, e o único
+     jeito de descobrir um `id` é aparecer nesta lista, uma loja que
+     acumulasse mais de 40 vendas guardadas simultâneas perdia acesso
+     permanente às mais antigas: não aparecem, não tem como Recuperar,
+     não tem como Descartar — ficam pra sempre na tabela `held_sales`,
+     invisíveis, e resolver as 40 visíveis NUNCA ajuda a revelar as de
+     baixo (a lista sempre mostra as 40 mais novas, não desloca). Baixo
+     risco de acontecer num PDV de um caixa só no dia a dia, mas o
+     comportamento no limite era silencioso e sem saída nenhuma pela UI.
+
+     **Corrigido com o mesmo padrão já usado no resto do sistema**:
+     `listHeldFn` agora usa `parsePaging` (mesma validação de
+     `listProductsFn`/`listSalesFn`, não reinventada) e devolve
+     `{ items, total }`; `heldCount` no `SalePanel` passou a mostrar
+     `total` (contagem de verdade) em vez de `.length` da página (que já
+     era um sub-bug mais discreto: mesmo com 45 guardadas, mas sem passar
+     de 40, o botão já mostrava certo — só ficava errado ACIMA de 40, daí
+     ninguém ter notado). `held-sales-dialog.tsx` ganhou um rodapé
+     "Mostrando X de Y" + botão "Carregar mais antigas" quando há mais do
+     que a página mostra; `use-pdv-sale.ts` ganhou `loadMoreHeld` (cresce
+     o `limit` da própria query em vez de paginar por offset — lista
+     pequena de UMA loja, "carregar mais" cabe melhor numa caixa de
+     diálogo compacta do que número de página). Dois lugares de uso
+     (`pdv.tsx`, `pdv-tablet.tsx`) ganham o fix de graça, mesmo hook
+     compartilhado (mesma arquitetura da extração feita no item 39).
+
+     **Verificado ao vivo, reproduzindo o bug e depois a correção**: 45
+     vendas guardadas descartáveis inseridas direto no banco (`ZZTESTE
+     guardada 1`..`45`, datadas pra ordem ficar previsível); confirmado
+     que o diálogo mostrava só as 40 mais novas com "Mostrando 40 de 45
+     guardadas." e "Carregar mais antigas"; clicado o botão — as 5 mais
+     antigas (`guardada 41`..`45`, que ANTES da correção ficariam presas
+     pra sempre) apareceram; descartada `guardada 45` com sucesso,
+     confirmando que não é só visível, é de verdade acionável. Limpeza
+     confirmada: as 44 vendas guardadas restantes, o caixa de teste e o
+     `audit_log` de abertura removidos; `held_sales`/`cash_registers` de
+     volta a zero, `audit_logs` de volta a 13.
+     `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+     (500, inalterado — fix sem lógica pura nova testável por unidade,
+     só reaproveitando `parsePaging` já testado) limpos.
+
+     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

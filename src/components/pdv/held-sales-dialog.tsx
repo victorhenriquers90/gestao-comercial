@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { listHeldFn } from "@/lib/server/commerce";
 
-type Held = Awaited<ReturnType<typeof listHeldFn>>[number];
+type Held = Awaited<ReturnType<typeof listHeldFn>>["items"][number];
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   held: Held[];
+  total: number;
+  onLoadMore: () => void;
   onResume: (id: number) => void;
   onDiscard: (id: number) => Promise<void>;
 };
@@ -80,6 +82,21 @@ export function HeldSalesDialog(p: Props) {
             ))}
           </ul>
         )}
+        {/* Antes a lista vinha com `limit 40` fixo, sem contagem: quem
+            passasse disso nunca mais via (nem conseguia Recuperar ou
+            Descartar) as vendas guardadas mais ANTIGAS -- ficavam presas
+            pra sempre, invisíveis. `total` deixa isto visível e
+            "Carregar mais antigas" deixa alcançar de verdade. */}
+        {p.total > p.held.length ? (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <p className="text-xs text-muted-foreground">
+              Mostrando {p.held.length} de {p.total} guardadas.
+            </p>
+            <Button size="sm" variant="outline" className="rounded-sm" onClick={p.onLoadMore}>
+              Carregar mais antigas
+            </Button>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
