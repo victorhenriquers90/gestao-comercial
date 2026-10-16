@@ -436,6 +436,7 @@ function ProdutosPage() {
               <div className="mt-1.5 flex gap-1.5">
                 <Input
                   placeholder="Nova categoria"
+                  aria-label="Nome da nova categoria"
                   value={novaCategoria}
                   onChange={(e) => setNovaCategoria(e.target.value)}
                   onKeyDown={(e) => {

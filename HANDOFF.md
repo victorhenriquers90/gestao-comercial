@@ -4420,6 +4420,19 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     layout mudou de fato. `typecheck`, `lint` e `npm test` (494, inalterado —
     mudança só de apresentação) limpos.
 
+    **Abri também os diálogos de cadastro mais usados** ("Novo produto" em
+    [produtos.tsx](src/routes/app/produtos.tsx) e "Novo cliente" em
+    clientes.tsx) pra ver além do estado vazio da lista — ambos bem
+    construídos: campos em grid, rótulo de verdade em cada um (via
+    `<Field>`, associação implícita por `<label>`, confirmado lendo
+    `input.labels` de cada campo, não só a árvore de acessibilidade), modal
+    com `overflow-y: auto` de verdade (não corta o rodapé, só exige rolar
+    num formulário longo). Único achado real: o campo "Nova categoria" (o
+    atalho pra criar categoria sem sair do formulário de produto) era o
+    único sem rótulo nenhum, só `placeholder` — todo o resto do MESMO
+    formulário já tinha rótulo. `aria-label="Nome da nova categoria"`
+    corrige a inconsistência.
+
     **Isto é só a primeira passada.** O pedido do usuário foi "repassar por
     todos os módulos" — esta rodada cobriu layout de barra de filtro e
     estado vazio de gráfico, a classe de bug mais visível no estado zerado
