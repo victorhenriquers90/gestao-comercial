@@ -348,7 +348,13 @@ function ProdutosPage() {
               <Td className="tabular col-num">{formatBRL(p.cost)}</Td>
               <Td className="tabular col-num">{formatBRL(p.price)}</Td>
               <Td className="tabular col-num">{marginPct(p.price, p.cost).toFixed(1)}%</Td>
-              <Td className="tabular col-num">{formatQty(p.stock)}</Td>
+              <Td className="tabular col-num">
+                {p.stock <= p.minStock && p.minStock > 0 ? (
+                  <Badge variant="warning">{formatQty(p.stock)}</Badge>
+                ) : (
+                  formatQty(p.stock)
+                )}
+              </Td>
               <Td>
                 <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativo" : "Inativo"}</Badge>
               </Td>

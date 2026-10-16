@@ -4444,6 +4444,105 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     verdade, medir, comparar com a tela vizinha que já acerta, corrigir,
     verificar, documentar).
 
+97. **Segunda camada da revisão de UI/produção (continuação do item 96),
+    desta vez com dado de verdade carregado** — o item 96 revisou as 18
+    telas no estado zerado do piloto; "zerado" por definição não mostra
+    tabela com linha, card de cliente com dívida, conta já paga, nada que só
+    aparece com dado de verdade dentro. Populei o banco com um conjunto
+    descartável e abrangente — 16 produtos (variante + estoque por loja), 12
+    clientes, 6 fornecedores, 4 categorias, 4 pedidos de compra (orçamento/
+    pedido/recebido), 3 contas a pagar (pendente/vencida/paga), 2 contas a
+    receber (pendente/parcial), 5 despesas, 3 metas, 2 promoções, 6 tarefas
+    de CRM — tudo prefixado `ZZTESTE`, inserido direto no Postgres (não pela
+    UI: a maioria são tabelas de cadastro simples, sem lógica de servidor
+    por trás que valesse a pena repetir) — e 6 vendas de verdade pelo PDV de
+    verdade (busca por código de barras, carrinho, finalização), com datas
+    espalhadas por 35 dias pra o gráfico do Dashboard ter o que mostrar.
+    Script e IDs ficaram só no scratchpad da sessão, nunca no repo.
+
+    **Achado real nº1 — "Valor" nas Contas a pagar/receber mostrava o SALDO
+    em aberto, não o valor do título, contradizendo o próprio cabeçalho da
+    coluna.** `financeiro.tsx` (linhas ~292 e ~460) calculava a coluna
+    "Valor" como `amount - paid_amount` (ou `- received_amount`). Pra um
+    título pendente isso por acaso bate com o valor cheio (`paid_amount=0`),
+    o que escondeu o bug nos dois pedidos "pendente"/"vencido" do lote de
+    teste — só apareceu de verdade na conta JÁ PAGA ("ZZTESTE Aluguel de
+    equipamento de balcão", `amount=450`, `paid_amount=450`): a tela
+    mostrava **"Valor: R$ 0,00"** pra uma despesa real de R$450 só porque já
+    tinha sido quitada. Um gestor batendo o olho na lista veria um título
+    pago de R$0,00 e não teria como saber, só olhando a tela, que o valor
+    verdadeiro era R$450 — a única pista estaria no extrato de pagamento,
+    não na lista. O mesmo acontece (e aconteceria pra QUALQUER pagamento
+    parcial, não só total) do lado de "Contas a receber": simulei recebimento
+    parcial (R$150 cobrados, R$50 recebidos, status "parcial") e a tela
+    mostrava "Valor: R$100,00" — o saldo, não o título. Corrigido: a coluna
+    "Valor" agora mostra `r.amount` puro nos dois lugares. **Não mexi** no
+    cálculo igual usado pra pré-preencher o campo de quitação parcial
+    (`amount - paid/received_amount` como valor sugerido ao clicar
+    "Pagar"/"Receber") — esse uso está certo, é o saldo que falta, não o
+    valor do título; só a CÉLULA DA TABELA, que tem outro propósito (mostrar
+    o título, não o que falta), estava errada.
+
+    **Achado real nº2 — tabela de Produtos não dava nenhum aviso visual de
+    estoque zerado ou abaixo do mínimo**, mesmo a informação (`min_stock`)
+    já vindo do servidor pronta pra comparar. `produtos.tsx` só imprimia
+    `formatQty(p.stock)` puro — um operador olhando a lista de produtos não
+    tinha como saber que "ZZTESTE Fone de Ouvido Bluetooth" tinha vendido o
+    último e zerado, a não ser indo em Estoque ou no card do Dashboard (que
+    JÁ mostra isso corretamente). Mesma informação, mesma tela principal do
+    catálogo, sem o aviso que a tela de Estoque já tem. Corrigido replicando
+    a convenção exata já usada em `estoque.tsx`: `p.stock <= p.minStock &&
+    p.minStock > 0` envolve o número num `<Badge variant="warning">` —
+    mesmo limiar, mesmo componente, mesma cor em todo o app. (Produto com
+    `min_stock` nunca configurado, ou seja 0, continua sem aviso — mesma
+    limitação que a página de Estoque já tinha antes desta mudança; não é
+    regressão, é a mesma regra replicada.)
+
+    **O resto do mapeamento (confirmado correto, sem bug, com dado de
+    verdade nas 18 telas + diálogos "Novo produto"/"Novo cliente" já
+    abertos no item 96)**: tabelas de Vendas/Clientes/Fornecedores/Compras/
+    Estoque mantiveram as colunas alinhadas e o nome truncado com reticências
+    mesmo com nomes de teste deliberadamente longos (`ZZTESTE Indústria e
+    Comércio de Materiais de Limpeza e Papelaria do Nordeste S.A.`,
+    `ZZTESTE Mochila Escolar Reforçada com Compartimento para Notebook e
+    Rodinhas`), verificado por `getBoundingClientRect`/`scrollWidth`, não só
+    olhando a tela; CRM (funil, contagem por etapa, tarefas abertas/
+    atrasadas, selo "Em aberto R$X" no card do cliente) bateu exatamente com
+    o dado inserido, inclusive o cruzamento com Contas a receber (mesmo
+    cliente, mesmo valor, duas telas diferentes); Metas e Promoções
+    renderizaram os três tipos de meta (loja, categoria, com bônus) e os
+    dois tipos de promoção (percentual numa categoria, preço promocional num
+    produto) sem erro; a promoção "ZZTESTE Liquida Papelaria 15%" aplicou
+    sozinha dentro do PDV de verdade ao vender dois produtos da categoria
+    Papelaria (confirma que o motor de promoção por categoria, já testado
+    antes nesta sessão só por leitura de dado, também funciona ponta a ponta
+    pela UI); Relatórios filtrou corretamente por período (venda de
+    setembro, fora do mês corrente, ficou de fora do "Resumo executivo" do
+    mês atual, como devia).
+
+    **Limpeza confirmada**: as 6 vendas (com `payments`, `sale_items`,
+    `stock_movements`, `cash_movements` e o `cash_register` de teste que
+    geraram), as 4 compras (com `purchase_items`), os 16 produtos (com
+    variante e estoque por loja), os 12 clientes, 6 fornecedores, 4
+    categorias, 3 metas, 2 promoções, 5 despesas, 3 contas a pagar, 2 contas
+    a receber, 6 tarefas de CRM e os 7 `audit_logs` que a sessão de PDV
+    gerou (6 vendas + 1 abertura de caixa) — todos removidos; todas as
+    contagens por `company_id=4` de volta a zero, `audit_logs` de volta a
+    13. `company_counters` (sale=23, purchase=8) ficou com o número mais
+    alto já usado, sem reset — mesma política já em vigor nesta sessão pro
+    contador de venda (item 95 deixou o de venda em 17 depois de uma venda
+    de teste apagada; mesmo raciocínio agora pros dois, pra nunca um pedido
+    ou venda real colidir com um número que uma venda de teste já usou).
+    `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+    (494, inalterado) limpos antes e depois da limpeza.
+
+    O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
+    Continua valendo o aviso do item 96: ainda não foram abertos TODOS os
+    diálogos de cadastro/edição de todos os módulos (só Produtos e Clientes,
+    no item 96) nem testados fluxos de edição com dado pré-existente
+    (editar um produto já populado, mudar status de uma venda, etc.) — bom
+    próximo passo pra uma terceira camada.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

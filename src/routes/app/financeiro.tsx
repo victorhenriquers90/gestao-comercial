@@ -289,7 +289,7 @@ function FinanceiroPage() {
                   <Td>{String(r.description)}</Td>
                   <Td>{String(r.supplier_name ?? "—")}</Td>
                   <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular col-num">{formatBRL(num(r.amount) - num(r.paid_amount))}</Td>
+                  <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
                   <Td>
                     <Badge variant={statusBadgeVariant(String(r.status))}>
                       {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
@@ -457,7 +457,7 @@ function FinanceiroPage() {
                   <Td>{String(r.description)}</Td>
                   <Td>{String(r.customer_name ?? "—")}</Td>
                   <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular col-num">{formatBRL(num(r.amount) - num(r.received_amount))}</Td>
+                  <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
                   <Td>
                     <Badge variant={statusBadgeVariant(String(r.status))}>
                       {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
