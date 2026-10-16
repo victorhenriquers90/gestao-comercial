@@ -100,6 +100,7 @@ function EstoquePage() {
               }}
             />
             <Select
+              className="w-auto min-w-48"
               aria-label="Filtro de estoque"
               value={filter}
               onChange={(e) => {

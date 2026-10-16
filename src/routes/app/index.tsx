@@ -84,7 +84,11 @@ function DashboardPage() {
         description={`${tenant.data?.companyName ?? "Sua loja"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)}>
+            <Select
+              className="w-auto min-w-40"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as PeriodKey)}
+            >
               {PERIOD_OPTIONS.filter((o) => o.value !== "custom").map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -92,6 +96,7 @@ function DashboardPage() {
               ))}
             </Select>
             <Select
+              className="w-auto min-w-48"
               value={sellerId ?? ""}
               onChange={(e) => setSellerId(e.target.value ? Number(e.target.value) : null)}
             >
@@ -141,21 +146,27 @@ function DashboardPage() {
             <CardTitle>Vendas do período</CardTitle>
           </CardHeader>
           <CardContent className="h-full min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chart}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
-                <Area
-                  type="monotone"
-                  dataKey="total"
-                  stroke="var(--color-chart-1)"
-                  fill="var(--color-chart-1)"
-                  fillOpacity={0.15}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chart.length === 0 ? (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-muted-foreground">Ainda não há vendas neste período.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                  <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    stroke="var(--color-chart-1)"
+                    fill="var(--color-chart-1)"
+                    fillOpacity={0.15}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
         <Card className="dash-metas dash-fill">
@@ -300,15 +311,21 @@ function DashboardPage() {
           <CardTitle>Evolução mensal</CardTitle>
         </CardHeader>
         <CardContent className="min-h-0 h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthly}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
-              <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {monthly.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm text-muted-foreground">Ainda não há vendas nos últimos meses.</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthly}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
+                <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
       </div>

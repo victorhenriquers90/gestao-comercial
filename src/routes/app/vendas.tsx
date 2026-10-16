@@ -156,6 +156,7 @@ function VendasPage() {
         />
         <Input
           type="date"
+          className="w-40"
           aria-label="Vendas a partir de"
           value={from}
           onChange={(e) => {
@@ -165,6 +166,7 @@ function VendasPage() {
         />
         <Input
           type="date"
+          className="w-40"
           aria-label="Vendas até"
           value={to}
           onChange={(e) => {

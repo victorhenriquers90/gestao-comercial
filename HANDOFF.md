@@ -4348,6 +4348,89 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     preço anunciado como menor.
 
 
+96. **Início de uma rodada de polimento de UI/UX pedida explicitamente pelo
+    usuário ("melhorar o sistema para produção, repassar por todos os
+    módulos, melhorando os botões e o design") — passei pelas 18 telas de
+    `/app/*` em viewport desktop (1440×900, o alvo real do produto) contra o
+    banco do piloto no estado de baseline (zerado) e achei e corrigi 5 bugs
+    de layout reais, todos verificados ao vivo no navegador, nenhum
+    hipotético.** Dois são da mesma causa raiz, espalhada por duas telas
+    diferentes; os outros dois são do Dashboard.
+
+    **Causa raiz repetida: `<Select>`/`<Input>` soltos (sem `<Field>` em
+    volta nem `className` de largura) dentro de uma barra de filtro
+    `flex flex-wrap`.** `Input`/`Select` (`src/components/ui/input.tsx`,
+    `select.tsx`) têm `w-full` por padrão — correto quando envolvidos por um
+    `<Field>` (que é um `<label className="grid ...">`, onde `w-full` vale
+    100% da *track* do grid) ou por uma coluna de `grid`, mas errado como
+    filho direto de `flex`: sem `flex-basis`/largura própria, o campo tenta
+    ocupar a largura inteira da linha, e os campos seguintes são empurrados
+    cada um pra sua própria linha — uma busca + duas datas, ou uma busca +
+    um select, viravam 2-3 campos full-width empilhados em vez de uma barra
+    compacta. Achei comparando com `relatorios.tsx`, que já tinha o padrão
+    certo (`className="w-40"` nas datas, `"w-auto min-w-48"` no select de
+    vendedor) — a mesma tela de referência que não tinha esse bug.
+    Corrigido nos dois pontos onde faltava, mesma convenção:
+    - [vendas.tsx:157-174](src/routes/app/vendas.tsx) — filtro "Vendas a
+      partir de" / "Vendas até" (`type="date"`, sem `className`): 3 campos
+      empilhados viraram 1 linha com `className="w-40"` nos dois.
+    - [estoque.tsx:102](src/routes/app/estoque.tsx) — select "Filtro de
+      estoque" (Todos/Abaixo do mínimo/Zerados/Sem giro): empilhava sob o
+      campo de busca; `className="w-auto min-w-48"` resolveu.
+    Varri todo `src/routes/app/*.tsx` por `<Select` e `<Input type="date"`
+    soltos fora de `<Field>`/`grid` — os dois acima eram os únicos sem
+    largura própria; todo o resto (`financeiro.tsx`, `configuracoes.tsx`,
+    `clientes.tsx`, `promocoes.tsx`, `metas.tsx`) já tinha `className` ou
+    estava dentro de `<Field>`/`grid`, confirmado um por um lendo o código
+    E abrindo a tela — não só grep.
+
+    **Dashboard (`src/routes/app/index.tsx`): mesma causa raiz nos dois
+    `<Select>` do cabeçalho** ("Mês atual" / "Todos os vendedores", dentro
+    de `PageHeader actions`) — sem `className`, cada um ficava com ~319px
+    de largura (medido com `getBoundingClientRect`, não chutado) e os dois
+    empilhavam verticalmente em vez de ficar lado a lado. `className="w-auto
+    min-w-40"` e `"w-auto min-w-48"` respectivamente.
+
+    **Dashboard, achado por inspeção visual, não por grep: os DOIS cartões
+    de gráfico (`ResponsiveContainer`/Recharts — "Vendas do período" e
+    "Evolução mensal") não tinham estado vazio nenhum**, enquanto os OUTROS
+    QUATRO cartões da mesma tela (Metas, Produtos mais vendidos, Vendedores,
+    Estoque baixo) já mostravam uma frase tipo "Ainda não há vendas neste
+    período." quando a lista vinha vazia. A query de série/mensal
+    (`src/lib/server/insight.ts`) faz `group by` com `where` nas vendas — dia
+    ou mês sem venda nenhuma simplesmente não gera linha, então `series`/
+    `monthly` chegavam `[]` e o Recharts desenhava só a grade cartesiana,
+    sem linha, sem barra, sem eixo com rótulo, sem explicação — a MESMA tela
+    que o piloto (e todo tenant novo, no primeiro dia) vê de cara. Comparei
+    com `relatorios.tsx`, que já guarda `ResponsiveContainer` atrás de
+    `chart.data.length > 0` com `EmptyState` no `else` — confirma que é o
+    padrão certo do projeto, só não tinha chegado no Dashboard. Corrigido
+    com a mesma frase já usada nos cartões vizinhos da própria tela
+    ("Ainda não há vendas neste período." / "...nos últimos meses."),
+    centralizada no espaço do gráfico.
+
+    **Verificado ao vivo, uma tela por vez, contra o Postgres real do
+    piloto** (sessão autenticada já aberta, sem lidar com credencial): as 18
+    rotas de `/app/*` abertas em 1440×900, uma a uma — a maioria já estava
+    correta (empty states com `EmptyState`/frase própria, filtros numa linha
+    só, formulários em grid de 2 colunas, PDV com hierarquia de botão clara)
+    e serviu de referência pros 5 pontos corrigidos acima. Depois de cada
+    correção, recarreguei a rota e confirmei via `getBoundingClientRect`/
+    `innerText` (não só screenshot, que nesta janela sai reduzido) que o
+    layout mudou de fato. `typecheck`, `lint` e `npm test` (494, inalterado —
+    mudança só de apresentação) limpos.
+
+    **Isto é só a primeira passada.** O pedido do usuário foi "repassar por
+    todos os módulos" — esta rodada cobriu layout de barra de filtro e
+    estado vazio de gráfico, a classe de bug mais visível no estado zerado
+    do piloto. Com dado de verdade carregado (tabelas populadas, diálogos de
+    cadastro abertos com campos preenchidos), outras classes de problema
+    podem aparecer — hierarquia de botão em telas com múltiplas ações,
+    densidade de tabela, texto truncado em nomes longos — e ficam para as
+    próximas rodadas, tela por tela, seguindo o mesmo método (abrir de
+    verdade, medir, comparar com a tela vizinha que já acerta, corrigir,
+    verificar, documentar).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
