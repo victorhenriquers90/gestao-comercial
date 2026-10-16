@@ -13,6 +13,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { num, nullableStr, str } from "@/lib/utils";
 import {
+  allocateHeaderDiscount,
   buildNfcePayload,
   buildNfceRef,
   isTaxRegime,
@@ -204,16 +205,23 @@ async function loadEmitInput(
       regime,
     },
     buyer: { document, name: document ? nullableStr(sale.customer_name) : null },
-    items: items.map((i) => ({
-      description: str(i.description),
-      ncm: nullableStr(i.ncm),
-      cfop: str(i.cfop) || "5102",
-      unit: str(i.unit) || "UN",
-      quantity: num(i.quantity),
-      unitPrice: num(i.unit_price),
-      discount: num(i.discount),
-      total: num(i.total),
-    })),
+    // `allocateHeaderDiscount`: sale_items.total/discount só contam desconto
+    // de LINHA -- o desconto de fechamento (sales.discount) tem que ser
+    // repartido aqui, senão a soma dos itens não bate com o total pago (ver
+    // o comentário da função em @/lib/nfce).
+    items: allocateHeaderDiscount(
+      items.map((i) => ({
+        description: str(i.description),
+        ncm: nullableStr(i.ncm),
+        cfop: str(i.cfop) || "5102",
+        unit: str(i.unit) || "UN",
+        quantity: num(i.quantity),
+        unitPrice: num(i.unit_price),
+        discount: num(i.discount),
+        total: num(i.total),
+      })),
+      num(sale.discount),
+    ),
     payments: payments.map((p) => ({ method: p.method as PaymentMethod, amount: num(p.amount) })),
   };
   return { input };

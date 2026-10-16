@@ -109,6 +109,64 @@ export type NfceItemInput = {
   total: number; // líquido: unitPrice*quantity - discount
 };
 
+/**
+ * Reparte o desconto de CABEÇALHO (`sales.discount`) pelos itens, antes da
+ * nota ir pro payload.
+ *
+ * `sale_items.total`/`discount` (ver `checkoutFn`, commerce.ts) só contam o
+ * desconto de LINHA -- o desconto concedido no fechamento (campo "Desconto"
+ * do PDV) nunca entra na linha, só no `sales.total` final. Resultado: a
+ * soma de `item.total` ficava igual ao SUBTOTAL (antes do desconto de
+ * fechamento), não ao total pago -- e `validateNfceReadiness` abaixo
+ * recusa qualquer venda com mais de R$0,05 de diferença entre os dois.
+ * Bug real, reproduzido lendo o código (emissão está desligada no piloto,
+ * sem token configurado, então não dava pra reproduzir ao vivo): toda
+ * venda com desconto concedido no fechamento -- o caso mais comum de
+ * desconto do sistema inteiro -- ficava impossível de emitir nota, com uma
+ * mensagem ("total dos itens não bate") que soa erro de dado, não "este
+ * tipo de desconto ainda não é suportado".
+ *
+ * Mesma técnica de `allocateTax` (tax.ts): acumula o bruto até cada linha
+ * e arredonda o ACUMULADO, não a fatia isolada -- garante que a soma final
+ * bate exato com o desconto pedido e nenhuma linha fica negativa (a
+ * diferença entre dois acumulados não decrescentes nunca é negativa).
+ */
+function money(n: number): number {
+  return Math.round(n * 100 + 1e-6) / 100;
+}
+
+export function allocateHeaderDiscount(
+  items: NfceItemInput[],
+  headerDiscount: number,
+): NfceItemInput[] {
+  if (headerDiscount <= 0 || items.length === 0) return items;
+  // Arredonda o bruto de cada linha ANTES de somar/repartir -- não só o
+  // resultado -- senão a soma dos totais de saída (cada um já arredondado
+  // pra centavo) pode ficar 1-2 centavos longe de `somaOriginal - desconto`
+  // quando o bruto em si não é um valor de dinheiro "redondo" (mesma razão
+  // de `allocateTax`/`money` em tax.ts).
+  const gross = items.map((i) => money(Math.max(0, i.total)));
+  const totalGross = money(gross.reduce((a, n) => a + n, 0));
+  if (totalGross <= 0) return items;
+  // Nunca repartir mais do que existe pra descontar -- defensivo; na
+  // prática `checkoutFn` já impede `sales.discount > subtotal`.
+  const capped = Math.min(money(headerDiscount), totalGross);
+  let cumGross = 0;
+  let prevShare = 0;
+  return items.map((item, i) => {
+    const last = i === items.length - 1;
+    cumGross += gross[i]!;
+    const cumShare = last ? capped : money((capped * cumGross) / totalGross);
+    const share = money(cumShare - prevShare);
+    prevShare = cumShare;
+    return {
+      ...item,
+      total: money(gross[i]! - share),
+      discount: money(item.discount + share),
+    };
+  });
+}
+
 export type NfcePaymentInput = { method: PaymentMethod; amount: number };
 
 /**

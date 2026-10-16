@@ -4794,6 +4794,93 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      Shopping), `audit_logs` de volta a 13. Nenhum arquivo de código mudou
      (só verificação).
 
+103. **Revisão do fluxo fiscal de NFC-e, achado real: desconto concedido no
+     FECHAMENTO da venda (campo "Desconto" do PDV) tornava a nota fiscal
+     impossível de emitir — o tipo de desconto mais comum do sistema
+     inteiro.** Delegado a uma exploração de código (emissão está desligada
+     no piloto — `company_settings.nfce_enabled=false`, sem
+     `FOCUS_NFE_TOKEN` configurado — então não dava pra reproduzir ao vivo
+     contra a Focus NFe; mesma limitação já registrada no item 86), e
+     verifiquei cada linha do achado lendo o código eu mesmo antes de
+     confiar nele.
+
+     **Causa raiz**: `checkoutFn` (`commerce.ts:491-522`) calcula
+     `sale_items.total`/`discount` só com desconto de LINHA (manual ou de
+     promoção) — o desconto de cabeçalho (`data.discount`, o campo
+     "Desconto" que aparece uma vez por venda no PDV, não por item) só
+     entra depois, em `sales.total = subtotal - headerDisc`
+     (`commerce.ts:521-522`), e é gravado puro em `sales.discount`
+     (`commerce.ts:655`) — nunca propagado pra nenhuma linha.
+     `loadEmitInput` (`server/nfce.ts`) montava os itens da nota lendo
+     `sale_items.total` direto, sem olhar pra `sales.discount` nenhuma
+     vez. `validateNfceReadiness` (`lib/nfce.ts:143-159`) soma
+     `item.total` de todos os itens (= subtotal, ANTES do desconto de
+     fechamento) e compara com a soma dos pagamentos (= total, DEPOIS do
+     desconto) — qualquer diferença acima de R$0,05 recusa a emissão com
+     "Total dos itens não bate com o total dos pagamentos." Uma venda de
+     R$100 com R$10 de desconto no fechamento, paga em R$90: itens somam
+     R$100, pagamento soma R$90, diferença R$10 >> R$0,05 → **toda** venda
+     assim ficava impossível de emitir nota — sem aviso nenhum na tela até
+     o operador tentar emitir, com uma mensagem que soa erro de dado
+     corrompido, não "este tipo de desconto não é suportado ainda".
+     `buildNfcePayload` (`lib/nfce.ts`) também não tinha NENHUM campo de
+     desconto de cabeçalho no payload da Focus NFe — só `valor_desconto`
+     por item — então mesmo destravando a validação, o valor certo não
+     tinha pra onde ir.
+
+     **Corrigido com uma função pura nova, `allocateHeaderDiscount`**
+     (`src/lib/nfce.ts`), chamada em `loadEmitInput` antes de montar
+     `input.items` (`src/lib/server/nfce.ts`): reparte `sales.discount`
+     proporcionalmente ao bruto de cada item e soma no `discount` de cada
+     um (que já vira `valor_desconto` no payload). Mesma técnica de
+     arredondamento de `allocateTax` (`tax.ts`, já usada pra ratear
+     INSS/IRRF/ISS por linha de comissão): acumula o bruto ANTES de
+     arredondar — a fatia de cada linha é a diferença entre dois
+     acumulados não decrescentes, nunca fica negativa, e a última linha
+     fecha no valor exato do desconto (não na fração arredondada) — sem
+     isso, 100 linhas pequenas poderiam fazer a última fechar com total
+     negativo, exatamente o bug que `allocateTax` já documenta ter evitado
+     numa área vizinha. `money()` local arredonda o BRUTO de cada item
+     antes de acumular (não só o resultado), senão a soma dos totais de
+     saída driftava 1-2 centavos quando o bruto não "fechava redondo" —
+     achei isso porque meu primeiro teste (com `1/3` como total de item,
+     não dinheiro de verdade) quebrou por 2 centavos; corrigido no cálculo
+     e trocado o teste pra um valor de dinheiro real (R$0,33 × 7).
+
+     **Testado por unidade, não ao vivo** (motivo já explicado): 6 testes
+     novos em `allocateHeaderDiscount` (sem desconto não toca em nada;
+     reparte proporcional com soma exata; muitas linhas pequenas sem
+     nenhuma negativa; desconto maior que o bruto é limitado ao bruto;
+     preserva desconto de linha já existente somando o de cabeçalho) mais
+     1 teste de regressão em `validateNfceReadiness` reproduzindo o
+     cenário exato do bug (venda de R$79,90 com R$10 de desconto de
+     fechamento, R$69,90 pago) e confirmando que passa limpo depois da
+     correção — antes da correção este teste teria acusado "Total dos
+     itens não bate". `typecheck`/`lint` (0 erros, os mesmos 5 avisos
+     antigos) e `npm test` (500, +6 novos) limpos.
+
+     **Dois achados da mesma exploração, NÃO corrigidos, registrados pra
+     quando NFC-e for ativado de verdade**: (1) o bloqueio de regime fiscal
+     fora do Simples/MEI (item 86: "nenhum regime fora do Simples/MEI
+     chega perto de emitir") só existe no painel de pré-checagem
+     (`nfce-readiness.ts`, usado só pela tela de Configurações) — nunca é
+     chamado dentro de `emitirNfce`/`validateNfceReadiness`
+     (`server/nfce.ts`/`lib/nfce.ts`), então nada no CAMINHO DE EMISSÃO em
+     si impede um regime Presumido/Real de emitir com CST errado se o
+     operador só marcar a caixinha "Mostrar emissão de NFC-e" sem passar
+     pela tela de pré-checagem — sem risco pro piloto hoje (regime Simples),
+     mas o bloqueio que o item 86 descreve como resolvido só é resolvido
+     num lugar, não nos dois; (2) numa reemissão que falha num ambiente
+     diferente do que a venda já tinha, `nfce_env`/`nfce_ref` ficam com o
+     valor antigo ao lado do novo `nfce_status='erro'` — se autocorrige na
+     próxima emissão bem-sucedida, cosmético, não bloqueia nada.
+
+     O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado
+     — e vale repetir o mesmo aviso do item 86: nada disto foi testado
+     contra o SEFAZ/Focus NFe de verdade, porque o piloto ainda não tem
+     NFC-e configurado. A primeira emissão real, quando acontecer, merece
+     acompanhamento de perto mesmo com os achados desta revisão corrigidos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

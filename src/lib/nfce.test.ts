@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  allocateHeaderDiscount,
   buildNfcePayload,
   buildNfceRef,
   HOMOLOGATION_BUYER_NAME,
@@ -10,6 +11,7 @@ import {
   pisCofinsCst,
   validateNfceReadiness,
   type BuildNfceInput,
+  type NfceItemInput,
 } from "./nfce.ts";
 
 function baseInput(overrides: Partial<BuildNfceInput> = {}): BuildNfceInput {
@@ -123,6 +125,63 @@ describe("validateNfceReadiness", () => {
   it("tolera diferença de arredondamento até 5 centavos", () => {
     const errors = validateNfceReadiness(baseInput({ payments: [{ method: "dinheiro", amount: 79.94 }] }));
     assert.deepEqual(errors, []);
+  });
+
+  it("venda com desconto de fechamento passa limpo DEPOIS de repartir o desconto nos itens", () => {
+    // Bug real: sale_items.total nunca contava o desconto concedido no
+    // fechamento (campo "Desconto" do PDV, não desconto de linha/promoção).
+    // Sem passar por allocateHeaderDiscount antes, item.total somava o
+    // SUBTOTAL (R$79,90), o pagamento registrava o total COM desconto
+    // (R$69,90) e esta checagem recusava toda venda com desconto de
+    // fechamento -- o tipo de desconto mais comum do sistema.
+    const items = allocateHeaderDiscount(baseInput().items, 10);
+    const errors = validateNfceReadiness(baseInput({ items, payments: [{ method: "dinheiro", amount: 69.9 }] }));
+    assert.deepEqual(errors, []);
+  });
+});
+
+describe("allocateHeaderDiscount", () => {
+  function item(total: number, discount = 0): NfceItemInput {
+    return { description: "Item", ncm: "61091000", cfop: "5102", unit: "UN", quantity: 1, unitPrice: total, discount, total };
+  }
+
+  it("sem desconto de cabeçalho, devolve os itens sem tocar em nada", () => {
+    const items = [item(50), item(30)];
+    assert.deepEqual(allocateHeaderDiscount(items, 0), items);
+  });
+
+  it("reparte proporcionalmente ao bruto de cada item, e a soma bate exata", () => {
+    const result = allocateHeaderDiscount([item(80), item(20)], 10);
+    assert.equal(result[0]!.total, 72); // 80 - 8 (80% do desconto)
+    assert.equal(result[1]!.total, 18); // 20 - 2 (20% do desconto)
+    assert.equal(result[0]!.discount, 8);
+    assert.equal(result[1]!.discount, 2);
+    const sum = result.reduce((a, i) => a + i.total, 0);
+    assert.equal(Math.round(sum * 100) / 100, 90);
+  });
+
+  it("muitas linhas pequenas: nenhuma fica negativa e a soma ainda fecha exata", () => {
+    // Mesmo caso de borda que allocateTax documenta (tax.ts): arredondar
+    // fatia por fatia, em vez de acumulado, pode empurrar a última linha
+    // pra um total menor que zero -- 7 linhas de R$0,33 (soma R$2,31) com
+    // R$2,00 de desconto de cabeçalho.
+    const items = Array.from({ length: 7 }, () => item(0.33));
+    const result = allocateHeaderDiscount(items, 2);
+    for (const r of result) assert.ok(r.total >= -0.001, `linha negativa: ${r.total}`);
+    const sumTotal = Math.round(result.reduce((a, i) => a + i.total, 0) * 100) / 100;
+    assert.equal(sumTotal, 0.31); // 2,31 - 2,00
+  });
+
+  it("desconto maior que o bruto dos itens é limitado ao bruto (defensivo)", () => {
+    const result = allocateHeaderDiscount([item(10)], 999);
+    assert.equal(result[0]!.total, 0);
+    assert.equal(result[0]!.discount, 10);
+  });
+
+  it("preserva o desconto de linha já existente, somando o de cabeçalho", () => {
+    const result = allocateHeaderDiscount([item(90, 10)], 9);
+    assert.equal(result[0]!.discount, 19);
+    assert.equal(result[0]!.total, 81);
   });
 });
 
