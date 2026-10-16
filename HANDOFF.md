@@ -4543,6 +4543,51 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     (editar um produto já populado, mudar status de uma venda, etc.) — bom
     próximo passo pra uma terceira camada.
 
+98. **Pedido direto do usuário: "dar movimento" às linhas divisórias dos
+    cartões de KPI do Dashboard** (a linha fina embaixo de "Faturamento
+    hoje" etc. — apontada numa captura de tela). Perguntei que tipo de
+    movimento antes de mexer (fade de entrada, números contando, destaque
+    no hover, ou brilho contínuo) — a resposta escolhida foi **entrada
+    suave ao carregar a página**.
+
+    **Por que não bastava reaproveitar a transição que já existe**:
+    `app-shell.tsx` já aplica `.page-enter` (fade + leve subida, 220ms) no
+    container inteiro da página a cada troca de rota — mas isso dispara no
+    MOMENTO DA NAVEGAÇÃO, e o `.kpi-card` só nasce quando `dashboardFn`
+    termina (o Dashboard mostra `PageSkeleton` até lá). Na prática, pela
+    hora em que o cartão de verdade substitui o esqueleto, a animação da
+    página já tinha acabado havia tempo — o cartão aparecia de uma vez, sem
+    nenhuma transição, exatamente o "sem nada acontecendo" que a pergunta
+    do usuário apontava.
+
+    **Corrigido reaproveitando o MESMO keyframe (`page-enter`) e a MESMA
+    curva de easing já usadas no resto do app** (`cubic-bezier(0.22, 1,
+    0.36, 1)`, a mesma de `button.tsx`) — não inventei um idioma de
+    movimento novo, só apliquei o já existente também no `.kpi-card`
+    (`src/styles.css`), disparado no momento em que o PRÓPRIO cartão monta
+    (não o da página). Atraso crescente por cartão via `:nth-child` (30ms a
+    cada um, até 180ms no sétimo em diante) faz a faixa inteira entrar em
+    cascata da esquerda pra direita / cima pra baixo em vez de piscar tudo
+    de uma vez — discreto, 320ms no total, como o usuário pediu.
+    `prefers-reduced-motion` não precisou de tratamento extra: a regra
+    global já existente no fim de `styles.css` zera a duração de QUALQUER
+    `animation` no site pra quem tem a preferência ligada.
+
+    Afeta todo lugar que usa `<KpiCard>` (compartilhado em
+    `src/components/shared.tsx`), não só o Dashboard — Financeiro, CRM,
+    Caixa, Relatórios, e os painéis de cliente/fornecedor/comissão também
+    ganham a mesma entrada, de graça, sem duplicar nada.
+
+    **Verificado ao vivo**: confirmado por `getComputedStyle` que os 8
+    cartões do Dashboard têm `animation-name`/`duration`/`delay` corretos e
+    crescentes; confirmado por `element.getAnimations()` (API de verdade do
+    navegador, não só a declaração CSS) que a animação está **rodando** no
+    instante em que o cartão aparece (`playState: "running"`,
+    `currentTime: 0`) — prova que ela dispara de verdade no carregamento,
+    não só que a regra existe no CSS. Testado também em `/app/financeiro`
+    (4 cartões) sem quebra de layout. `typecheck`/`lint`/`npm test` (494)
+    limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -489,7 +489,24 @@
     border-radius: 0;
     border: 0;
     border-bottom: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+    /* `.page-enter` (no `app-main`) só dispara na troca de rota, e os KPIs
+       quase sempre terminam de carregar DEPOIS dela (esperam a query) --
+       na prática o cartão aparecia sem nenhuma transição, de uma vez, no
+       instante em que o skeleton vira conteúdo de verdade. Reaproveita o
+       mesmo keyframe/curva do `.page-enter` (não inventa um novo idioma de
+       movimento), só que disparado quando o PRÓPRIO cartão monta. Atraso
+       crescente por cartão (`nth-child`) faz a faixa entrar em cascata em
+       vez de piscar tudo de uma vez só; `prefers-reduced-motion` já zera a
+       duração pela regra global no fim deste arquivo. */
+    animation: page-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
+  .kpi-card:nth-child(2) { animation-delay: 30ms; }
+  .kpi-card:nth-child(3) { animation-delay: 60ms; }
+  .kpi-card:nth-child(4) { animation-delay: 90ms; }
+  .kpi-card:nth-child(5) { animation-delay: 120ms; }
+  .kpi-card:nth-child(6) { animation-delay: 150ms; }
+  .kpi-card:nth-child(n + 7) { animation-delay: 180ms; }
 
   @supports (grid-template-rows: subgrid) {
     .kpi-grid {
