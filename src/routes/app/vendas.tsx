@@ -227,7 +227,7 @@ function VendasPage() {
             <div className="space-y-block text-sm">
               <Receipt
                 data={saleToReceipt(detail.data)}
-                company={receiptCompany(settings.data)}
+                company={receiptCompany(settings.data, detail.data.sale as Record<string, unknown>)}
               />
               {nfceEnabled && String(detail.data.sale.status) === "finalizada"
                 ? (() => {
@@ -467,13 +467,28 @@ function saleToReceipt(detail: Awaited<ReturnType<typeof getSaleFn>>): ReceiptDa
   };
 }
 
-function receiptCompany(settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined): ReceiptCompany {
+/**
+ * `sale` é o retrato CONGELADO na hora da venda (migration 0035, mesmo
+ * motivo do `document`/0021) -- preferido sempre que existir. `settings` só
+ * entra como fallback pra venda ANTERIOR à migration (coluna NULL): sem
+ * isso, reimprimir uma venda de 6 meses atrás mostraria o endereço/
+ * mensagem/política de troca ATUAIS, não o que o cliente recebeu na hora.
+ */
+function receiptCompany(
+  settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined,
+  sale?: Record<string, unknown>,
+): ReceiptCompany {
   const company = (settings?.company ?? {}) as ReceiptCompany;
   const extra = (settings?.settings ?? {}) as Record<string, unknown>;
-  return {
-    ...company,
+  const live = {
     print_header: extra.print_header != null ? String(extra.print_header) : company.print_header,
     print_footer: extra.print_footer != null ? String(extra.print_footer) : company.print_footer,
     receipt_message: extra.receipt_message != null ? String(extra.receipt_message) : company.receipt_message,
+  };
+  return {
+    ...company,
+    print_header: sale?.print_header != null ? String(sale.print_header) : live.print_header,
+    print_footer: sale?.print_footer != null ? String(sale.print_footer) : live.print_footer,
+    receipt_message: sale?.receipt_message != null ? String(sale.receipt_message) : live.receipt_message,
   };
 }

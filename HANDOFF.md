@@ -4941,6 +4941,63 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
      O serviço instalado (NSSM, :8080) só ganha isto depois de atualizado.
 
+105. **Revisão de impressão de comprovante/etiqueta e do editor de imagem,
+     achado real: reimprimir uma venda antiga mostrava o cabeçalho/rodapé/
+     mensagem ATUAIS de Configurações, não o que o cliente recebeu de
+     verdade na hora da compra.** Delegado a uma exploração de código;
+     etiqueta de código de barras (`price-tag.tsx`) e editor de imagem
+     (`image-editor.tsx`) saíram limpos — os dois já tinham os problemas
+     óbvios (JsBarcode inválido, token de IA ausente, imagem gigante)
+     tratados corretamente, nada novo. O achado real estava na reimpressão
+     de comprovante.
+
+     **Causa raiz**: `sales.document` já é congelado na hora da venda desde
+     a migration 0021, com o motivo explícito registrado no HANDOFF ("o
+     comprovante reimpresso mostra o documento usado na hora da venda, não
+     o documento atual do cliente"). Mas `print_header`/`print_footer`/
+     `receipt_message` — o cabeçalho, o rodapé e a mensagem de troca/
+     garantia que aparecem em TODO comprovante — nunca seguiram a mesma
+     regra: `receiptCompany()` (`vendas.tsx:470`) lia direto da query
+     `getSettingsFn()` ao vivo. Pra uma venda reimpressa no mesmo dia isso
+     nunca aparece (nada mudou ainda), mas reimprimir uma venda de meses
+     atrás depois do dono editar o rodapé — endereço da loja (mudança de
+     endereço), política de troca, mensagem promocional — mostraria o texto
+     NOVO com a data ANTIGA, inconsistente com o que o cliente realmente
+     levou pra casa. Mesma classe de bug do `document`, nunca corrigida
+     aqui — e com peso real: um comprovante reimpresso é o que o cliente
+     usa pra reivindicar uma troca, e a política impressa precisa ser a que
+     valia NAQUELE dia.
+
+     **Corrigido com a mesma técnica do `document` (migration 0021)**:
+     migration 0035 adiciona `print_header`/`print_footer`/
+     `receipt_message` em `sales` (nullable, sem backfill — não há de onde
+     recuperar o texto de vendas antigas, então ficam `NULL` e caem no
+     fallback). `checkoutFn` (`commerce.ts`) grava o retrato no momento do
+     checkout, reaproveitando a MESMA consulta a `company_settings` que já
+     existia ali (`allow_negative_stock`) — sem round-trip extra.
+     `receiptCompany()` (`vendas.tsx`) agora prefere o valor gravado na
+     própria venda, e só cai pro valor ATUAL de Configurações quando a
+     coluna é `NULL` (venda anterior à migration — não tem outro texto pra
+     mostrar). Comprovante impresso na hora (PDV, logo após o checkout) não
+     precisava de mudança — ali "ao vivo" e "no momento da venda" são a
+     mesma coisa.
+
+     **Verificado ao vivo, reproduzindo o cenário exato**: capturei o texto
+     real de Configurações da Victor Comércio antes de mexer; vendi um
+     produto descartável com esse texto em vigor (venda nº26); troquei o
+     rodapé/mensagem ao vivo pra um texto bem diferente (`ZZTESTE rodape
+     NOVO`); reabri a venda nº26 em Vendas e o comprovante reimpresso
+     mostrou o texto ORIGINAL ("Obrigado pela preferência." / "Trocas em
+     até 7 dias..."), não o novo — confirma a correção ponta a ponta antes
+     de desfazer a mudança. Texto real da empresa restaurado exatamente
+     como estava (lido antes, gravado de volta, conferido igual).
+     `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
+     (500, inalterado) limpos. Migration já aplicada no Postgres do piloto
+     (`node scripts/migrate.mjs`, rodado nesta sessão).
+
+     O serviço instalado (NSSM, :8080) precisa do `npm run build` (que roda
+     a migration) na próxima atualização, não só trocar os arquivos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -392,8 +392,14 @@ export const checkoutFn = createServerFn({ method: "POST" })
       customerDocument = c?.document ?? customerDocument;
     }
 
-    const [settings] = await sql<{ allow_negative_stock: boolean }>`
-      select allow_negative_stock from company_settings where company_id = ${tenant.companyId}
+    const [settings] = await sql<{
+      allow_negative_stock: boolean;
+      print_header: string | null;
+      print_footer: string | null;
+      receipt_message: string | null;
+    }>`
+      select allow_negative_stock, print_header, print_footer, receipt_message
+        from company_settings where company_id = ${tenant.companyId}
     `;
     const allowNeg = Boolean(settings?.allow_negative_stock);
 
@@ -646,14 +652,23 @@ export const checkoutFn = createServerFn({ method: "POST" })
           if (!check.ok) throw new Error(check.motivo);
         }
         const number = await nextNumber(sql, tenant.companyId, "sale");
+        // print_header/print_footer/receipt_message gravados na própria
+        // venda, mesmo motivo do `document` (migration 0021): sem isto, um
+        // comprovante reimpresso meses depois (Vendas -> ver venda antiga)
+        // mostrava o texto ATUAL de Configurações -- endereço, mensagem
+        // promocional, política de troca -- em vez do que o cliente recebeu
+        // de verdade na hora da compra. `document`/itens/pagamentos já eram
+        // o retrato da venda; só este texto ficava "vivo".
         const [sale] = await sql<{ id: number }>`
           insert into sales (
             company_id, store_id, number, customer_id, seller_id, user_id, status, notes,
-            subtotal, discount, total, cost_total, document, idempotency_key
+            subtotal, discount, total, cost_total, document, idempotency_key,
+            print_header, print_footer, receipt_message
           ) values (
             ${tenant.companyId}, ${data.storeId}, ${number}, ${customerId}, ${data.sellerId ?? null},
             ${tenant.userId}, 'finalizada', ${data.notes ?? null}, ${subtotal}, ${headerDisc}, ${total}, ${costTotal},
-            ${customerDocument}, ${data.idempotencyKey ?? null}
+            ${customerDocument}, ${data.idempotencyKey ?? null},
+            ${settings?.print_header ?? null}, ${settings?.print_footer ?? null}, ${settings?.receipt_message ?? null}
           ) returning id
         `;
         const saleId = sale!.id;
