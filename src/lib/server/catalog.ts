@@ -1169,10 +1169,11 @@ export const listNcmPendingFn = createServerFn({ method: "GET" })
       name: string;
       sku: string | null;
       ncm: string | null;
+      category_id: number | null;
       categoria: string | null;
       classificado: boolean;
     }>(
-      `select p.id, p.name, p.sku, p.ncm, c.name as categoria,
+      `select p.id, p.name, p.sku, p.ncm, p.category_id, c.name as categoria,
               ${ncmValidSql("p.ncm")} as classificado
          from products p
          left join categories c on c.id = p.category_id
@@ -1182,12 +1183,26 @@ export const listNcmPendingFn = createServerFn({ method: "GET" })
     );
 
     const grupos = new Map<
-      string,
-      { categoria: string; total: number; pendentes: { id: number; name: string; sku: string | null; ncm: string | null }[] }
+      number | null,
+      {
+        categoryId: number | null;
+        categoria: string;
+        total: number;
+        pendentes: { id: number; name: string; sku: string | null; ncm: string | null }[];
+      }
     >();
     for (const r of rows) {
+      // Agrupado pelo ID da categoria, nao pelo nome: nada impede duas
+      // categorias com o MESMO nome (ex. "Camisetas" dentro de "Masculino"
+      // e dentro de "Feminino" -- `saveCategoryFn` nao exige nome unico).
+      // Agrupar por nome juntava os pendentes das duas num bloco so,
+      // "Aplicar a N produto(s)" gravava o mesmo NCM nas duas categorias de
+      // uma vez so, e nada na tela (nem a lista expandida) dava pra notar --
+      // justamente o erro fiscal que o aviso da propria tela ("categoria NAO
+      // garante mesmo NCM") tenta evitar.
+      const catId = r.category_id == null ? null : num(r.category_id);
       const cat = r.categoria == null ? "Sem categoria" : String(r.categoria);
-      const g = grupos.get(cat) ?? { categoria: cat, total: 0, pendentes: [] };
+      const g = grupos.get(catId) ?? { categoryId: catId, categoria: cat, total: 0, pendentes: [] };
       g.total += 1;
       if (r.classificado !== true) {
         g.pendentes.push({
@@ -1197,7 +1212,7 @@ export const listNcmPendingFn = createServerFn({ method: "GET" })
           ncm: r.ncm == null ? null : String(r.ncm),
         });
       }
-      grupos.set(cat, g);
+      grupos.set(catId, g);
     }
 
     const categorias = [...grupos.values()]

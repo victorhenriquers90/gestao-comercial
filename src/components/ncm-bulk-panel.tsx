@@ -55,11 +55,16 @@ export function NcmBulkPanel() {
       </div>
 
       {dados.data.categorias.map((g) => {
+        // Chave por ID da categoria, nao pelo nome: duas categorias podem
+        // se chamar igual (ver comentario de `listNcmPendingFn`), e
+        // compartilhar a chave aqui faria as duas tambem compartilharem o
+        // texto do NCM digitado e o estado de aberta/fechada.
+        const chave = String(g.categoryId);
         const selecionados = g.pendentes.filter((p) => !fora[p.id]);
-        const texto = ncmPorCat[g.categoria] ?? "";
-        const aberta = abertas[g.categoria] === true;
+        const texto = ncmPorCat[chave] ?? "";
+        const aberta = abertas[chave] === true;
         return (
-          <div key={g.categoria} className="rounded-lg border border-border p-4">
+          <div key={chave} className="rounded-lg border border-border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-medium">{g.categoria}</p>
@@ -80,13 +85,13 @@ export function NcmBulkPanel() {
                   inputMode="numeric"
                   placeholder="6109.10.00"
                   value={texto}
-                  onChange={(e) => setNcmPorCat({ ...ncmPorCat, [g.categoria]: e.target.value })}
+                  onChange={(e) => setNcmPorCat({ ...ncmPorCat, [chave]: e.target.value })}
                 />
               </label>
               <Button
                 disabled={ocupado != null || !texto.trim() || selecionados.length === 0}
                 onClick={async () => {
-                  setOcupado(g.categoria);
+                  setOcupado(chave);
                   const ok = await runAction(
                     () =>
                       applyNcmFn({
@@ -96,20 +101,20 @@ export function NcmBulkPanel() {
                   );
                   setOcupado(null);
                   if (!ok) return;
-                  setNcmPorCat({ ...ncmPorCat, [g.categoria]: "" });
+                  setNcmPorCat({ ...ncmPorCat, [chave]: "" });
                   void qc.invalidateQueries({ queryKey: ["ncm-pending"] });
                   void qc.invalidateQueries({ queryKey: ["products"] });
                   void qc.invalidateQueries({ queryKey: ["nfce-readiness"] });
                 }}
               >
-                {ocupado === g.categoria
+                {ocupado === chave
                   ? "Aplicando…"
                   : `Aplicar a ${selecionados.length} produto(s)`}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setAbertas({ ...abertas, [g.categoria]: !aberta })}
+                onClick={() => setAbertas({ ...abertas, [chave]: !aberta })}
               >
                 {aberta ? "Esconder as peças" : "Ver as peças"}
               </Button>

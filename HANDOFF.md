@@ -5098,6 +5098,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      unitários; `typecheck`/`lint` limpos (mesmos 5 avisos antigos);
      `npm test` 503/503 (era 500, +3 novos).
 
+108. **Painel de NCM em lote (Produtos → "NCM fiscal") agrupava por NOME da
+     categoria, não pelo ID — duas categorias com o mesmo nome se fundiam
+     num bloco só, e "Aplicar" gravava o mesmo NCM nas duas de uma vez,
+     sem nenhum jeito de perceber na tela.** `saveCategoryFn`
+     (`catalog.ts`) não exige nome único — e o modelo de dados aceita de
+     propósito duas categorias homônimas em árvores diferentes (ex.
+     "Camisetas" dentro de "Masculino" e dentro de "Feminino", um split
+     comum em loja de roupa). `listNcmPendingFn` agrupava os produtos
+     pendentes pelo texto `c.name`, não por `c.id`: duas categorias com o
+     mesmo nome viravam UM grupo na tela, com a contagem e a lista de
+     "pendentes" somadas das duas. O aviso que o próprio painel já mostra
+     ("categoria NÃO garante mesmo NCM... abra a categoria e desmarque o
+     que não se encaixa") fica inútil nesse caso: a lista expandida
+     ("Ver as peças") mostra só os nomes dos produtos, sem indicar de qual
+     categoria (ID) cada um realmente é — não tem o que desmarcar porque
+     não dá pra saber que são duas categorias distintas disfarçadas de
+     uma. Risco real: aplicar o NCM pensando em "Camisetas (Masculino)"
+     também grava nos produtos de "Camisetas (Feminino)", gerando NFC-e
+     com imposto errado pra metade das peças sem nenhum aviso.
+
+     **Corrigido**: `listNcmPendingFn` agora agrupa por `p.category_id`
+     (campo novo `categoryId` na resposta), nome só pra exibição —
+     categorias homônimas agora aparecem como dois cartões separados, cada
+     um só com os produtos da sua própria categoria. `ncm-bulk-panel.tsx`
+     trocou a chave de estado (texto do NCM digitado, aberto/fechado,
+     "ocupado" durante o salvar) de `g.categoria` (nome) pra uma chave
+     derivada do `categoryId` — sem isso, mesmo corrigindo o agrupamento
+     do servidor, dois cartões homônimos ainda compartilhariam o campo de
+     texto e o estado de expandir/colapsar entre si.
+
+     **Verificado ao vivo** contra o Postgres do piloto: criei duas
+     categorias `ZZTESTE Camisetas` (IDs diferentes, nome idêntico, sem
+     constraint de unicidade no banco — confirmado) e um produto
+     descartável sem NCM em cada uma. Antes do fix: painel mostrava UM
+     grupo "ZZTESTE Camisetas" com "2 sem NCM de 2 produto(s)" — os dois
+     produtos juntos. Depois do fix: DOIS grupos "ZZTESTE Camisetas"
+     separados, cada um "1 sem NCM de 1 produto(s)"; digitar um NCM no
+     primeiro cartão e expandir "Ver as peças" não afetou o segundo
+     (confirmado lendo o `value` real dos dois campos via JS, não só a
+     tela — a UI mostrou os dois campos preenchidos, mas era autocomplete
+     nativo do navegador por cima de um campo vazio, não um bug de
+     verdade). Categorias e produtos de teste removidos depois; `products`/
+     `categories` da empresa voltaram a 0, `audit_logs` confirmado em 13
+     (inserção direta no banco não passa pelo log de auditoria da
+     aplicação, então não sujou nada). `typecheck`/`lint` limpos (mesmos 5
+     avisos antigos); `npm test` 503/503, inalterado — o bug só aparece
+     com uma consulta real ao banco, fora do alcance da suíte de função
+     pura.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
