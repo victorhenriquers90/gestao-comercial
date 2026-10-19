@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseQuantity, paymentStatus, summarizeSale, valorDigitado } from "./pdv-sale.ts";
+import { parseQuantity, paymentStatus, stepQty, summarizeSale, valorDigitado } from "./pdv-sale.ts";
 
 describe("summarizeSale", () => {
   const linhas = [
@@ -83,5 +83,25 @@ describe("parseQuantity", () => {
     for (const ruim of ["", "0", "0,0", "-1", "abc", "1,2345", "1e3", "2x"]) {
       assert.equal(parseQuantity(ruim), null, ruim);
     }
+  });
+});
+
+describe("stepQty", () => {
+  it("quantidade inteira soma/subtrai 1, travando em 1 (produto por unidade)", () => {
+    assert.equal(stepQty(3, 1), 4);
+    assert.equal(stepQty(3, -1), 2);
+    assert.equal(stepQty(1, -1), 1);
+  });
+
+  it("quantidade fracionada soma/subtrai 1 sem lixo de ponto flutuante", () => {
+    assert.equal(stepQty(1.1, -1), 0.1);
+    assert.equal(stepQty(2.2, -1), 1.2);
+    assert.equal(stepQty(1.333, -1), 0.333);
+    assert.equal(stepQty(1.1, 1), 2.1);
+  });
+
+  it("fracionada abaixo de 1 nao trava em 1 -- so no piso quase zero", () => {
+    assert.equal(stepQty(1.5, -1), 0.5);
+    assert.equal(stepQty(0.5, -1), 0.001);
   });
 });

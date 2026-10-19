@@ -2,7 +2,7 @@ import { Minus, Plus, ScanBarcode, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/lib/format";
-import { parseQuantity } from "@/lib/pdv-sale";
+import { parseQuantity, stepQty } from "@/lib/pdv-sale";
 import { cn } from "@/lib/utils";
 import type { PricedLine } from "./sale-model";
 
@@ -161,8 +161,8 @@ function QtyStepper({ label, value, onChange }: { label: string; value: number; 
       <button
         type="button"
         aria-label={`Diminuir quantidade de ${label}`}
-        disabled={value <= 1}
-        onClick={() => onChange(Math.max(1, value - 1))}
+        disabled={value <= (Number.isInteger(value) ? 1 : 0.001)}
+        onClick={() => onChange(stepQty(value, -1))}
       >
         <Minus className="size-3.5" />
       </button>
@@ -184,7 +184,7 @@ function QtyStepper({ label, value, onChange }: { label: string; value: number; 
           }
         }}
       />
-      <button type="button" aria-label={`Aumentar quantidade de ${label}`} onClick={() => onChange(value + 1)}>
+      <button type="button" aria-label={`Aumentar quantidade de ${label}`} onClick={() => onChange(stepQty(value, 1))}>
         <Plus className="size-3.5" />
       </button>
     </div>

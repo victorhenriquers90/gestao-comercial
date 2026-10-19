@@ -5054,6 +5054,50 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      migration no banco real) tem que ser decisão e execução do usuário, não
      minha.
 
+107. **Stepper de quantidade (+/−) do carrinho quebrava pra produto
+     fracionado — lixo de ponto flutuante visível e piso errado perto de
+     1, corrigido no desktop e no tablet.** Item 33 já tinha testado
+     quantidade fracionada ponta a ponta, mas só digitando direto no campo
+     (`parseQuantity`) — nunca pelos botões `+`/`−` do `QtyStepper`
+     (`cart-table.tsx`) e do gêmeo `TouchQtyStepper`
+     (`touch-cart-table.tsx`, criado no item 39).
+
+     **Causa raiz**: os dois faziam `onChange(Math.max(1, value - 1))` /
+     `onChange(value + 1)` direto, dois problemas:
+     (1) subtração/soma em ponto flutuante sem arredondar gera lixo visível
+     pra valores comuns de peso/metro — `1,1 - 1` = `0.10000000000000009`,
+     `2,2 - 1` = `1.2000000000000002`, `1,333 - 1` = `0.33299999999999996`
+     — e esse valor sujo virava a quantidade de verdade da linha, não só a
+     exibição;
+     (2) o piso fixo em `1` (certo pra produto inteiro) fazia o `−` trocar
+     de passo sem avisar perto do limite: de `1,5` o botão ia pra `1`, não
+     pra `0,5`, e em `1,0` travava de vez — pra qualquer produto vendido
+     fracionado (queijo, tecido por metro) isso bloqueia ir abaixo de 1
+     unidade pelo botão, mesmo sendo uma quantidade perfeitamente válida.
+
+     **Corrigido** com uma função nova compartilhada,
+     `stepQty(value, delta)` (`lib/pdv-sale.ts`, perto de `parseQuantity`):
+     arredonda o resultado pras mesmas 3 casas que `parseQuantity` aceita
+     (`Math.round(n * 1000) / 1000`), e decide o piso pelo valor ATUAL —
+     `Number.isInteger(value)` mantém o piso em `1` (produto inteiro
+     continua travando certo, só dá pra ir abaixo de 1 digitando), valor já
+     fracionado usa piso quase zero (`0,001`), então o `−` sempre subtrai 1
+     de verdade em vez de trocar de passo. Os dois arquivos (`cart-table.tsx`
+     e `touch-cart-table.tsx`) chamam a mesma função — corrige os dois de
+     uma vez, sem duplicar a lógica que já tinha o comentário "mesma lógica
+     de dados, só o layout muda".
+
+     **Verificado ao vivo** contra o Postgres do piloto: produto
+     descartável `ZZTESTE Queijo Kg` (R$ 40,00), adicionado ao carrinho no
+     `/app/pdv` de verdade. Setei a quantidade pra `1,1` (R$ 44,00) e
+     cliquei `−`: resultado `0,1` limpo, R$ 4,00 — sem nenhum dígito de
+     lixo. Setei pra `1,5` (R$ 60,00) e cliquei `−`: resultado `0,5`, R$
+     20,00 — não travou em `1`. Produto e a entrada de auditoria da
+     criação dele removidos depois (banco de volta a 0
+     produtos/vendas/clientes, 13 `audit_logs`). `stepQty` ganhou 3 testes
+     unitários; `typecheck`/`lint` limpos (mesmos 5 avisos antigos);
+     `npm test` 503/503 (era 500, +3 novos).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

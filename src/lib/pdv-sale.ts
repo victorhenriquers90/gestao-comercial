@@ -88,3 +88,22 @@ export function parseQuantity(texto: string): number | null {
   const n = Number(limpo);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+/**
+ * +1/-1 dos botões de quantidade do carrinho (`QtyStepper`/`TouchQtyStepper`).
+ * Dois problemas achados testando com quantidade fracionada (produto por
+ * peso/metro): (1) `valor - 1`/`valor + 1` direto em ponto flutuante gera
+ * lixo visível no campo pra valores comuns (ex. 1,1 - 1 = 0.10000000000000009,
+ * 2,2 - 1 = 1.2000000000000002) -- arredondado aqui pras mesmas 3 casas que
+ * `parseQuantity` aceita. (2) o piso de "nunca abaixo de 1" (certo pra
+ * produto inteiro, errado pra fracionado) trocava o passo sem avisar perto
+ * do limite -- de 1,5 o botão "-" ia pra 1 em vez de 0,5. Decide o piso pelo
+ * valor ATUAL: só trata como fracionado (piso quase zero) quando o valor já
+ * não é inteiro -- quantidade inteira continua travando em 1 via botão
+ * (quem quiser menos que 1 unidade inteira digita direto no campo).
+ */
+export function stepQty(value: number, delta: 1 | -1): number {
+  const floor = Number.isInteger(value) ? 1 : 0.001;
+  const next = Math.round((value + delta) * 1000) / 1000;
+  return Math.max(floor, next);
+}

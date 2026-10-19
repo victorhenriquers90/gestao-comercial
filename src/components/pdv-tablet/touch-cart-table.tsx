@@ -2,7 +2,7 @@ import { Minus, Plus, ScanBarcode, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CartTableProps } from "@/components/pdv/cart-table";
 import { formatBRL } from "@/lib/format";
-import { parseQuantity } from "@/lib/pdv-sale";
+import { parseQuantity, stepQty } from "@/lib/pdv-sale";
 import { cn } from "@/lib/utils";
 
 /**
@@ -133,8 +133,8 @@ function TouchQtyStepper({ label, value, onChange }: { label: string; value: num
       <button
         type="button"
         aria-label={`Diminuir quantidade de ${label}`}
-        disabled={value <= 1}
-        onClick={() => onChange(Math.max(1, value - 1))}
+        disabled={value <= (Number.isInteger(value) ? 1 : 0.001)}
+        onClick={() => onChange(stepQty(value, -1))}
       >
         <Minus className="size-5" />
       </button>
@@ -156,7 +156,7 @@ function TouchQtyStepper({ label, value, onChange }: { label: string; value: num
           }
         }}
       />
-      <button type="button" aria-label={`Aumentar quantidade de ${label}`} onClick={() => onChange(value + 1)}>
+      <button type="button" aria-label={`Aumentar quantidade de ${label}`} onClick={() => onChange(stepQty(value, 1))}>
         <Plus className="size-5" />
       </button>
     </div>
