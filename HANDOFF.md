@@ -4998,6 +4998,62 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      O serviço instalado (NSSM, :8080) precisa do `npm run build` (que roda
      a migration) na próxima atualização, não só trocar os arquivos.
 
+106. **Deploy "funcionou" mas nunca atualizava nada — causa raiz: PowerShell
+     sem elevação, e o script falha mudo, sem deixar rastro.** Depois do
+     item 105, o usuário atualizou o serviço instalado e relatou "rodei, deu
+     certo" duas vezes — mas o hash do `index.mjs` em produção continuava
+     igual ao do commit `555c413` (item 103), não avançava pra `cacb0a7`
+     (104) nem `67d38f3` (105). Pelo menos 4 tentativas no total, ao longo
+     de 3 dias, todas sem efeito.
+
+     **Investigação sem precisar da saída do terminal do usuário**: antes de
+     pedir a saída de novo, inspecionei direto os artefatos em
+     `C:\ProgramData\GestaoComercial\` e o Event Log do Windows.
+     `install-state.json` continuava com `lastUpdated` do dia do deploy
+     103 — nunca avançava. `logs\backup.log` só tinha entradas da tarefa
+     agendada das 22h30, nunca um backup extra no horário de uma tentativa
+     de atualização manual — ou seja, nenhuma tentativa chegava nem no passo
+     de backup prévio (o primeiro passo real do fluxo de atualização).
+     `logs\stdout.log`/`stderr.log` mostravam dezenas de ciclos de
+     parada/reinício do serviço, mas cruzando com `Get-WinEvent` (System,
+     eventos 6005/6006/1074) isso era só o PC sendo ligado/desligado todo
+     dia — não um crash loop. `ConsoleHost_history.txt` (histórico do
+     PowerShell) confirmou os comandos exatos rodados, incluindo duas
+     tentativas com captura de log (`Start-Transcript` e depois
+     `Tee-Object`, ambas salvando em `update-log.txt`) — mas esse arquivo já
+     não existia mais em disco nem na Lixeira quando fui procurar.
+
+     **Causa raiz**: `Install-GestaoComercial.ps1` roda
+     `Assert-RunningAsAdministrator` como a PRIMEIRA ação de verdade do
+     script (linha ~334), antes de qualquer backup, cópia de arquivo ou
+     gravação de estado. Se o PowerShell não foi aberto como Administrador,
+     a função lança `throw` e o script para ali mesmo — sem tocar em nada,
+     sem gerar backup, sem mudar `install-state.json`. É exatamente por
+     isso que toda tentativa não-elevada deixava ZERO rastro nos logs,
+     disfarçando-se de "não fez nada" em vez de um erro óbvio de arquivo ou
+     banco. A mensagem de erro em si é clara ("Este script precisa rodar
+     num PowerShell como Administrador"), mas aparentemente passou
+     desapercebida no meio da saída do terminal nas vezes em que o usuário
+     relatou sucesso.
+
+     **Confirmado ao vivo**: pedi pro usuário abrir um PowerShell como
+     Administrador de verdade e rodar o mesmo comando de sempre. Resultado:
+     `install-state.json` avançou para `lastUpdated: 2026-10-19T12:49:31`,
+     hash do `index.mjs` em produção virou `cf339a9a1f84...` (bate com o
+     build local do commit `67d38f3`, já trazendo 103+104+105 juntos), e
+     `http://localhost:8080/` respondendo 200 depois do restart.
+
+     **Nota pra próxima vez**: se `install-state.json.lastUpdated`/o hash do
+     `index.mjs` implantado não mudarem depois de um "rodei, deu certo",
+     checar elevação ANTES de qualquer outra hipótese (file lock, migration,
+     rede) — é a explicação mais provável porque é a única que não deixa
+     absolutamente nenhum rastro em log. Tentei rodar o instalador eu mesmo
+     pra agilizar o diagnóstico, mas o classificador de modo automático do
+     Claude Code bloqueou a ação como "Production Deploy" — corretamente;
+     esse tipo de ação (reiniciar o serviço da loja em produção, rodar
+     migration no banco real) tem que ser decisão e execução do usuário, não
+     minha.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
