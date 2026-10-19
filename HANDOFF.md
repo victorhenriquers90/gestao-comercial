@@ -5205,6 +5205,60 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `npm test` 503/503 inalterado — mudança de fluxo de tela, fora do
      alcance da suíte de função pura.
 
+110. **Mesma classe do bug do painel de NCM (item 108) achada em mais dois
+     lugares: gráfico do relatório "Comissões" e o relatório "Quebra de
+     caixa por operador" agrupavam por NOME, não por ID — dois
+     vendedores ou dois operadores com o mesmo nome se misturavam num
+     bloco só.** Depois de corrigir o NCM, procurei o mesmo padrão
+     (`new Map<string, ...>` agrupando por um campo de texto em vez de um
+     id) no resto de `src/lib/server` e achei dois casos de verdade:
+
+     - **`relatorios.tsx` → "Comissões"** (`reports.ts`, `type ===
+       "comissao"`): o `bySeller` do gráfico de barras somava
+       `net_amount` por `sl.name`. `sellers.name` não tem índice único no
+       banco (confirmado na migration) — dois vendedores (funcionários
+       diferentes, mesmo nome, nada incomum numa loja com várias pessoas)
+       teriam a comissão somada numa barra só do gráfico. A tabela
+       detalhada abaixo do gráfico já estava certa linha a linha (cada
+       venda com o `rule_name`/valor certo) — só o agregado do gráfico
+       misturava.
+     - **`relatorios.tsx` → "Quebra por operador"** (`src/lib/cash-break.ts`,
+       `summarizeBreaks`): mais sério que o de cima, porque este relatório
+       existe especificamente pra apontar QUEM tem o padrão de diferença
+       no caixa — o próprio cabeçalho do arquivo explica a estatística
+       (desvio absoluto, por turno, etc.) pensada pra não deixar erro
+       cancelar erro. Agrupava por `operador` (nome resolvido de
+       `coalesce(ua.name, r.user_id)`), não pelo `user_id` da conta.
+       Dois operadores com o mesmo nome de exibição teriam os turnos
+       (e as faltas/sobras de cada um) somados como se fossem uma pessoa
+       só — o tipo de erro que pode acabar culpando quem não errou, ou
+       escondendo o padrão de quem errou de verdade, no relatório que
+       existe exatamente pra evitar isso.
+
+     **Corrigido**: `reports.ts` agora seleciona `sl.id as seller_id` e
+     agrupa o `bySeller` por esse id (nome só pra rótulo da barra).
+     `cash-break.ts` ganhou um campo novo em `ShiftBreak`,
+     `operadorId` (o `user_id` da conta, não o nome) — `summarizeBreaks`
+     agrupa por ele; `reports.ts` passa `t.user_id` nesse campo ao montar
+     os turnos. Teste novo em `cash-break.test.ts` reproduzindo o cenário
+     exato (dois turnos, mesmo nome "Maria", `operadorId` diferente —
+     confirma que viram duas linhas, não uma).
+
+     **Verificado ao vivo** (gráfico de Comissões) contra o Postgres do
+     piloto: dois vendedores descartáveis `ZZTESTE Mesmo Nome` (ids
+     diferentes), cada um com uma venda e uma comissão na Loja Centro
+     (R$50 e R$30 — a loja é obrigatória no filtro do relatório, sem
+     opção de "todas"). Tabela mostrou as duas linhas certas (R$50/R$30,
+     total R$80); o gráfico mostrou DUAS barras distintas, não uma de
+     R$80 — confirma a correção. Dados de teste (2 vendedores, 2 vendas, 2
+     comissões) removidos depois; banco de volta a 0, 13 `audit_logs`. "Quebra por operador" verificado só pelo teste
+     unitário novo (reproduz o cenário exato na função pura que tem o
+     bug) — montar dois logins de verdade com o mesmo nome de exibição só
+     pra esta verificação seria desproporcional ao risco, e a lógica de
+     agrupamento está isolada o bastante em `cash-break.ts` pra o teste
+     puro já provar a correção. `typecheck`/`lint` limpos (mesmos 5
+     avisos antigos); `npm test` 504/504 (era 503, +1 novo).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

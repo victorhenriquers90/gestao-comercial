@@ -7,6 +7,9 @@ const turno = (o: Partial<ShiftBreak> & { operador: string; diff: number }): Shi
   cego: true,
   fechadoPeloDono: true,
   movimento: 1000,
+  // Testes antigos nao se importam com id -- cai no proprio nome, que ja era
+  // unico por grupo em cada teste existente.
+  operadorId: o.operador,
   ...o,
 });
 
@@ -127,6 +130,23 @@ describe("summarizeBreaks", () => {
     ]);
     assert.equal(a!.desvio, 30);
     assert.equal(a!.turnos, 2);
+  });
+
+  it("dois operadores de nome igual nao se misturam -- agrupa pelo ID", () => {
+    // Mesma classe do bug achado no painel de NCM: duas pessoas podem ter o
+    // mesmo nome de exibicao, e o relatorio existe pra apontar QUEM errou --
+    // juntar os dois num bloco so culparia a pessoa errada.
+    const linhas = summarizeBreaks([
+      turno({ operador: "Maria", operadorId: "user-1", diff: -40 }),
+      turno({ operador: "Maria", operadorId: "user-2", diff: 0 }),
+    ]);
+    assert.equal(linhas.length, 2);
+    const comFalta = linhas.find((l) => l.faltas > 0)!;
+    const semFalta = linhas.find((l) => l.faltas === 0)!;
+    assert.equal(comFalta.turnos, 1);
+    assert.equal(comFalta.desvio, 40);
+    assert.equal(semFalta.turnos, 1);
+    assert.equal(semFalta.desvio, 0);
   });
 });
 

@@ -739,31 +739,30 @@ export const reportFn = createServerFn({ method: "POST" })
     }
 
     if (type === "comissao") {
-      const rows = (
-        await sql.query<Row>(
-          /*
-            Mesmo vazamento de loja do relatorio "vendedor" (ver comentario
-            abaixo) e dos cards de comissao do Dashboard (insight.ts): sem
-            o join com `sales` pra filtrar por `store_id`, trocar de loja no
-            seletor do topo nao mudava este relatorio -- "Comissoes" sempre
-            somava as DUAS lojas juntas.
-          */
-          `select sl.name, s.number, coalesce(c.note, cr.name, 'Padrão') as rule_name,
-                  c.percent, c.amount, coalesce(c.net_amount, c.amount) as net_amount,
-                  coalesce(c.tax_inss,0)+coalesce(c.tax_irrf,0)+coalesce(c.tax_iss,0)+coalesce(c.tax_other,0) as tax_total,
-                  c.status
-             from commissions c
-             join sellers sl on sl.id = c.seller_id
-             left join sales s on s.id = c.sale_id
-             left join commission_rules cr on cr.id = c.rule_id
-            where c.company_id = $1
-              and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')
-              and ($4::int is null or s.store_id = $4)
-              and ($5::int is null or sl.id = $5)
-            order by c.created_at desc`,
-          params,
-        )
-      ).map((r) => [
+      const raw = await sql.query<Row>(
+        /*
+          Mesmo vazamento de loja do relatorio "vendedor" (ver comentario
+          abaixo) e dos cards de comissao do Dashboard (insight.ts): sem
+          o join com `sales` pra filtrar por `store_id`, trocar de loja no
+          seletor do topo nao mudava este relatorio -- "Comissoes" sempre
+          somava as DUAS lojas juntas.
+        */
+        `select sl.id as seller_id, sl.name, s.number, coalesce(c.note, cr.name, 'Padrão') as rule_name,
+                c.percent, c.amount, coalesce(c.net_amount, c.amount) as net_amount,
+                coalesce(c.tax_inss,0)+coalesce(c.tax_irrf,0)+coalesce(c.tax_iss,0)+coalesce(c.tax_other,0) as tax_total,
+                c.status
+           from commissions c
+           join sellers sl on sl.id = c.seller_id
+           left join sales s on s.id = c.sale_id
+           left join commission_rules cr on cr.id = c.rule_id
+          where c.company_id = $1
+            and c.created_at >= $2::date and c.created_at < ($3::date + interval '1 day')
+            and ($4::int is null or s.store_id = $4)
+            and ($5::int is null or sl.id = $5)
+          order by c.created_at desc`,
+        params,
+      );
+      const rows = raw.map((r) => [
         String(r.name),
         r.number != null ? String(r.number) : "—",
         String(r.rule_name ?? "Padrão"),
@@ -775,10 +774,16 @@ export const reportFn = createServerFn({ method: "POST" })
       ]);
       const pending = rows.filter((r) => r[7] === "Pendente").reduce((a, r) => a + num(r[6]), 0);
       const paid = rows.filter((r) => r[7] === "Pago").reduce((a, r) => a + num(r[6]), 0);
-      const bySeller = new Map<string, number>();
-      for (const r of rows) {
-        const name = String(r[0]);
-        bySeller.set(name, (bySeller.get(name) ?? 0) + num(r[6]));
+      // Agrupado pelo ID do vendedor, nao pelo nome: nada impede dois
+      // vendedores com o mesmo nome (sellers.name nao e unico), e agrupar
+      // por nome somaria a comissao dos dois num bar so do grafico --
+      // mesma classe do bug achado no painel de NCM (listNcmPendingFn).
+      const bySeller = new Map<number, { name: string; value: number }>();
+      for (const r of raw) {
+        const id = num(r.seller_id);
+        const g = bySeller.get(id) ?? { name: String(r.name), value: 0 };
+        g.value += num(r.net_amount);
+        bySeller.set(id, g);
       }
       return pack({
         title: "Comissões",
@@ -793,7 +798,7 @@ export const reportFn = createServerFn({ method: "POST" })
         ],
         chart: {
           kind: "bar",
-          data: [...bySeller.entries()].map(([name, value]) => ({ name, value })),
+          data: [...bySeller.values()],
         },
       });
     }
@@ -878,6 +883,7 @@ export const reportFn = createServerFn({ method: "POST" })
       const linhas = summarizeBreaks(
         turnos.map((t) => ({
           operador: t.operador == null ? "" : String(t.operador),
+          operadorId: t.user_id == null ? "" : String(t.user_id),
           diff: num(t.difference_amount),
           explicada: t.difference_reason != null,
           cego: t.expected_revealed_at == null,

@@ -41,8 +41,17 @@
 import { CASH_DIFFERENCE_TOLERANCE } from "./cash-count.ts";
 
 export type ShiftBreak = {
-  /** Quem trabalhou o turno. */
+  /** Quem trabalhou o turno (nome pra exibir — não é a chave de agrupamento). */
   operador: string;
+  /**
+   * ID estável de quem trabalhou o turno (o `user_id` do login). Agrupar por
+   * `operador` (nome) juntaria dois operadores DIFERENTES que por acaso têm o
+   * mesmo nome num só bloco do relatório — justamente o relatório que existe
+   * pra apontar QUEM tem o padrão de diferença, então errar essa atribuição é
+   * grave. Cai pro próprio nome quando não tem id (não deveria acontecer,
+   * mas evita juntar dois "sem id" com nomes diferentes).
+   */
+  operadorId: string;
   diff: number;
   /** A diferenca ja foi explicada por escrito. */
   explicada: boolean;
@@ -90,10 +99,14 @@ export function summarizeBreaks(
   const movimentoPor = new Map<string, number>();
   for (const s of shifts) {
     const nome = s.operador || "Sem operador";
+    // Agrupa pelo ID, nao pelo nome: dois operadores com o mesmo nome (nao e
+    // raro, e o cadastro de usuario nao exige nome unico) nao podem virar um
+    // bloco so neste relatorio especifico.
+    const chave = s.operadorId || nome;
     const diff = Number.isFinite(Number(s.diff)) ? round2(Number(s.diff)) : 0;
     const alem = Math.abs(diff) > tolerance;
     const atual =
-      porOperador.get(nome) ??
+      porOperador.get(chave) ??
       {
         operador: nome,
         turnos: 0,
@@ -122,12 +135,12 @@ export function summarizeBreaks(
     if (!s.cego) atual.naoCegos += 1;
     if (!s.fechadoPeloDono) atual.fechadosPorOutro += 1;
     const mov = Number(s.movimento);
-    movimentoPor.set(nome, (movimentoPor.get(nome) ?? 0) + (Number.isFinite(mov) ? mov : 0));
-    porOperador.set(nome, atual);
+    movimentoPor.set(chave, (movimentoPor.get(chave) ?? 0) + (Number.isFinite(mov) ? mov : 0));
+    porOperador.set(chave, atual);
   }
 
-  const linhas = [...porOperador.values()].map((o) => {
-    const movimento = movimentoPor.get(o.operador) ?? 0;
+  const linhas = [...porOperador.entries()].map(([chave, o]) => {
+    const movimento = movimentoPor.get(chave) ?? 0;
     return {
       ...o,
       desvioPorTurno: o.turnos ? round2(o.desvio / o.turnos) : 0,
