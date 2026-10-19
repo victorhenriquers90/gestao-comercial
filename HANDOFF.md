@@ -5147,6 +5147,64 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      com uma consulta real ao banco, fora do alcance da suíte de função
      pura.
 
+109. **Mudança de regra de negócio pedida pelo usuário: CPF/CNPJ e forma de
+     pagamento viram OBRIGATÓRIOS pra finalizar a venda no PDV — antes
+     eram opcionais por design (a "venda rápida").** O usuário reportou
+     "ao finalizar a venda, não está pedindo CPF nem forma de pagamento" e
+     confirmou, quando perguntado, que queria os dois bloqueando o F10 e
+     que a regra deve ser fixa (sem toggle em Configurações).
+
+     **Isto não era um bug, era o comportamento pretendido já existente**
+     — verifiquei ao vivo antes de mexer: Finalizar sem tocar em CPF nem
+     pagamento concluía a venda na hora como "Dinheiro, Cliente:
+     Consumidor". A lógica ("venda rápida": nada informado → grava tudo em
+     dinheiro, no valor exato) foi escrita pelo próprio usuário no commit
+     `45d64fb` (20/09), não é algo desta sessão — mudar isso é decisão de
+     regra de negócio, não uma correção de bug, por isso perguntei antes
+     de implementar em vez de presumir.
+
+     **Implementado em `finish()` (`use-pdv-sale.ts`, usado por `pdv.tsx` E
+     `pdv-tablet.tsx` via o hook compartilhado — corrige as duas telas de
+     uma vez)**:
+     - Pagamento: removido o ramo `vendaRapida` que gravava a venda
+       inteira em dinheiro quando nada foi digitado. Agora cai direto no
+       caminho que já existia pra "pagamento parcial/inválido" — `pays`
+       vazio abre o `PaymentDialog` (F8) com erro "Informe a forma de
+       pagamento antes de finalizar." Nenhuma lógica nova de validação de
+       valor: só o atalho de "ninguém informou, vira dinheiro sozinho" que
+       saiu.
+     - CPF: checagem nova, antes de tudo que mexe com pagamento — bloqueia
+       se não há `cpfNota` digitado, `customer` vinculado NEM
+       `docDispensado` marcado, abre o `CustomerDialog` (F4) com erro
+       "Informe o CPF/CNPJ na nota (ou marque que o cliente não quis
+       informar)." **Importante, e por isso não é um CPF obrigatório de
+       verdade**: a lei brasileira não deixa a loja recusar a venda só
+       porque o cliente não quer informar CPF — por isso o botão "Pular"
+       que já existia no `CustomerDialog` (vira `docDispensado = true`)
+       CONTA como ter resolvido a pergunta, igual a digitar o documento ou
+       vincular um cliente. "Obrigatório" aqui significa "o operador tem
+       que ser forçado a decidir", não "o cliente é obrigado a dar o CPF".
+     - Textos de ajuda da tela ("Não informado. Finalizar registra em
+       dinheiro, no valor exato.") trocados nas duas telas
+       (`sale-panel.tsx`, `touch-sale-panel.tsx`) pra "Não informado.
+       Obrigatório para finalizar a venda." — o texto antigo descrevia
+       exatamente o atalho que acabou de sair.
+
+     **Verificado ao vivo contra o Postgres do piloto, cenário completo**:
+     produto descartável, caixa aberto, item no carrinho, F10 direto sem
+     tocar em nada → bloqueou com "Informe o CPF/CNPJ..." e abriu o
+     diálogo de cliente. Cliquei "Pular" (cliente não quis informar),
+     F10 de novo → bloqueou com "Informe a forma de pagamento antes de
+     finalizar." e abriu o diálogo de pagamento. Preenchi R$30,00 em
+     dinheiro, finalizei → venda nº 28 concluída normalmente, comprovante
+     correto. As duas trocas (CPF primeiro, pagamento depois) bloquearam
+     exatamente como esperado, cada uma na sua vez. Dados de teste (1
+     produto, 1 variante, 1 estoque, 1 caixa aberto, 1 venda, 1 pagamento)
+     removidos depois; banco de volta a 0 produtos/vendas/caixas, 13
+     `audit_logs`. `typecheck`/`lint` limpos (mesmos 5 avisos antigos);
+     `npm test` 503/503 inalterado — mudança de fluxo de tela, fora do
+     alcance da suíte de função pura.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

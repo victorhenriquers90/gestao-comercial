@@ -153,7 +153,7 @@ export function TouchSalePanel(p: SalePanelProps) {
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {vazio
               ? "Informe depois de incluir os produtos."
-              : "Não informado. Finalizar registra em dinheiro, no valor exato."}
+              : "Não informado. Obrigatório para finalizar a venda."}
           </p>
         )}
         {p.commission.show || p.commission.warnNoSeller ? (

@@ -465,65 +465,69 @@ export function usePdvSale() {
       toast.error("Selecione uma loja.");
       return;
     }
+    // CPF/CNPJ na nota e obrigatorio -- mas "obrigatorio" aqui e o operador
+    // RESOLVER a pergunta, nao necessariamente digitar um documento: a lei
+    // nao deixa a loja recusar a venda so porque o cliente nao quer informar
+    // CPF. `docDispensado` e marcado quando o operador pergunta e o cliente
+    // diz que nao quer (dialogo de cliente, botao "Nao informar") -- conta
+    // como resolvido, igual a ter um CPF ou um cliente vinculado.
+    if (!cpfNota && !customer && !docDispensado) {
+      setCustOpen(true);
+      toast.error("Informe o CPF/CNPJ na nota (ou marque que o cliente não quis informar).");
+      return;
+    }
     /*
       Se o operador ABRIU o pagamento, o que ele digitou manda -- nada aqui
       pode "consertar" sozinho o que nao entendeu.
 
       Antes, o valor passava por num(), que devolve 0 pro que nao consegue
       ler. Como "50,00" (o jeito que se digita no balcao) vira 0, o pagamento
-      era descartado por ser zero, a lista ficava vazia e o codigo caia no
-      caminho de baixo, que registra a venda inteira em DINHEIRO. O operador
-      escolhia credito e a venda era gravada como especie: o caixa passava a
-      esperar um dinheiro que nunca entrou na gaveta, e a diferenca aparecia
-      no fechamento como se fosse falta dele.
+      era descartado por ser zero, a lista ficava vazia e o codigo caia num
+      caminho que registrava a venda inteira em DINHEIRO sem perguntar nada.
+      O operador escolhia credito e a venda era gravada como especie: o
+      caixa passava a esperar um dinheiro que nunca entrou na gaveta, e a
+      diferenca aparecia no fechamento como se fosse falta dele.
 
-      Agora valor ilegivel e ERRO na cara do operador, e o caminho automatico
-      de dinheiro so vale pra venda rapida, em que ninguem informou nada.
+      Agora valor ilegivel e ERRO na cara do operador, e NINGUEM informar
+      pagamento tambem e erro -- forma de pagamento e obrigatoria, sem
+      atalho de "virou dinheiro sozinho" (decisao do dono da loja).
     */
-    let pays: {
+    const pays: {
       method: PaymentMethod;
       amount: number;
       received: number;
       installments: number;
       brand: string;
       nsu: string;
-    }[];
-    const vendaRapida = payments.every((p) => !p.amount.trim());
-    if (vendaRapida) {
-      pays = [
-        { method: "dinheiro", amount: total, received: total, installments: 1, brand: "", nsu: "" },
-      ];
-    } else {
-      pays = [];
-      for (const p of payments) {
-        if (!p.amount.trim()) continue;
-        const amount = parseMoneyInput(p.amount);
-        if (!Number.isFinite(amount) || amount <= 0) {
-          setPayOpen(true);
-          toast.error(`Valor inválido em ${PAYMENT_LABELS[p.method]}: "${p.amount}".`);
-          return;
-        }
-        const recebidoTexto = p.received.trim();
-        const received = recebidoTexto ? parseMoneyInput(recebidoTexto) : amount;
-        if (!Number.isFinite(received)) {
-          setPayOpen(true);
-          toast.error(`Valor recebido inválido: "${p.received}".`);
-          return;
-        }
-        pays.push({
-          method: p.method,
-          amount,
-          received,
-          installments: p.installments,
-          brand: p.brand,
-          nsu: p.nsu,
-        });
-      }
-      if (pays.length === 0) {
+    }[] = [];
+    for (const p of payments) {
+      if (!p.amount.trim()) continue;
+      const amount = parseMoneyInput(p.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
         setPayOpen(true);
-        toast.error("Informe o valor de pelo menos uma forma de pagamento.");
+        toast.error(`Valor inválido em ${PAYMENT_LABELS[p.method]}: "${p.amount}".`);
         return;
       }
+      const recebidoTexto = p.received.trim();
+      const received = recebidoTexto ? parseMoneyInput(recebidoTexto) : amount;
+      if (!Number.isFinite(received)) {
+        setPayOpen(true);
+        toast.error(`Valor recebido inválido: "${p.received}".`);
+        return;
+      }
+      pays.push({
+        method: p.method,
+        amount,
+        received,
+        installments: p.installments,
+        brand: p.brand,
+        nsu: p.nsu,
+      });
+    }
+    if (pays.length === 0) {
+      setPayOpen(true);
+      toast.error("Informe a forma de pagamento antes de finalizar.");
+      return;
     }
     if (pays.reduce((a, p) => a + p.amount, 0) + 0.05 < total) {
       setPayOpen(true);
