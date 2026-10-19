@@ -724,12 +724,16 @@ export const getSupplierFn = createServerFn({ method: "POST" })
     const products = await sql<Row>`
       -- so pedido RECEBIDO: item de orcamento/pedido cancelado nunca foi
       -- comprado de verdade, mesmo raciocinio do stats.total abaixo.
-      select p.name, count(*)::int as times, coalesce(sum(pi.total),0) as total
+      -- Agrupado por p.id, nao p.name: products.name nao e unico (dois
+      -- produtos cadastrados com o mesmo nome, nao e raro) -- agrupar por
+      -- nome somaria as compras dos dois como se fossem o mesmo item, mesma
+      -- classe do bug achado no painel de NCM (item 108).
+      select p.id, p.name, count(*)::int as times, coalesce(sum(pi.total),0) as total
       from purchase_items pi
       join purchases pu on pu.id = pi.purchase_id
       join products p on p.id = pi.product_id
       where pu.supplier_id = ${data.id} and pu.company_id = ${tenant.companyId} and pu.status = 'recebido'
-      group by p.name
+      group by p.id, p.name
       order by times desc limit 15
     `;
     // Mesma regra do listSuppliersFn: "total" (dinheiro de verdade) so conta

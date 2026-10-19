@@ -5259,6 +5259,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      puro já provar a correção. `typecheck`/`lint` limpos (mesmos 5
      avisos antigos); `npm test` 504/504 (era 503, +1 novo).
 
+111. **Terceira ocorrência da mesma classe (NCM item 108, Comissões/Quebra
+     item 110): a aba "Mix" da ficha 360 de Fornecedor agrupava as compras
+     por NOME do produto, não pelo ID.** Depois do item 110, procurei o
+     mesmo padrão em todo `group by` de `src/lib/server` que não fosse por
+     coluna `*_id`/`.id`. Achei mais um caso real: `getSupplierFn`
+     (`party.ts`), consulta de `products` comprados daquele fornecedor —
+     `select p.name, count(*) ... group by p.name`. `products.name` não é
+     único (confirmado na migration, igual categorias e vendedores): dois
+     produtos cadastrados com o mesmo nome (duplicata por engano, ou duas
+     variações registradas como produtos separados em vez de variantes)
+     teriam a quantidade e o valor comprado somados numa linha só da aba
+     Mix — menos grave que o NCM (é só uma lista informativa, não afeta
+     nota fiscal nem pagamento), mas ainda assim mistura dado de dois
+     produtos diferentes.
+
+     As outras ocorrências de `group by` fora de `*_id` (relatórios "Mix
+     de produtos"/"Mais vendidos"/"Curva ABC" em `reports.ts`, que agrupam
+     por `si.description`) foram revisadas e **deixadas como estão de
+     propósito**: `sale_items.description` é o mesmo tipo de retrato
+     congelado na hora da venda que `sales.document` (migration 0021) e
+     `print_header`/`print_footer` (item 105) — esses relatórios respondem
+     "o que vendeu, com o nome que o cliente viu no cupom", não "quais
+     linhas vieram do mesmo `product_id`". Trocar para agrupar por id
+     mudaria o que o relatório significa (um produto renomeado no meio do
+     período apareceria como duas linhas), não é a mesma classe de bug.
+
+     **Corrigido**: `getSupplierFn` agora seleciona `p.id` e agrupa por
+     `p.id, p.name` (nome só pro rótulo da linha).
+
+     **Verificado ao vivo** contra o Postgres do piloto: fornecedor
+     descartável, dois produtos `ZZTESTE Produto Igual` (ids diferentes,
+     nome idêntico — confirmado que o banco aceita), um pedido recebido
+     pra cada (R$100 e R$60). Aba Mix da ficha do fornecedor mostrou DUAS
+     linhas "ZZTESTE Produto Igual · 1×" (R$100,00 e R$60,00), não uma
+     linha "· 2×" com R$160,00 — confirma a correção. Dados de teste (1
+     fornecedor, 2 produtos, 2 variantes, 2 pedidos, 2 itens de pedido)
+     removidos depois; banco de volta a 0, 13 `audit_logs`.
+     `typecheck`/`lint` limpos (mesmos 5 avisos antigos); `npm test`
+     504/504 inalterado — mudança só na consulta SQL, sem lógica pura nova
+     pra testar.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
