@@ -29,8 +29,11 @@ const buttonVariants = cva(
         default: "h-10 px-4",
         sm: "h-8 rounded-sm px-3 text-xs",
         lg: "h-12 rounded-lg px-5 text-base",
-        icon: "size-10",
-        "icon-sm": "size-8",
+        // Circular, nao squircle: convencao comum pra botao so-icone (menu,
+        // notificacao, tema) em interfaces atuais -- lia como um "toque"
+        // discreto, nao como um mini-botao de texto sem texto.
+        icon: "size-10 rounded-full",
+        "icon-sm": "size-8 rounded-full",
       },
     },
     defaultVariants: { variant: "default", size: "default" },
