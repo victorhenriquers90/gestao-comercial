@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "./stock-input.ts";
+import { parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "./stock-input.ts";
 
 describe("parseStockQuantity", () => {
   it("aceita quantidade normal", () => {
@@ -30,6 +30,24 @@ describe("parseStockQuantity", () => {
 
   it("usa o rotulo informado na mensagem", () => {
     assert.throws(() => parseStockQuantity(0, "quantidade a transferir"), /quantidade a transferir/);
+  });
+});
+
+describe("parseStockDelta", () => {
+  it("aceita negativo -- e o caso que 'Ajuste (define delta)' promete e nao cumpria", () => {
+    assert.equal(parseStockDelta(-3), -3);
+    assert.equal(parseStockDelta("-3"), -3);
+  });
+
+  it("aceita positivo tambem", () => {
+    assert.equal(parseStockDelta(5), 5);
+  });
+
+  it("recusa so zero, NaN e infinito -- nao recusa negativo", () => {
+    assert.throws(() => parseStockDelta(0), /diferente de zero/);
+    assert.throws(() => parseStockDelta(Number.NaN), /diferente de zero/);
+    assert.throws(() => parseStockDelta(Number.POSITIVE_INFINITY), /diferente de zero/);
+    assert.throws(() => parseStockDelta("abc"), /diferente de zero/);
   });
 });
 

@@ -5321,6 +5321,49 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      antigos); `npm test` 504/504 inalterado (troca de asserção, não teste
      novo).
 
+113. **"Ajuste (define delta)" no Estoque não cumpria o que o próprio
+     rótulo promete — só conseguia somar, nunca subtrair.** Voltando a
+     caçar bug depois da rodada de design: `adjustStockFn` (`catalog.ts`)
+     tinha `const delta = data.type === "entrada" || data.type === "ajuste"
+     ? quantidade : -quantidade`, e `quantidade` vinha de
+     `parseStockQuantity`, que recusa qualquer valor ≤ 0. Resultado: o
+     tipo "Ajuste" (rotulado na tela como "Ajuste (define delta)") só
+     conseguia ADICIONAR estoque — exatamente igual a "Entrada", com outro
+     nome. Quem precisasse corrigir uma contagem PRA BAIXO (erro de
+     inventário antigo, não venda nem extravio) não tinha opção certa:
+     "Perda" tem outro significado contábil (quebra/furto), e "Saída"
+     também implica uma movimentação deliberada, não uma correção de
+     erro de contagem.
+
+     Pista de que o design original já previa os dois sentidos:
+     `applyStockChange` recebe `allowNegative: data.type === "ajuste"` —
+     só "ajuste" podia levar o estoque resultante abaixo de zero, o que só
+     faz sentido se o delta dele também pudesse ser negativo. A validação
+     de quantidade (`parseStockQuantity`, lado servidor, e a trava
+     `quantidade <= 0` idêntica no cliente) é que nunca foi ajustada pra
+     esse caso.
+
+     **Corrigido**: `parseStockDelta` nova (`lib/stock-input.ts`) — aceita
+     qualquer número finito diferente de zero, positivo ou negativo.
+     `adjustStockFn` usa ela só pro tipo "ajuste"; os outros três tipos
+     continuam exigindo magnitude positiva via `parseStockQuantity` (a
+     direção deles já vem do nome do tipo, então isso está certo). Tela de
+     Estoque: a mesma trava de zero/negativo virou condicional em
+     `type === "ajuste" && !toStore` (transferência continua sempre
+     positiva), e o campo Quantidade ganhou uma dica — "Pode ser negativo,
+     pra corrigir a contagem pra baixo (ex. -3)."
+
+     **Verificado ao vivo** contra o Postgres do piloto: produto
+     descartável com 10 unidades, ajuste de `-4` pela tela → estoque foi
+     pra 6, `stock_movements` gravou `type: 'ajuste', quantity: -4.000`
+     (negativo de verdade, não um valor absoluto disfarçado). Produto,
+     variante, estoque e o movimento removidos depois; banco de volta a 0,
+     13 `audit_logs`. 3 testes novos pra `parseStockDelta` (aceita
+     negativo, aceita positivo, recusa só zero/NaN/infinito — a inversão
+     completa do que `parseStockQuantity` recusa).
+     `typecheck`/`lint` limpos (mesmos 5 avisos antigos); `npm test`
+     507/507 (era 504, +3 novos).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

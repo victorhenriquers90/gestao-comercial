@@ -240,6 +240,11 @@ function EstoquePage() {
           </Field>
           <Field label="Quantidade" className="mt-block">
             <Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} />
+            {type === "ajuste" && !toStore ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pode ser negativo, pra corrigir a contagem pra baixo (ex. -3).
+              </p>
+            ) : null}
           </Field>
           <Field label="Motivo" className="mt-block">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
@@ -265,9 +270,17 @@ function EstoquePage() {
               // dois cliques movimentem o estoque duas vezes -- numa loja de
               // roupa, estoque a mais que o real vira venda de peca que nao
               // existe.
+              //
+              // "ajuste" sem transferencia aceita negativo (corrige contagem
+              // pra baixo -- ver parseStockDelta/adjustStockFn); os outros
+              // tipos e a transferencia continuam exigindo positivo, porque
+              // a direcao deles ja vem do tipo escolhido.
               const quantidade = Number(qty);
-              if (!Number.isFinite(quantidade) || quantidade <= 0) {
-                return toast.error("Informe uma quantidade maior que zero.");
+              const ajusteLivre = type === "ajuste" && !toStore;
+              if (!Number.isFinite(quantidade) || (ajusteLivre ? quantidade === 0 : quantidade <= 0)) {
+                return toast.error(
+                  ajusteLivre ? "Informe um ajuste diferente de zero." : "Informe uma quantidade maior que zero.",
+                );
               }
               setRegistrando(true);
               try {

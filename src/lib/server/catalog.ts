@@ -6,7 +6,7 @@ import { num } from "@/lib/utils";
 import { assertOwned, assertStore, assertVariants, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
-import { parsePurchaseExtra, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
+import { parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
@@ -662,8 +662,18 @@ export const adjustStockFn = createServerFn({ method: "POST" })
     await assertVariants(sql, tenant.companyId, [data.variantId]);
     // parseStockQuantity no lugar de `<= 0`: NaN <= 0 e false, entao a
     // checagem anterior deixava passar e o estoque virava NaN.
-    const quantidade = parseStockQuantity(data.quantity);
-    const delta = data.type === "entrada" || data.type === "ajuste" ? quantidade : -quantidade;
+    //
+    // "ajuste" NAO passa por parseStockQuantity: o rotulo da tela e "Ajuste
+    // (define delta)", mas forcar quantidade > 0 igual aos outros tipos
+    // deixava "ajuste" so capaz de SOMAR -- idem a "entrada" com outro nome,
+    // sem jeito de corrigir uma contagem pra baixo sem abusar de "perda"
+    // (que tem outro significado: extravio/quebra, nao erro de contagem).
+    const delta =
+      data.type === "ajuste"
+        ? parseStockDelta(data.quantity)
+        : data.type === "entrada"
+          ? parseStockQuantity(data.quantity)
+          : -parseStockQuantity(data.quantity);
     const res = await applyStockChange(sql, {
       companyId: tenant.companyId,
       storeId: data.storeId,

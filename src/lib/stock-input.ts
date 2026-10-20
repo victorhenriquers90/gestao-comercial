@@ -26,6 +26,24 @@ export function parseStockQuantity(value: unknown, label = "quantidade"): number
 }
 
 /**
+ * Delta de "Ajuste (define delta)": ao contrario de entrada/saida/perda (cuja
+ * direcao ja vem do tipo escolhido, entao so faz sentido pedir magnitude
+ * positiva), ajuste existe PRA corrigir contagem pra cima OU pra baixo sem
+ * forcar o operador a escolher "perda"/"saida" pra uma diferenca que nao foi
+ * venda nem extravio -- so erro de contagem anterior. Antes disto, o valor
+ * passava por `parseStockQuantity` (rejeita <=0) igual aos outros tipos, e
+ * "define delta" ficava mentiroso: so dava pra ajustar pra cima, igual
+ * "Entrada" com outro nome.
+ */
+export function parseStockDelta(value: unknown, label = "ajuste"): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n === 0) {
+    throw new Error(`Informe um ${label} diferente de zero.`);
+  }
+  return n;
+}
+
+/**
  * Valor unitario de compra: finito e nao negativo.
  *
  * Zero e legitimo (brinde, bonificacao do fornecedor); negativo nao -- viraria
