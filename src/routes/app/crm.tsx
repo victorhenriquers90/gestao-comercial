@@ -6,12 +6,27 @@ import { CustomerPanel } from "@/components/customer-panel";
 import { Card } from "@/components/ui/card";
 import { NativeCheckbox } from "@/components/ui/select";
 import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
-import { CRM_STAGE_LABELS, CRM_STAGES } from "@/lib/constants";
+import { CRM_STAGE_LABELS, CRM_STAGES, type CrmStage } from "@/lib/constants";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
 import { crmBoardFn, listCrmTasksFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
 
 const FUNNEL_STAGES = CRM_STAGES.filter((s) => s !== "venda" && s !== "perdido");
+
+/**
+ * Cor de topo por coluna do quadro -- progressao do funil, nao decoracao
+ * aleatoria: fria/neutra no inicio, esquenta conforme avanca, verde quando
+ * fecha, vermelho quando perde. Ajuda a "ler" o quadro de longe (qual coluna
+ * e qual) sem precisar do texto do cabecalho.
+ */
+const CRM_STAGE_ACCENT: Record<CrmStage, string> = {
+  novo: "var(--info)",
+  interessado: "var(--color-chart-2)",
+  orcamento: "var(--color-chart-3)",
+  negociacao: "var(--warning)",
+  venda: "var(--success)",
+  perdido: "var(--destructive)",
+};
 
 export const Route = createFileRoute("/app/crm")({ component: CrmPage });
 
@@ -103,7 +118,11 @@ function CrmPage() {
         {CRM_STAGES.map((stage) => {
           const col = stages[stage];
           return (
-            <div key={stage} className="board-col rounded-xl bg-muted/50 p-2">
+            <div
+              key={stage}
+              className="board-col rounded-xl border-t-4 bg-muted/50 p-2"
+              style={{ borderTopColor: CRM_STAGE_ACCENT[stage] }}
+            >
               <p className="px-2 pt-2 text-xs font-medium text-muted-foreground">
                 {CRM_STAGE_LABELS[stage]} · {col.count}
               </p>

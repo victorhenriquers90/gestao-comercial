@@ -42,3 +42,18 @@ export const CHART_PALETTE = [
 export function chartColor(index: number): string {
   return CHART_PALETTE[index % CHART_PALETTE.length]!;
 }
+
+/**
+ * Mesma paleta, mas pra um rotulo livre (nome de categoria, por ex.) em vez
+ * de uma posicao conhecida: hash simples do texto escolhe sempre a MESMA cor
+ * pro mesmo nome, sem precisar de uma tabela nome->cor mantida a mao (a
+ * lista de categorias e criada pelo proprio usuario, cresce sem aviso).
+ */
+export function labelColor(label: string): string {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = (hash << 5) - hash + label.charCodeAt(i);
+    hash |= 0;
+  }
+  return chartColor(Math.abs(hash));
+}

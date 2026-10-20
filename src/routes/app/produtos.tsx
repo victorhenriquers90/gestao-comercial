@@ -16,6 +16,7 @@ import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picke
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
+import { labelColor } from "@/lib/chart";
 import { UNITS } from "@/lib/constants";
 import { formatBRL, formatQty, marginPct } from "@/lib/format";
 import {
@@ -344,7 +345,20 @@ function ProdutosPage() {
                 </div>
               </Td>
               <Td>{p.sku ?? "—"}</Td>
-              <Td>{p.category ?? "—"}</Td>
+              <Td>
+                {p.category ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ background: labelColor(p.category) }}
+                      aria-hidden="true"
+                    />
+                    {p.category}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </Td>
               <Td className="tabular col-num">{formatBRL(p.cost)}</Td>
               <Td className="tabular col-num">{formatBRL(p.price)}</Td>
               <Td className="tabular col-num">{marginPct(p.price, p.cost).toFixed(1)}%</Td>
