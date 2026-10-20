@@ -6,7 +6,14 @@ import { parseMoneyInput } from "@/lib/money-input";
 import type { searchPosFn } from "@/lib/server/catalog";
 import type { getSettingsFn } from "@/lib/server/session";
 
-/** A acao principal da tela: mesma peca no cupom e no pagamento. */
+/**
+ * A acao principal da tela: mesma peca no cupom e no pagamento. Hover usa o
+ * mesmo levantar+shadow-pop+brilho que todo botao primario ganhou (Button) --
+ * um anel proprio so neste botao foi cogitado e descartado: a camada
+ * `utilities` do Tailwind (onde `hover:shadow-pop` mora) nao deixa uma regra
+ * solta de CSS se somar a ela de forma confiavel, e um tratamento igual ao
+ * resto dos botoes primarios e mais consistente mesmo.
+ */
 export const PDV_FINISH_CLASS =
   "pdv-finish h-14 w-full justify-start gap-3 rounded-sm px-5 text-base font-semibold [&_svg]:size-5 [@media(max-height:760px)]:h-12";
 

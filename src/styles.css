@@ -1452,13 +1452,6 @@
     }
   }
 
-  /* Altura/raio/padding do Finalizar vao como utilitarios no proprio botao
-     (PDV_FINISH_CLASS): esta camada perde pro `h-10` do Button, e o botao
-     saia com 40px em vez de 56. Aqui fica so o que utilitario nao expressa. */
-  .pdv-finish:not(:disabled):hover {
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 22%, transparent);
-  }
-
   /* Pagamento. */
   .pdv-pay-stats {
     container-type: inline-size;
