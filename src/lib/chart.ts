@@ -57,3 +57,17 @@ export function labelColor(label: string): string {
   }
   return chartColor(Math.abs(hash));
 }
+
+/**
+ * Estilo do "retrato" sem foto (inicial do nome): fundo e um tingimento leve
+ * da cor do rotulo (nao a cor solida -- a letra precisa continuar legivel),
+ * letra na cor cheia. Mesma ideia do Badge (`bg-X/10 text-X`), pra produto
+ * sem foto nao ficar todo cinza igual na lista/busca do PDV.
+ */
+export function labelTileStyle(label: string): CSSProperties {
+  const color = labelColor(label);
+  return {
+    background: `color-mix(in oklab, ${color} 16%, var(--muted))`,
+    color,
+  };
+}

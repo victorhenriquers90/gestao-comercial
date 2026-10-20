@@ -18,8 +18,12 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground shadow-soft hover:-translate-y-px hover:shadow-pop hover:brightness-110",
         secondary: "bg-secondary text-secondary-foreground hover:-translate-y-px hover:bg-secondary/80",
+        // hover:border-primary/40: so bg-muted no hover ficava neutro demais
+        // perto dos outros variantes, que agora todos reagem com a cor da
+        // marca -- um toque de verde na borda junta o outline ao resto sem
+        // precisar preencher o fundo inteiro (continua "baixa enfase").
         outline:
-          "border border-border bg-card text-foreground hover:-translate-y-px hover:bg-muted hover:shadow-soft",
+          "border border-border bg-card text-foreground hover:-translate-y-px hover:border-primary/40 hover:bg-muted hover:shadow-soft",
         ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
         destructive:
           "bg-destructive text-destructive-foreground shadow-soft hover:-translate-y-px hover:shadow-pop hover:brightness-110",

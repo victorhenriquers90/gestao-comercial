@@ -2,6 +2,7 @@ import { PackageSearch, Search, TriangleAlert } from "lucide-react";
 import { forwardRef, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
+import { labelTileStyle } from "@/lib/chart";
 import { formatBRL } from "@/lib/format";
 import { searchPosFn } from "@/lib/server/catalog";
 import { cn } from "@/lib/utils";
@@ -187,11 +188,16 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(function Produc
                     onMouseEnter={() => setActive(i)}
                     onClick={() => escolher(h)}
                   >
-                    <span className="tile-photo size-9 shrink-0">
+                    <span
+                      className="tile-photo size-9 shrink-0"
+                      style={h.imageUrl ? undefined : labelTileStyle(h.label)}
+                    >
                       {h.imageUrl ? (
                         <img src={h.imageUrl} alt="" />
                       ) : (
-                        <span className="tile-photo-fallback text-sm">{h.label.slice(0, 1)}</span>
+                        <span className="tile-photo-fallback text-sm" style={{ color: "inherit" }}>
+                          {h.label.slice(0, 1)}
+                        </span>
                       )}
                     </span>
                     <span className="min-w-0 flex-1">

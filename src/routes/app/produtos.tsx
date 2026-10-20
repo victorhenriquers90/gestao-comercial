@@ -16,7 +16,7 @@ import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picke
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
-import { labelColor } from "@/lib/chart";
+import { labelColor, labelTileStyle } from "@/lib/chart";
 import { UNITS } from "@/lib/constants";
 import { formatBRL, formatQty, marginPct } from "@/lib/format";
 import {
@@ -335,8 +335,14 @@ function ProdutosPage() {
             >
               <Td>
                 <div className="flex items-center gap-3">
-                  <span className="tile-photo size-10 shrink-0">
-                    {p.imageUrl ? <img src={p.imageUrl} alt="" /> : <span className="tile-photo-fallback">{p.name.slice(0, 1)}</span>}
+                  <span className="tile-photo size-10 shrink-0" style={p.imageUrl ? undefined : labelTileStyle(p.name)}>
+                    {p.imageUrl ? (
+                      <img src={p.imageUrl} alt="" />
+                    ) : (
+                      <span className="tile-photo-fallback" style={{ color: "inherit" }}>
+                        {p.name.slice(0, 1)}
+                      </span>
+                    )}
                   </span>
                   <div className="min-w-0">
                     <p className="font-medium">{p.name}</p>
