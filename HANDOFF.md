@@ -5300,6 +5300,27 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      504/504 inalterado — mudança só na consulta SQL, sem lógica pura nova
      pra testar.
 
+112. **Revisão de código (NFC-e emissão continua desligada no piloto, sem
+     token — não dava pra testar ao vivo): `paymentCode("crediario")`
+     mandava o código SEFAZ errado pro cupom fiscal.** `lib/nfce.ts`
+     mapeava crediário pra `"99"` ("Outros" — o fallback genérico pra
+     quando NENHUM código específico se aplica), com um comentário dizendo
+     que "crediário próprio não tem código SEFAZ dedicado". Tem: a própria
+     tabela de forma de pagamento (tPag) do SEFAZ tem `"05" — Crédito
+     Loja`, feito exatamente pra crédito concedido pela própria loja (carnê,
+     crediário próprio, sem banco nem operadora de cartão envolvida) — o
+     caso de uso exato do método "Crediário" deste sistema.
+
+     **Corrigido**: `paymentCode` agora devolve `"05"` pra `crediario`.
+     Teste existente em `nfce.test.ts` atualizado para a asserção nova.
+     Como todo código fiscal deste arquivo (ver o aviso no topo do
+     arquivo), **vale confirmar com o contador antes da primeira emissão
+     real** — "05" é o código que a documentação pública do SEFAZ associa a
+     esse cenário, mas não é algo que dá pra testar contra o SEFAZ de
+     verdade neste ambiente. `typecheck`/`lint` limpos (mesmos 5 avisos
+     antigos); `npm test` 504/504 inalterado (troca de asserção, não teste
+     novo).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

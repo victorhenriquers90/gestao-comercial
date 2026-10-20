@@ -64,7 +64,12 @@ export function paymentCode(method: PaymentMethod): string {
     case "vale":
       return "12"; // Vale presente — aproximação; não há código dedicado.
     case "crediario":
-      return "99"; // Outros — crediário próprio não tem código SEFAZ dedicado.
+      // "05 - Crédito Loja": a propria tabela SEFAZ de forma de pagamento
+      // tem um codigo dedicado pra credito concedido pela loja (carne,
+      // crediario proprio, sem banco/operadora de cartao envolvido) --
+      // "99 - Outros" (usado antes) existe, mas e o fallback generico
+      // quando NENHUM codigo especifico se aplica, que nao e o caso aqui.
+      return "05";
   }
 }
 

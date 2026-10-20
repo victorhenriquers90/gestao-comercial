@@ -72,7 +72,7 @@ describe("paymentCode", () => {
     assert.equal(paymentCode("debito"), "04");
     assert.equal(paymentCode("pix"), "17");
     assert.equal(paymentCode("vale"), "12");
-    assert.equal(paymentCode("crediario"), "99");
+    assert.equal(paymentCode("crediario"), "05");
   });
 });
 
