@@ -170,9 +170,12 @@ export default defineConfig(({ command, isPreview }) => ({
     ...(command === "build" || isPreview
       ? [
           nitro({
-            // Standalone Node server (not the Vercel serverless build) — this
-            // instance runs on a PC on the store's own network, not the cloud.
-            preset: "node-server",
+            // "VERCEL" vem setada sozinha em todo build da Vercel -- nunca
+            // existe na maquina da loja, entao o build on-premise continua
+            // gerando o mesmo .output de sempre (node-server, standalone,
+            // consumido pelo instalador Windows). Os dois presets convivem
+            // sem precisar de flag manual nem de dois pontos de entrada.
+            preset: process.env.VERCEL ? "vercel" : "node-server",
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
