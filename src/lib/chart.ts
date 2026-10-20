@@ -22,3 +22,23 @@ export const chartTooltip = {
   labelStyle: { color: "var(--muted-foreground)", marginBottom: "0.25rem" } satisfies CSSProperties,
   itemStyle: { color: "var(--popover-foreground)", padding: 0 } satisfies CSSProperties,
 };
+
+/**
+ * Ciclo de cor por categoria pra grafico de barra de relatorio (Comissoes,
+ * Mix de produtos, Aging...), onde cada barra E uma categoria diferente --
+ * uma unica cor pintando todas juntas nao ajudava a distinguir nada. NAO usar
+ * pra serie temporal (Vendas do periodo, Evolucao mensal): ali toda barra
+ * mede a MESMA coisa em instantes diferentes, e colorir cada uma diferente
+ * sugeriria uma distincao que nao existe.
+ */
+export const CHART_PALETTE = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+] as const;
+
+export function chartColor(index: number): string {
+  return CHART_PALETTE[index % CHART_PALETTE.length]!;
+}

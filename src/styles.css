@@ -40,6 +40,8 @@
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -79,7 +81,16 @@
   --card-foreground: #1a1916;
   --popover: #fffcf7;
   --popover-foreground: #1a1916;
-  --primary: #1f5c4d;
+  /*
+    Pedido do usuario: paleta mais viva, sem sair da familia verde/terrosa
+    (nao vira paleta multicolorida tipo SaaS). Mesmo H/L de antes, S mais
+    alta -- #1f5c4d (S50) virou #165f4d (S62). Contraste conferido de novo
+    pra cada token mudado (vs. --background E --card, os dois fundos reais
+    onde texto nesta cor aparece): todos ficaram iguais ou melhores que
+    antes, nunca abaixo de 4.5:1 -- ver o historico do --muted-foreground
+    logo abaixo pra saber por que isso importa aqui.
+  */
+  --primary: #165f4d;
   --primary-foreground: #f4f7f5;
   --secondary: #e7e1d6;
   --secondary-foreground: #1a1916;
@@ -98,25 +109,32 @@
   */
   --muted-foreground: #5a5650;
   --accent: #dce8e3;
-  --accent-foreground: #1f5c4d;
-  --destructive: #9b3a32;
+  --accent-foreground: #165f4d;
+  --destructive: #9f2d23;
   --destructive-foreground: #fbf6f4;
   --border: color-mix(in oklab, #1a1916 12%, transparent);
   --input: color-mix(in oklab, #1a1916 14%, transparent);
-  --ring: #1f5c4d;
-  --success: #2f6f4e;
+  --ring: #165f4d;
+  --success: #1c6e43;
   --success-foreground: #f3f8f5;
-  --warning: #8a5a22;
+  --warning: #915612;
   --warning-foreground: #fbf6ee;
-  --info: #2c5864;
+  --info: #1c5869;
   --info-foreground: #f3f8f8;
   --sidebar: #14302a;
   --sidebar-foreground: #eaf3ef;
   --sidebar-accent: #1c4a40;
   --sidebar-muted: color-mix(in oklab, #eaf3ef 62%, transparent);
-  --chart-1: #1f5c4d;
-  --chart-2: #3d7a6a;
-  --chart-3: #8a5a22;
+  /* 5, nao 3: todo grafico de barra "por categoria" (Comissoes, Mix de
+     produtos, Aging...) usava so chart-1 pra TODAS as barras -- uma unica
+     cor pintando categorias diferentes. Ciclo de 5 tons dentro da mesma
+     familia (verde/teal/dourado/terracota/azul-petroleo), reaproveitado em
+     relatorios.tsx pra colorir cada barra pela posicao. */
+  --chart-1: #165f4d;
+  --chart-2: #207976;
+  --chart-3: #916312;
+  --chart-4: #a54827;
+  --chart-5: #225f77;
   --radius: 12px;
 }
 
@@ -127,7 +145,7 @@
   --card-foreground: #edeae2;
   --popover: #22211d;
   --popover-foreground: #edeae2;
-  --primary: #7eb8a4;
+  --primary: #6dd5b0;
   --primary-foreground: #10221c;
   --secondary: #2a2925;
   --secondary-foreground: #edeae2;
@@ -135,24 +153,26 @@
   --muted-foreground: #a8a399;
   --accent: #24332e;
   --accent-foreground: #c5ddd4;
-  --destructive: #d07a72;
+  --destructive: #de7c73;
   --destructive-foreground: #2a1210;
   --border: color-mix(in oklab, #edeae2 12%, transparent);
   --input: color-mix(in oklab, #edeae2 16%, transparent);
-  --ring: #7eb8a4;
-  --success: #7dba96;
+  --ring: #6dd5b0;
+  --success: #73ce99;
   --success-foreground: #102016;
-  --warning: #d4b07a;
+  --warning: #e0b87b;
   --warning-foreground: #24190c;
-  --info: #8ab4bd;
+  --info: #8bc3d0;
   --info-foreground: #102016;
   --sidebar: #101614;
   --sidebar-foreground: #eaf3ef;
   --sidebar-accent: #1a3d36;
   --sidebar-muted: color-mix(in oklab, #eaf3ef 58%, transparent);
-  --chart-1: #7eb8a4;
-  --chart-2: #c5ddd4;
-  --chart-3: #d4b07a;
+  --chart-1: #6dd5b0;
+  --chart-2: #a1d9d1;
+  --chart-3: #e0bb7b;
+  --chart-4: #dd977e;
+  --chart-5: #8bbcd0;
 }
 
 .login-page {
@@ -171,16 +191,16 @@
      descricao, rotulos dos campos) sumia contra a foto. A transparencia do
      card ficou como estava -- so a tinta ficou mais presente. */
   --muted-foreground: color-mix(in oklab, #1a1916 78%, transparent);
-  --primary: #1f5c4d;
+  --primary: #165f4d;
   --primary-foreground: #f4f7f5;
   --secondary: #e7e1d6;
   --secondary-foreground: #1a1916;
   --accent: #dce8e3;
-  --accent-foreground: #1f5c4d;
+  --accent-foreground: #165f4d;
   --border: color-mix(in oklab, #1a1916 12%, transparent);
   --input: color-mix(in oklab, #1a1916 14%, transparent);
-  --ring: #1f5c4d;
-  --destructive: #9b3a32;
+  --ring: #165f4d;
+  --destructive: #9f2d23;
   --destructive-foreground: #fbf6f4;
   /* Tailwind utilities (text-foreground, bg-muted, …) don't read the raw
      tokens above — they read the --color-* aliases from @theme, and those
@@ -1634,28 +1654,30 @@
     --card-foreground: #1a1916;
     --popover: #fffcf7;
     --popover-foreground: #1a1916;
-    --primary: #1f5c4d;
+    --primary: #165f4d;
     --primary-foreground: #f4f7f5;
     --secondary: #e7e1d6;
     --secondary-foreground: #1a1916;
     --muted: #ece7dc;
     --muted-foreground: #6b675e;
     --accent: #dce8e3;
-    --accent-foreground: #1f5c4d;
-    --destructive: #9b3a32;
+    --accent-foreground: #165f4d;
+    --destructive: #9f2d23;
     --destructive-foreground: #fbf6f4;
     --border: color-mix(in oklab, #1a1916 12%, transparent);
     --input: color-mix(in oklab, #1a1916 14%, transparent);
-    --ring: #1f5c4d;
-    --success: #2f6f4e;
+    --ring: #165f4d;
+    --success: #1c6e43;
     --success-foreground: #f3f8f5;
-    --warning: #8a5a22;
+    --warning: #915612;
     --warning-foreground: #fbf6ee;
-    --info: #2c5864;
+    --info: #1c5869;
     --info-foreground: #f3f8f8;
-    --chart-1: #1f5c4d;
-    --chart-2: #3d7a6a;
-    --chart-3: #8a5a22;
+    --chart-1: #165f4d;
+    --chart-2: #207976;
+    --chart-3: #916312;
+    --chart-4: #a54827;
+    --chart-5: #225f77;
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -1684,6 +1706,8 @@
     --color-chart-1: var(--chart-1);
     --color-chart-2: var(--chart-2);
     --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
   }
   .no-print {
     display: none !important;

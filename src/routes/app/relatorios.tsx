@@ -8,6 +8,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -22,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
-import { chartTooltip } from "@/lib/chart";
+import { chartColor, chartTooltip } from "@/lib/chart";
 import { formatBRL, formatDate, formatDateTime, formatPct, formatQty } from "@/lib/format";
 import { PERIOD_OPTIONS, resolvePeriod, type PeriodKey } from "@/lib/period";
 import { listSellersFn } from "@/lib/server/party";
@@ -475,7 +476,11 @@ function ReportChartView({
       {chart.kind === "bar" ? (
         <BarChart data={chart.data}>
           {axis}
-          <Bar dataKey="value" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
+          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+            {chart.data.map((_, i) => (
+              <Cell key={i} fill={chartColor(i)} />
+            ))}
+          </Bar>
         </BarChart>
       ) : chart.kind === "line" ? (
         <LineChart data={chart.data}>
