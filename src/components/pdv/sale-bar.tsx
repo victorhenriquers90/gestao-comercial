@@ -1,4 +1,4 @@
-import { Receipt as ReceiptIcon, WifiOff } from "lucide-react";
+import { LogOut, Receipt as ReceiptIcon, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatBRL } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,13 @@ type Props = {
   online: boolean;
   lastSale: { number: number; total: number } | null;
   onLastSale: () => void;
+  /**
+   * So o PDV tablet passa isto -- la nao sobra barra do sistema nenhuma
+   * (app-shell.tsx, isPdvTablet), entao o "Sair" que normalmente mora no
+   * menu do usuario precisa de um lugar. O PDV de balcao nao passa, e
+   * continua sem repetir (comentario original mais abaixo).
+   */
+  onSignOut?: () => void;
 };
 
 /**
@@ -16,7 +23,7 @@ type Props = {
  * -- nao pode disputar o olho com o cupom e o total. Operador e loja ja
  * estao na barra do topo do sistema; aqui nao se repete.
  */
-export function SaleBar({ itemCount, registerOpen, online, lastSale, onLastSale }: Props) {
+export function SaleBar({ itemCount, registerOpen, online, lastSale, onLastSale, onSignOut }: Props) {
   const agora = useRelogio();
   return (
     <div className="pdv-bar">
@@ -49,6 +56,12 @@ export function SaleBar({ itemCount, registerOpen, online, lastSale, onLastSale 
           {" · "}
           {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
         </time>
+        {onSignOut ? (
+          <button type="button" className="pdv-status hover:text-destructive" onClick={onSignOut}>
+            <LogOut className="size-3.5" />
+            Sair
+          </button>
+        ) : null}
       </span>
     </div>
   );

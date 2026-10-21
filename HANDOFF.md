@@ -5446,6 +5446,24 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (`victorhenriquersantos@gmail.com`). Pode ser erro de digitação de
      quando a conta foi criada; não mexi nisso sem confirmação.
 
+     **Correção 4 (achada depois também, ao vivo: "a tela de logout não
+     aparece no PDV")**: consequência direta e esperada da correção 2 —
+     tirei o `<header>` inteiro, que era onde `UserMenu` (com o "Sair")
+     morava, e não botei nada no lugar. `SaleBar` (`sale-bar.tsx`,
+     compartilhado entre PDV de balcão e tablet) ganhou uma prop opcional
+     `onSignOut` — só quando passada renderiza um botão discreto "Sair"
+     no canto direito, ao lado do relógio. `pdv.tsx` (balcão) não passa
+     essa prop, então nada muda lá — o `UserMenu` do header continua
+     sendo o único "Sair". `pdv-tablet.tsx` passa `handleSignOut`, que
+     confirma (`window.confirm`, sem componente de diálogo novo pra uma
+     ação dessas) antes de chamar `signOut()` de `lib/auth/client.ts` (a
+     wrapper certa, não `authClient.signOut()` direto — comentário no
+     próprio arquivo explica por quê).
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos, `npm test`
+     507/507. Visual ao vivo continua pendente pelo mesmo motivo de
+     sempre (login).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

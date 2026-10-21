@@ -15,18 +15,24 @@ import { Receipt } from "@/components/receipt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { signOut } from "@/lib/auth/client";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import "@/styles/pdv-tablet.css";
 
 // Path comeca com "/app/pdv" de proposito: `app-shell.tsx` trata qualquer
 // rota com esse prefixo como tela de PDV (sidebar escondida, sem padding).
 // "/app/pdv-tablet" especificamente tambem perde a barra do topo inteira
-// (isPdvTablet em app-shell.tsx) -- kiosk de balcao, sem troca de loja
-// nem menu de usuario pela tela.
+// (isPdvTablet em app-shell.tsx) -- kiosk de balcao, sem troca de loja pela
+// tela. "Sair" continua existindo (SaleBar.onSignOut), so que reduzido a um
+// botao discreto em vez do menu do usuario completo.
 export const Route = createFileRoute("/app/pdv-tablet")({ component: PdvTabletPage });
 
 function PdvTabletPage() {
   const { isFullscreen, enter: enterFullscreen } = useFullscreen();
+  function handleSignOut() {
+    if (!window.confirm("Sair da conta neste tablet?")) return;
+    void signOut();
+  }
   const pdv = usePdvSale();
   const {
     activeStore,
@@ -115,6 +121,7 @@ function PdvTabletPage() {
           online={online}
           lastSale={lastSale ? { number: lastSale.number, total: lastSale.total } : null}
           onLastSale={() => setReceiptOpen(true)}
+          onSignOut={handleSignOut}
         />
 
         {registerOpen === false && activeStore ? (
