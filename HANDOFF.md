@@ -5364,6 +5364,34 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `typecheck`/`lint` limpos (mesmos 5 avisos antigos); `npm test`
      507/507 (era 504, +3 novos).
 
+114. **Tela de PDV tablet (`/app/pdv-tablet`) furava o modo "só PDV"
+     pelo botão de menu hambúrguer, abrindo a navegação completa.**
+     Achado pelo usuário testando no Vercel ("está abrindo todos os
+     módulos"). `AppShell` (`app-shell.tsx`) já tinha a ideia certa —
+     `isPdv = pathname.startsWith("/app/pdv")` esconde a barra lateral
+     fixa (`aside`) em rotas de PDV — mas só cuidou da barra fixa
+     (`md:flex`). O cabeçalho (`header`) é renderizado igual em toda
+     rota, e o botão de menu hambúrguer só ganhava `md:hidden` quando
+     `!isPdv` — ou seja, em rota de PDV o botão nunca era escondido,
+     em NENHUMA largura de tela. Tocar nele abre o `<Sheet>` (gaveta
+     lateral) com `SidebarBody` completo: Dashboard, Financeiro,
+     Relatórios, Configurações, tudo — exatamente o que um tablet de
+     caixa não deveria expor.
+
+     **Corrigido**: botão de menu e o `<Sheet>` inteiro agora nem
+     renderizam quando `isPdv` é verdadeiro (`{isPdv ? null : (...)}`),
+     em vez de só trocar classe CSS — fecha o escape por completo, não
+     só visualmente (o estado `mobileOpen` continua existindo mas não
+     tem mais nenhum jeito de virar `true` numa rota de PDV).
+
+     **Verificação**: `typecheck`/`lint` limpos (mesmos 5 avisos de
+     sempre). Não deu pra confirmar visualmente clicando — a página
+     exige login, e login/senha eu não insiro por conta própria (regra
+     fixa, sem exceção mesmo sob pedido direto do usuário nesta mesma
+     conversa). Próxima sessão (ou o usuário) deve confirmar ao vivo:
+     abrir `/app/pdv-tablet`, conferir que não existe nenhum botão de
+     menu no cabeçalho, em nenhuma largura de tela.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -88,30 +88,34 @@ export function AppShell({
           </button>
         </aside>
 
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="left" className="p-0">
-            <SidebarBody
-              tenant={tenant}
-              items={items}
-              collapsed={false}
-              pathname={pathname}
-              onNavigate={() => setMobileOpen(false)}
-            />
-          </SheetContent>
-        </Sheet>
+        {isPdv ? null : (
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetContent side="left" className="p-0">
+              <SidebarBody
+                tenant={tenant}
+                items={items}
+                collapsed={false}
+                pathname={pathname}
+                onNavigate={() => setMobileOpen(false)}
+              />
+            </SheetContent>
+          </Sheet>
+        )}
 
         <div className={cn("app-frame", isPdv ? "" : "md:pl-64", !isPdv && collapsed && "md:pl-16")}>
           <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border bg-background/85 px-6 backdrop-blur-md">
             <div className="topbar-start">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(!isPdv && "md:hidden")}
-                onClick={() => setMobileOpen(true)}
-                aria-label="Abrir menu"
-              >
-                <Menu className="size-4" />
-              </Button>
+              {isPdv ? null : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden"
+                  onClick={() => setMobileOpen(true)}
+                  aria-label="Abrir menu"
+                >
+                  <Menu className="size-4" />
+                </Button>
+              )}
               <BrandMark className={cn("size-7", !isPdv && "md:hidden")} />
               {current ? (
                 <p className="ed-label truncate">{current.label}</p>
