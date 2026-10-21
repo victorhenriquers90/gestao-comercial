@@ -51,6 +51,13 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isPdv = pathname.startsWith("/app/pdv");
+  // So o tablet fica 100% kiosk (pedido explicito: sem barra nenhuma).
+  // O PDV de balcao (`/app/pdv`) continua com a barra do topo -- e dali
+  // que ele troca de loja e acessa o menu do usuario; SaleBar.tsx nao
+  // duplica isso de proposito, entao tirar a barra de la regrediria o
+  // desktop. O tablet fica sem troca de loja/usuario pela tela por
+  // enquanto -- dispositivo fixo de balcao, decisao consciente.
+  const isPdvTablet = pathname.startsWith("/app/pdv-tablet");
   const items = NAV_ITEMS.filter((i) => can(tenant.role as Role, i.perm));
   const current = items.find((i) =>
     i.href === "/app" ? pathname === "/app" : pathname.startsWith(i.href),
@@ -103,35 +110,41 @@ export function AppShell({
         )}
 
         <div className={cn("app-frame", isPdv ? "" : "md:pl-64", !isPdv && collapsed && "md:pl-16")}>
-          <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border bg-background/85 px-6 backdrop-blur-md">
-            <div className="topbar-start">
-              {isPdv ? null : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="md:hidden"
-                  onClick={() => setMobileOpen(true)}
-                  aria-label="Abrir menu"
-                >
-                  <Menu className="size-4" />
-                </Button>
-              )}
-              <BrandMark className={cn("size-7", !isPdv && "md:hidden")} />
-              {current ? (
-                <p className="ed-label truncate">{current.label}</p>
-              ) : null}
-            </div>
-            <GlobalSearch />
-            <div className="topbar-end">
-              <StorePicker tenant={tenant} />
-              <NotifBell />
-              <ThemeToggle />
-              <UserMenu tenant={tenant} />
-            </div>
-          </header>
+          {isPdvTablet ? null : (
+            <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border bg-background/85 px-6 backdrop-blur-md">
+              <div className="topbar-start">
+                {isPdv ? null : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden"
+                    onClick={() => setMobileOpen(true)}
+                    aria-label="Abrir menu"
+                  >
+                    <Menu className="size-4" />
+                  </Button>
+                )}
+                <BrandMark className={cn("size-7", !isPdv && "md:hidden")} />
+                {current ? (
+                  <p className="ed-label truncate">{current.label}</p>
+                ) : null}
+              </div>
+              <GlobalSearch />
+              <div className="topbar-end">
+                <StorePicker tenant={tenant} />
+                <NotifBell />
+                <ThemeToggle />
+                <UserMenu tenant={tenant} />
+              </div>
+            </header>
+          )}
           <div
             key={pathname}
-            className={cn("app-main content-pane page-pad page-enter", isPdv && "p-0")}
+            className={cn(
+              "app-main content-pane page-pad page-enter",
+              isPdv && "p-0",
+              isPdvTablet && "h-dvh",
+            )}
           >
             {children}
           </div>

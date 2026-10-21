@@ -5364,33 +5364,61 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `typecheck`/`lint` limpos (mesmos 5 avisos antigos); `npm test`
      507/507 (era 504, +3 novos).
 
-114. **Tela de PDV tablet (`/app/pdv-tablet`) furava o modo "só PDV"
-     pelo botão de menu hambúrguer, abrindo a navegação completa.**
-     Achado pelo usuário testando no Vercel ("está abrindo todos os
-     módulos"). `AppShell` (`app-shell.tsx`) já tinha a ideia certa —
-     `isPdv = pathname.startsWith("/app/pdv")` esconde a barra lateral
-     fixa (`aside`) em rotas de PDV — mas só cuidou da barra fixa
-     (`md:flex`). O cabeçalho (`header`) é renderizado igual em toda
-     rota, e o botão de menu hambúrguer só ganhava `md:hidden` quando
-     `!isPdv` — ou seja, em rota de PDV o botão nunca era escondido,
-     em NENHUMA largura de tela. Tocar nele abre o `<Sheet>` (gaveta
-     lateral) com `SidebarBody` completo: Dashboard, Financeiro,
-     Relatórios, Configurações, tudo — exatamente o que um tablet de
-     caixa não deveria expor.
+114. **Tela de PDV tablet (`/app/pdv-tablet`) furava o modo "só PDV" de
+     duas formas, e não tinha tela cheia de verdade.** Achado pelo
+     usuário testando no Vercel ("está abrindo todos os módulos" / "quero
+     tela cheia sem barra superior e inferior"). Dois problemas
+     distintos, corrigidos em duas rodadas:
 
-     **Corrigido**: botão de menu e o `<Sheet>` inteiro agora nem
-     renderizam quando `isPdv` é verdadeiro (`{isPdv ? null : (...)}`),
-     em vez de só trocar classe CSS — fecha o escape por completo, não
-     só visualmente (o estado `mobileOpen` continua existindo mas não
-     tem mais nenhum jeito de virar `true` numa rota de PDV).
+     1. **Escape pelo menu hambúrguer**: `AppShell` (`app-shell.tsx`) já
+        escondia a barra lateral fixa (`aside`) em rotas de PDV
+        (`isPdv = pathname.startsWith("/app/pdv")`), mas o botão de menu
+        do cabeçalho só ganhava `md:hidden` quando `!isPdv` — em rota de
+        PDV ele nunca sumia, em nenhuma largura de tela, e abria o
+        `<Sheet>` com a navegação completa (Dashboard, Financeiro,
+        Relatórios, Configurações). Corrigido removendo o botão E o
+        `<Sheet>` inteiro do DOM (`{isPdv ? null : (...)}`) em vez de só
+        trocar classe CSS.
+     2. **A barra do topo inteira continuava lá**: mesmo sem o botão de
+        menu, o `<header>` genérico (busca global, troca de loja, sino de
+        notificação, tema, menu do usuário) renderizava igual em cima da
+        própria `SaleBar` do PDV tablet — duas barras empilhadas, "parece
+        o sistema inteiro" mesmo sem sidebar. Criado `isPdvTablet =
+        pathname.startsWith("/app/pdv-tablet")`, mais específico que
+        `isPdv`, usado só pra esconder o `<header>` inteiro. **De
+        propósito não mexeu no PDV de balcão (`/app/pdv`)** — ele ainda
+        depende dessa barra pra trocar de loja e acessar o menu do
+        usuário (comentário em `sale-bar.tsx` já avisava isso); o tablet
+        fica sem essas duas coisas pela tela por enquanto (dispositivo
+        fixo de balcão, decisão consciente, não esquecimento).
 
-     **Verificação**: `typecheck`/`lint` limpos (mesmos 5 avisos de
-     sempre). Não deu pra confirmar visualmente clicando — a página
-     exige login, e login/senha eu não insiro por conta própria (regra
-     fixa, sem exceção mesmo sob pedido direto do usuário nesta mesma
-     conversa). Próxima sessão (ou o usuário) deve confirmar ao vivo:
-     abrir `/app/pdv-tablet`, conferir que não existe nenhum botão de
-     menu no cabeçalho, em nenhuma largura de tela.
+     **Tela cheia de verdade** (sem barra de endereço/nav do Android, não
+     só sem a barra do app): `src/hooks/use-fullscreen.ts`, novo —
+     `requestFullscreen` exige gesto do usuário, não dá pra chamar sozinho
+     no mount. `pdv-tablet.tsx` chama no primeiro toque na tela
+     (`onPointerDownCapture`) e também expõe um botão discreto no canto
+     (`Maximize2`, opacidade baixa, some assim que entra em tela cheia)
+     pra quem não tocar em nada primeiro ou cujo navegador recusar o
+     auto-gesto.
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos (mesmos 5 avisos
+     de sempre), `npm test` 507/507 sem mudança (nada aqui é lógica de
+     domínio testável por unit test). **Não deu pra confirmar visualmente
+     clicando** — a página exige login, e login/senha eu não insiro por
+     conta própria, regra fixa, sem exceção mesmo sob pedido direto do
+     usuário nesta mesma conversa (pedi pra ele mesmo entrar, via convite
+     que também tive que resolver nesta sessão — ver nota abaixo sobre o
+     e-mail certo da conta piloto). Próxima sessão (ou o usuário) deve
+     confirmar ao vivo: abrir `/app/pdv-tablet` num tablet real, conferir
+     que não sobra nenhuma barra (nem a do app nem a do SO) e que o botão
+     de tela cheia funciona.
+
+     **Nota lateral que apareceu no meio disso**: o e-mail cadastrado na
+     conta admin da empresa piloto (`company_id=4`, migrada pro Vercel no
+     item do deploy) é `victorhenriquesantos@gmail.com` — sem o "r" antes
+     de "santos" que aparece no e-mail do perfil do usuário
+     (`victorhenriquersantos@gmail.com`). Pode ser erro de digitação de
+     quando a conta foi criada; não mexi nisso sem confirmação.
 
 ## Como a próxima IA deve trabalhar
 

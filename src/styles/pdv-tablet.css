@@ -17,6 +17,24 @@
   grid-template-columns: minmax(0, 1fr) clamp(22rem, 30vw, 28rem);
 }
 
+/*
+  Some ao entrar em tela cheia (useFullscreen) -- ate la, canto discreto
+  pra nao brigar com o resto (sem barra pra por isso em outro lugar).
+  `position: fixed` de proposito: independe do grid do stage.
+*/
+.pdvt-fullscreen-btn {
+  position: fixed;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 40;
+  opacity: 0.55;
+}
+
+.pdvt-fullscreen-btn:hover,
+.pdvt-fullscreen-btn:focus-visible {
+  opacity: 1;
+}
+
 .pdvt-main {
   display: flex;
   min-width: 0;

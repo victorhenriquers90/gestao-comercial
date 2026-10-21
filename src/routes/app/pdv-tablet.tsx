@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { LockKeyhole } from "lucide-react";
+import { LockKeyhole, Maximize2 } from "lucide-react";
 import { CustomerDialog } from "@/components/pdv/customer-dialog";
 import { DiscountDialog } from "@/components/pdv/discount-dialog";
 import { HeldSalesDialog } from "@/components/pdv/held-sales-dialog";
@@ -15,14 +15,18 @@ import { Receipt } from "@/components/receipt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 import "@/styles/pdv-tablet.css";
 
 // Path comeca com "/app/pdv" de proposito: `app-shell.tsx` trata qualquer
-// rota com esse prefixo como tela de PDV (sidebar escondida, sem padding,
-// tela cheia) -- de graca, sem tocar em app-shell.tsx.
+// rota com esse prefixo como tela de PDV (sidebar escondida, sem padding).
+// "/app/pdv-tablet" especificamente tambem perde a barra do topo inteira
+// (isPdvTablet em app-shell.tsx) -- kiosk de balcao, sem troca de loja
+// nem menu de usuario pela tela.
 export const Route = createFileRoute("/app/pdv-tablet")({ component: PdvTabletPage });
 
 function PdvTabletPage() {
+  const { isFullscreen, enter: enterFullscreen } = useFullscreen();
   const pdv = usePdvSale();
   const {
     activeStore,
@@ -90,7 +94,20 @@ function PdvTabletPage() {
   } = pdv;
 
   return (
-    <div className="pdvt-stage">
+    <div className="pdvt-stage" onPointerDownCapture={isFullscreen ? undefined : enterFullscreen}>
+      {isFullscreen ? null : (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="pdvt-fullscreen-btn"
+          onClick={enterFullscreen}
+          aria-label="Tela cheia"
+          title="Tela cheia"
+        >
+          <Maximize2 className="size-4" />
+        </Button>
+      )}
       <section className="pdvt-main" aria-label="Produtos da venda">
         <SaleBar
           itemCount={cart.length}
