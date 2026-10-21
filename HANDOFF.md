@@ -5401,6 +5401,32 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      pra quem não tocar em nada primeiro ou cujo navegador recusar o
      auto-gesto.
 
+     **Correção 3 (achada depois, pelo usuário testando de novo no
+     tablet real: "não está tela cheia e ainda está com scroll de
+     rolagem")**: o fix 2 tirou o `<header>` mas não tirou a RESERVA de
+     espaço dele. `.app-frame` (`styles.css`) é um grid
+     `grid-template-rows: 4rem minmax(0,1fr)` fixo pras duas linhas
+     "header"/"main" — sem elemento nenhum na área "header", a linha de
+     4rem continua lá, vazia. Em cima disso, eu tinha forçado
+     `.app-main` com a utility `h-dvh` (100dvh) pra tentar compensar, o
+     que só piorou: um item de grid com altura própria de 100dvh dentro
+     de uma trilha de só `100dvh − 4rem` estoura a trilha em exatos
+     64px — o scroll fantasma que o usuário via. Tinha ainda um segundo
+     descasamento: o `<div>` mais externo usa `min-h-screen` (100vh,
+     estático) enquanto tudo dentro já pensa em `dvh` (dinâmico) — em
+     mobile, com a barra do navegador visível, 100vh é MAIOR que
+     100dvh, entao a página ficava mais alta que a área visível de
+     verdade mesmo com o conteúdo cabendo direitinho.
+
+     Corrigido os dois: `.app-frame.is-headerless` (nova classe,
+     `styles.css`) troca o grid pra uma linha só (`minmax(0,1fr)`,
+     `grid-template-areas: "main"`) quando não tem `<header>` —
+     aplicada via `isPdvTablet` em vez de forçar altura numa peça do
+     grid por fora. `h-dvh` tirado de `.app-main` (não precisa mais,
+     e brigava com o grid). O `<div>` raiz ganhou `h-dvh min-h-0
+     overflow-hidden` (também só quando `isPdvTablet`) pra não deixar
+     o `min-h-screen` (100vh) exceder o viewport dinâmico de verdade.
+
      **Verificação**: `typecheck`/`lint`/`build` limpos (mesmos 5 avisos
      de sempre), `npm test` 507/507 sem mudança (nada aqui é lógica de
      domínio testável por unit test). **Não deu pra confirmar visualmente

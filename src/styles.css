@@ -733,6 +733,15 @@
     grid-template-areas: "header" "main";
   }
 
+  /* PDV tablet: sem `<header>` nenhum (app-shell.tsx, isPdvTablet) -- sem
+     isto a linha de 4rem continuava reservada no grid mesmo vazia, e
+     `.app-main` (sizado pro resto, 1fr) sobrava 4rem curto da tela real,
+     gerando scroll por 64px que não deveria existir. */
+  .app-frame.is-headerless {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "main";
+  }
+
   .app-header {
     grid-area: header;
   }

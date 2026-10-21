@@ -69,7 +69,7 @@ export function AppShell({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="min-h-screen bg-background">
+      <div className={cn("min-h-screen bg-background", isPdvTablet && "h-dvh min-h-0 overflow-hidden")}>
         <aside
           className={cn(
             "no-print fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground md:flex",
@@ -109,7 +109,14 @@ export function AppShell({
           </Sheet>
         )}
 
-        <div className={cn("app-frame", isPdv ? "" : "md:pl-64", !isPdv && collapsed && "md:pl-16")}>
+        <div
+          className={cn(
+            "app-frame",
+            isPdvTablet && "is-headerless",
+            isPdv ? "" : "md:pl-64",
+            !isPdv && collapsed && "md:pl-16",
+          )}
+        >
           {isPdvTablet ? null : (
             <header className="app-header topbar no-print sticky top-0 z-20 h-16 border-b border-border bg-background/85 px-6 backdrop-blur-md">
               <div className="topbar-start">
@@ -143,7 +150,6 @@ export function AppShell({
             className={cn(
               "app-main content-pane page-pad page-enter",
               isPdv && "p-0",
-              isPdvTablet && "h-dvh",
             )}
           >
             {children}
