@@ -1016,8 +1016,10 @@ export const saveSellerFn = createServerFn({ method: "POST" })
     // e truthy) e qualquer numero gigante digitado por engano -- o valor vai
     // direto pra base do calculo de INSS/IRRF da comissao, entao um erro de
     // digitacao aqui distorce o liquido de TODA comissao do vendedor, calado.
+    // `dependents` tinha exatamente o mesmo padrao logo abaixo do comentario
+    // que o descreve -- corrigido pra fazer igual ao salario.
     const monthlySalary = data.monthlySalary == null ? 0 : requireRange(data.monthlySalary, "Salário mensal", 0, 999_999_999);
-    const dependents = Math.max(0, Math.floor(Number(data.dependents) || 0));
+    const dependents = data.dependents == null ? 0 : Math.floor(requireRange(data.dependents, "Dependentes", 0, 30));
     const issRate = data.issRate == null || data.issRate === undefined ? null : clampIss(data.issRate);
     const document = data.document ?? null;
     const storeName = async (id: unknown) => {

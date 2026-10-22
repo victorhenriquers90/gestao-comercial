@@ -5464,6 +5464,45 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      507/507. Visual ao vivo continua pendente pelo mesmo motivo de
      sempre (login).
 
+115. **Mesmo bug que o comentário do item ao lado já tinha descrito —
+     só que no campo vizinho.** Varredura por `Math.max(0, Number(x) ||
+     0)` (o padrão que deixa `Infinity` passar, descrito no próprio
+     `party.ts` perto da linha 1015: `Number("1e999")` é `Infinity`, e
+     `Infinity` é "truthy" pro `||`). `monthlySalary` já tinha sido
+     corrigido com `requireRange` — o comentário que explica o porquê
+     está bem ali. `dependents`, a linha logo abaixo, tinha exatamente o
+     mesmo padrão não corrigido: `Math.max(0, Math.floor(Number(data
+     .dependents) || 0))`. Sem limite superior nem checagem de
+     finitude.
+
+     Rastreado o caminho: `dependents` grava direto em
+     `sellers.dependents` (`saveSellerFn`, `party.ts`), e
+     `commission.ts` lê essa coluna pra montar o perfil fiscal de cada
+     venda, que `irrfMonthly` (`tax.ts:198-208`) usa assim: `dep =
+     Math.max(0, dependents) * DEPENDENT_DEDUCTION`. Com `dependents =
+     Infinity`, `dep` vira `Infinity`, a base do IRRF vira negativa
+     (`Math.max(0, g - Infinity)` = `0`), e o imposto retido fica
+     **zero pra sempre**, pra TODA comissão futura daquele vendedor —
+     silencioso, sem erro, sem aviso. Um valor absurdo digitado uma vez
+     (ou mandado direto num POST manual, já que o `type="number"` do
+     HTML não impede nada no servidor) zera o IRRF retido permanente e
+     silenciosamente.
+
+     **Corrigido**: `dependents` agora usa o mesmo `requireRange(...,
+     "Dependentes", 0, 30)` que `monthlySalary` já usava, com
+     `Math.floor` por cima (é contagem de pessoa, não valor
+     fracionário) e o mesmo "ausente vira 0" que já existia.
+
+     **Verificação**: script descartável (apagado depois, fora do
+     repo) importando `requireRange` direto e testando a mesma
+     expressão nova do `party.ts` — `undefined`/`null` → 0, `3` → 3,
+     `2.7` → 2 (arredonda pra baixo), `-5` → rejeita, `'1e999'` (o
+     ataque exato do comentário) → rejeita (antes virava `Infinity`
+     silenciosamente), `31` → rejeita, `30` → aceita (limite inclusivo).
+     `typecheck`/`lint`/`build` limpos, `npm test` 507/507 sem mudança
+     (a lógica reaproveitada de `requireRange` já tinha cobertura
+     própria; o que mudou foi só a fiação em `party.ts`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
