@@ -5503,6 +5503,70 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (a lógica reaproveitada de `requireRange` já tinha cobertura
      própria; o que mudou foi só a fiação em `party.ts`).
 
+116. **Revisão completa do sistema (10 agentes em paralelo, pedido
+     explícito do usuário "revisar o código de todo o sistema atuando
+     como engenheiro sênior") achou um vazamento real de isolamento
+     entre lojas — corrigidos os 3 achados mais graves.** Dois agentes
+     diferentes (rastreamento entre arquivos e correção de wrappers)
+     bateram, por caminhos independentes, no mesmo problema: `assertStore`
+     (`context.ts`) é o único ponto que, além de confirmar que a loja é
+     da empresa, também confere se quem está logado está preso a UMA loja
+     (`tenant.homeStoreId`) e está pedindo justamente aquela. Sete funções
+     de escrita de dinheiro usavam `assertOwned` no lugar — que confirma
+     só a empresa, nunca o `homeStoreId` — e quatro funções de leitura não
+     chamavam nenhum dos dois.
+
+     **Alcance real**: `gerente` herda TODAS as permissões (só perde
+     `users.write`/`settings.write`), e `financeiro` tem `finance.write`
+     e `finance.read`/`reports.read`/`dashboard.read` de fábrica — e
+     qualquer papel pode ter `homeStoreId` preenchido (convite/edição de
+     membro não restringe isso a vendedor/caixa). Ou seja: um "gerente"
+     ou "financeiro" preso a UMA loja conseguia escrever título a
+     pagar/receber, despesa, meta, pagamento de comissão e cadastro de
+     vendedor em QUALQUER outra loja da mesma empresa (`finance.ts:96,
+     342,1480,1805,2251,2281`, `party.ts:1010`), e conseguia LER
+     dashboard, relatórios, lotes de cartão e a lista inteira de
+     crediário (nome/telefone/documento/limite de crédito de cliente)
+     de outra loja só trocando o `storeId` do pedido (`insight.ts:54`,
+     `reports.ts:135`, `card-settlement.ts:23`, `crediario.ts:28` —
+     nenhum dos quatro chamava `assertStore`).
+
+     **Corrigido**: `assertStoreOptional` nova (`context.ts`) — mesma
+     regra do `assertStore`, mas aceita `storeId` nulo (vira "sem loja =
+     empresa inteira", igual o `assertOwned` que ela substitui). As sete
+     funções de escrita e as quatro de leitura agora chamam ela.
+
+     **Terceiro achado corrigido junto (não é isolamento de loja — é
+     validação de preço de variante)**: `saveProductFn` (`catalog.ts`)
+     validava `cost`/`price` do PRODUTO com `parseUnitCost` (comentário
+     ali do lado já explica por quê: NaN/Infinity atravessam o driver e
+     o Postgres aceita), mas a mesma função gravava `cost`/`price` de
+     cada VARIANTE direto do payload, sem nenhuma validação — um preço
+     negativo numa variante corrompia o catálogo e `checkoutFn` cobrava
+     esse valor sem disparar nenhuma trava de permissão. Corrigido com o
+     mesmo `parseUnitCost`, por variante, caindo pro valor já validado do
+     produto quando a variante não manda o seu.
+
+     **Verificação**: reli o código real de cada achado antes de
+     reportar (não confiei só nos agentes) — confirmei a query exata de
+     `assertStore`/`assertOwned`, os 7+4 call sites por grep, as
+     permissões de `gerente`/`financeiro` em `permissions.ts`, e que
+     `homeStoreId` não tem restrição de papel em `session.ts`. Testei ao
+     vivo contra o Postgres local que a empresa 1 tem duas lojas reais
+     (id 1 "Loja Centro", id 2 "Loja Shopping") pra confirmar o cenário
+     de ataque é alcançável de verdade. Script de import direto de
+     `assertStore` esbarrou nos aliases `@/` (só resolvem via
+     Vite/tsconfig, não em Node puro) — não forcei isso; a lógica em si
+     é simples e determinística (uma query + uma comparação) e já foi
+     lida com cuidado. `typecheck`/`lint`/`build` limpos, `npm test`
+     507/507 sem mudança (os 11 pontos corrigidos não tinham teste
+     unitário dedicado antes nem ganharam agora — são handlers de
+     servidor com contexto de tenant completo, mesmo padrão de
+     verificação "ao vivo" que o resto do `finance.ts`/`party.ts` já
+     usa). Outros 12 achados da mesma revisão ficam documentados no
+     relatório da sessão, não corrigidos ainda — o usuário pediu
+     explicitamente só os 3 primeiros.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

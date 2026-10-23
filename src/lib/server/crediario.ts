@@ -4,7 +4,7 @@ import { AGING_BUCKETS, bucketFor, collectionOrder, summarizeDebt, type AgingBuc
 import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { requireTenant } from "./context";
+import { assertStoreOptional, requireTenant } from "./context";
 import { ymdLocal } from "@/lib/local-date";
 
 /**
@@ -26,6 +26,7 @@ export const listCrediarioFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
+    await assertStoreOptional(sql, tenant, data.storeId);
 
     const rows = await sql.query<Row>(
       `select ar.id, ar.customer_id, ar.due_date, ar.description, ar.origin,

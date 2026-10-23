@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertFreeDocument, assertOwned, audit, auditUpdate, requireTenant } from "./context";
+import { assertFreeDocument, assertOwned, assertStoreOptional, audit, auditUpdate, requireTenant } from "./context";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument, parseCnpj, sellerDocKind, onlyDigits } from "@/lib/document";
@@ -1007,7 +1007,7 @@ export const saveSellerFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sellers.write");
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     await assertFreeDocument(sql, "sellers", tenant.companyId, data.document, data.id, "um vendedor");
     const taxRegime = data.taxRegime && ["none", "clt", "autonomo", "mei", "pj"].includes(data.taxRegime)
       ? data.taxRegime

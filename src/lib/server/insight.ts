@@ -3,7 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan } from "@/lib/permissions";
 import { resolvePeriod, type PeriodKey } from "@/lib/period";
 import { num } from "@/lib/utils";
-import { requireTenant } from "./context";
+import { assertStoreOptional, requireTenant } from "./context";
 import { ymdLocal } from "@/lib/local-date";
 
 function andEq(
@@ -52,6 +52,7 @@ export const dashboardFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "dashboard.read");
+    await assertStoreOptional(sql, tenant, data.storeId);
     const range = resolvePeriod(data.period, data.from, data.to);
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;

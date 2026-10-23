@@ -401,17 +401,25 @@ export const saveProductFn = createServerFn({ method: "POST" })
       }
       if (data.variants && data.variants.length > 0) {
         for (const v of data.variants) {
+          // Mesma classe do bug comentado acima pro produto (NaN/Infinity
+          // atravessando o driver): custo/preco por variante vinham direto
+          // do payload, sem passar por `parseUnitCost` -- um preco negativo
+          // numa so variante gravava e `checkoutFn` cobrava (ou devolvia)
+          // esse valor sem checar nada, ja que o catalogo em si estava
+          // corrompido, nao a venda.
+          const vCost = v.cost == null ? cost : parseUnitCost(v.cost, "custo da variante");
+          const vPrice = v.price == null ? price : parseUnitCost(v.price, "preço da variante");
           if (v.id) {
             await sql`
               update product_variants set sku = ${v.sku ?? null}, barcode = ${v.barcode ?? null},
                 color = ${v.color ?? null}, size = ${v.size ?? null}, model = ${v.model ?? null},
-                cost = ${v.cost ?? cost}, price = ${v.price ?? price}
+                cost = ${vCost}, price = ${vPrice}
               where id = ${v.id} and company_id = ${tenant.companyId}
             `;
           } else {
             await sql`
               insert into product_variants (company_id, product_id, sku, barcode, color, size, model, cost, price)
-              values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${v.cost ?? cost}, ${v.price ?? price})
+              values (${tenant.companyId}, ${productId}, ${v.sku ?? null}, ${v.barcode ?? null}, ${v.color ?? null}, ${v.size ?? null}, ${v.model ?? null}, ${vCost}, ${vPrice})
             `;
           }
         }

@@ -100,6 +100,23 @@ export async function assertStore(
   }
 }
 
+/**
+ * Mesma regra do `assertStore`, mas pro caso comum de `storeId` opcional
+ * (titulo/meta/vendedor sem loja = empresa inteira). Existia sete vezes
+ * cada handler chamando `assertOwned(sql, tenant.companyId, "stores", ...)`
+ * em vez disto -- `assertOwned` so confere que a loja e da empresa, nunca
+ * olha `homeStoreId`, entao um papel preso a uma loja conseguia escrever
+ * titulo/meta/comissao/vendedor em QUALQUER outra loja da mesma empresa.
+ */
+export async function assertStoreOptional(
+  sql: Sql,
+  tenant: Pick<Tenant, "companyId" | "role" | "homeStoreId">,
+  storeId: number | null | undefined,
+): Promise<void> {
+  if (storeId == null) return;
+  await assertStore(sql, tenant, storeId);
+}
+
 const OWNED = {
   customers: "Cliente inválido",
   sellers: "Vendedor inválido",

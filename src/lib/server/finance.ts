@@ -18,7 +18,7 @@ import { num } from "@/lib/utils";
 import { parsePaging } from "@/lib/paging";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
-import { assertOwned, assertStore, audit, auditUpdate, requireTenant, type Tenant } from "./context";
+import { assertOwned, assertStore, assertStoreOptional, audit, auditUpdate, requireTenant, type Tenant } from "./context";
 import { taxForSeller, taxInsert } from "./commission";
 import { ymdLocal } from "@/lib/local-date";
 
@@ -93,7 +93,7 @@ export const savePayableFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     if (data.id) {
       const id = data.id;
       return sql.transaction(async (sql) => {
@@ -339,7 +339,7 @@ export const saveReceivableFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
     await assertOwned(sql, tenant.companyId, "customers", data.customerId);
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     if (data.id) {
       const id = data.id;
       return sql.transaction(async (sql) => {
@@ -1477,7 +1477,7 @@ export const saveExpenseFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     if (!isReceiptMethod(data.method)) throw new Error("Informe como foi pago.");
     await sql.transaction(async (sql) => {
       /*
@@ -1802,7 +1802,7 @@ export const saveTargetFn = createServerFn({ method: "POST" })
     assertCan(tenant.role, "targets.write");
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
     await assertOwned(sql, tenant.companyId, "categories", data.categoryId);
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     // Nome em branco, valor alem do numeric(14,2) e data inexistente (31/02)
     // chegavam ao banco e voltavam como erro cru do Postgres.
     const name = requireLine(data.name, "Nome da meta", 120);
@@ -2248,7 +2248,7 @@ export const payCommissionFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     /*
       Pagamento inteiro numa transacao, com as comissoes travadas (`for
       update` no loadPendingCommissions). Solto, dois cliques em Pagar
@@ -2278,7 +2278,7 @@ export const payPendingCommissionsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
-    await assertOwned(sql, tenant.companyId, "stores", data.storeId);
+    await assertStoreOptional(sql, tenant, data.storeId);
     // Mesma transacao+lock do payCommissionFn; aqui tambem evita pagar
     // metade dos vendedores e parar no meio.
     return sql.transaction(async (sql) => {

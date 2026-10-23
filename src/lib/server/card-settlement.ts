@@ -4,7 +4,7 @@ import { batchStatus } from "@/lib/card-settlement";
 import { dump, type Row } from "@/lib/json";
 import { assertCan } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { audit, requireTenant } from "./context";
+import { assertStoreOptional, audit, requireTenant } from "./context";
 import { ymdLocal } from "@/lib/local-date";
 
 /**
@@ -21,6 +21,7 @@ export const listCardSettlementsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
+    await assertStoreOptional(sql, tenant, data.storeId);
 
     const rows = await sql.query<Row>(
       `select ar.due_date,

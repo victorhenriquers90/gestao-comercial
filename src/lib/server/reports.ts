@@ -11,7 +11,7 @@ import {
 import { formatBRL, formatDoc, formatPct, formatQty } from "@/lib/format";
 import { dump, type Row } from "@/lib/json";
 import { num } from "@/lib/utils";
-import { requireTenant } from "./context";
+import { assertStoreOptional, requireTenant } from "./context";
 import { loadRetentionGuide } from "./retention";
 import { ymdLocal } from "@/lib/local-date";
 
@@ -133,6 +133,7 @@ export const reportFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "reports.read");
+    await assertStoreOptional(sql, tenant, data.storeId);
     const cid = tenant.companyId;
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;
