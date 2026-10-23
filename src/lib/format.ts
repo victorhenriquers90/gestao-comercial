@@ -67,12 +67,6 @@ export function formatTime(value: string | Date | null | undefined): string {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function parseBRL(input: string): number {
-  const cleaned = input.replace(/[^\d,-]/g, "").replace(/\./g, "").replace(",", ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
-
 export function marginPct(price: number, cost: number): number {
   if (!price) return 0;
   return ((price - cost) / price) * 100;

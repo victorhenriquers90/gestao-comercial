@@ -5635,6 +5635,87 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Verificação geral**: `typecheck`/`lint`/`build` limpos, `npm test`
      508/508 (era 507, +1 novo pra faixa de comissão).
 
+118. **Continuação dos itens 116-117: mais 5 achados corrigidos, dois
+     deliberadamente DEIXADOS de fora por critério, não esquecimento.**
+
+     1. **`parseBRL` (lib/format.ts) removida** — função morta (zero
+        chamadas no repo inteiro, confirmado por grep) que reimplementava
+        exatamente o bug que `parseMoneyInput` existe pra evitar: retorna
+        `0` em silêncio pra entrada não reconhecida, igual ao bug antigo
+        do PDV descrito no comentário do próprio `money-input.ts`. Como
+        ninguém chamava, era só risco latente — removida em vez de
+        corrigida.
+
+     2. **`reason` sem sanitização** (`cancelSaleFn`/`createReturnFn`,
+        server/commerce.ts) — motivo de cancelamento/devolução ia cru pro
+        banco e pra notificação de outros usuários, diferente de todo
+        outro campo de texto livre da base. Corrigido com `requireLine`
+        no `.validator()` dos dois, mesmo padrão de `savePayableFn`.
+
+     3. **Reimpressão do PDV usava config atual, não a congelada**
+        (`sale-model.ts`, `receiptCompany`) — `checkoutFn` já gravava
+        `print_header`/`print_footer`/`receipt_message` na própria venda
+        (migration 0035), mas nunca devolvia isso no retorno, e o PDV
+        (`pdv.tsx`/`pdv-tablet.tsx`) sempre lia a config AO VIVO pra "ver
+        última venda". Editar o cabeçalho/rodapé em Configurações com o
+        PDV ainda aberto mudava o que a última venda mostrava, mesmo
+        depois de já impresso — o mesmo bug que `vendas.tsx` já resolve
+        corretamente pra reimpressão de vendas antigas. Corrigido:
+        `checkoutFn` agora devolve o retrato também (`ReceiptData` ganhou
+        os 3 campos opcionais), e `receiptCompany` do PDV aceita a venda
+        como segundo parâmetro, preferindo o retrato — exatamente a regra
+        de `vendas.tsx`.
+
+     4. **Baixa de lote de cartão sem confirmação** (`card-settlement-
+        panel.tsx`) — `settleCardBatchFn` não grava `account_settlements`
+        (decisão deliberada, não bug — já documentada no próprio
+        `finance.ts`), então não existe "Estornar" pra ela. Um clique
+        errado no lote errado ficava pago pra sempre sem volta pela tela,
+        e o botão não pedia confirmação nenhuma. Corrigido com
+        `window.confirm` mostrando valor e data antes de chamar a função
+        — mesmo padrão já usado pro "Sair" do PDV tablet, sem criar
+        componente de diálogo novo pra um único lugar.
+
+     5. **Total de compra podia ficar negativo** (`savePurchaseFn`,
+        server/catalog.ts) — desconto maior que subtotal+frete+imposto
+        gravava `purchases.total` negativo, que `receivePurchaseFn` copia
+        direto pra uma conta a pagar — uma dívida negativa que o
+        financeiro soma como crédito, subestimando o que a loja deve ao
+        fornecedor. Corrigido com a mesma ideia do `promoPrice >= price`
+        já existente: `if (total < 0) throw`.
+
+     **Deixados de fora, por decisão, não por falta de tempo**:
+
+     - **Checkout com 7 leituras em sequência** (efficiency,
+       `checkoutFn`) — reli o código com cuidado antes de decidir: o
+       agente da revisão simplificou demais. `assertOwned(customers,
+       data.customerId)` roda sobre o id ORIGINAL do cliente, mas logo
+       depois tem um bloco que PODE criar ou resolver um `customerId`
+       diferente a partir do CPF na nota, e X só então busca o NOME desse
+       cliente — uma dependência real que o relatório não via. Dava pra
+       paralelizar um subconjunto (assertStore + os dois assertOwned +
+       checagem de caixa aberto + configurações), mas isso é a rota mais
+       crítica do sistema inteiro (é dinheiro de verdade), e uma mudança
+       malfeita aqui é o tipo de regressão que só aparece dias depois, na
+       loja, sem ninguém entender por quê. Prioridade baixa (eficiência,
+       não corretude) não compensa esse risco sem mais tempo pra mapear
+       cada dependência com certeza.
+     - **Lógica de "dinheiro exige caixa aberto" copiada 4 vezes**
+       (altitude, `finance.ts`) — as quatro cópias estão corretas hoje
+       (cada uma com comentário citando as outras como "mesma classe de
+       bug"); não é um bug vivo, é dívida técnica. Extrair um
+       `recordCashLeg` compartilhado é a coisa certa a fazer, mas mexe em
+       quatro pontos de escrita de dinheiro ao mesmo tempo — risco real
+       de regressão sutil pra um ganho que é só manutenção futura, não
+       correção de nada quebrado agora. Fica pro usuário decidir se quer
+       essa refatoração numa sessão dedicada a isso, com mais tempo pra
+       verificar cada um dos quatro pontos com calma.
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos, `npm test`
+     508/508 sem mudança (nenhum dos 5 tinha lógica pura isolável pra
+     testar — são handlers de servidor e componentes de UI, mesmo padrão
+     "ao vivo" do resto da sessão).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

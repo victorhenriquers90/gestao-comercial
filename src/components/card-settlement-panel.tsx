@@ -97,6 +97,15 @@ export function CardSettlementPanel({ storeId }: { storeId: number | null }) {
               <Button
                 disabled={ocupado != null}
                 onClick={async () => {
+                  // Baixa de cartão não tem estorno (ao contrário de
+                  // settlePayableFn/settleReceivableFn, não grava
+                  // account_settlements — decisão deliberada, não bug). Um
+                  // clique errado no lote errado fica pago pra sempre, sem
+                  // caminho de desfazer pela tela — a confirmação é a única
+                  // rede de segurança que existe aqui.
+                  if (!window.confirm(`Confirmar recebimento de ${formatBRL(l.liquido)} do lote de ${formatDate(l.dueDate)}? Isso não pode ser desfeito pela tela.`)) {
+                    return;
+                  }
                   setOcupado(l.dueDate);
                   const ok = await runAction(
                     () =>

@@ -254,7 +254,7 @@ function PdvTabletPage() {
           {lastSale ? (
             <Receipt
               data={lastSale}
-              company={receiptCompany(settings.data)}
+              company={receiptCompany(settings.data, lastSale)}
               onClose={() => setReceiptOpen(false)}
             />
           ) : null}

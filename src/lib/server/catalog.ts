@@ -906,6 +906,12 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     const imposto = parsePurchaseExtra(data.tax, "imposto");
     const subtotal = itens.reduce((a, i) => a + i.quantity * i.unitCost, 0);
     const total = subtotal - desconto + frete + imposto;
+    // Mesma ideia do promoPrice >= price acima: desconto maior que
+    // subtotal+frete+imposto grava um pedido com total NEGATIVO, que
+    // receivePurchaseFn copia direto pra uma conta a pagar -- uma divida
+    // negativa que o financeiro soma como credito, subestimando o que a
+    // loja deve ao fornecedor.
+    if (total < 0) throw new Error("O desconto não pode deixar o total da compra negativo.");
     /*
       O pedido e os itens numa transacao: a gravacao APAGA os itens antigos
       antes de regravar. Um erro entre o delete e os inserts deixava o

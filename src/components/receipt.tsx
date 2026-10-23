@@ -32,6 +32,16 @@ export type ReceiptData = {
   subtotal: number;
   discount: number;
   total: number;
+  /**
+   * Retrato CONGELADO no instante do checkout (migration 0035) -- so o PDV
+   * usa, pra reimprimir a ultima venda sem reabrir a tela. Mesmo motivo do
+   * `receiptCompany` em vendas.tsx: sem isto, editar o cabecalho/rodape/
+   * mensagem em Configuracoes enquanto o PDV ainda esta aberto mudava o que
+   * "ver ultima venda" mostrava, mesmo depois de impresso de verdade.
+   */
+  print_header?: string | null;
+  print_footer?: string | null;
+  receipt_message?: string | null;
 };
 
 export type ReceiptCompany = {

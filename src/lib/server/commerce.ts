@@ -26,7 +26,7 @@ import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
 import { num } from "@/lib/utils";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument } from "@/lib/document";
-import { sanitizeMultiline } from "@/lib/sanitize";
+import { requireLine, sanitizeMultiline } from "@/lib/sanitize";
 import {
   loadCommissionRules,
   loadSellerTargetBonuses,
@@ -947,6 +947,12 @@ export const checkoutFn = createServerFn({ method: "POST" })
         })),
         commission,
         nfce,
+        // Mesmo retrato que acabou de ser gravado na venda (linha ~665) --
+        // "ver ultima venda" no PDV usa isto direto, sem reconsultar o
+        // servidor, entao precisa ser o congelado, nao o live.
+        print_header: settings?.print_header ?? null,
+        print_footer: settings?.print_footer ?? null,
+        receipt_message: settings?.receipt_message ?? null,
       };
     } catch (err) {
       /*
@@ -1118,7 +1124,14 @@ export const getSaleFn = createServerFn({ method: "POST" })
 
 export const cancelSaleFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; reason: string }) => d)
+  .validator((d: { id: number; reason: string }) => ({
+    ...d,
+    // Sem isto o motivo ia cru pro banco, pra nota de estoque e pra
+    // notificacao de outros usuarios -- sem limite de tamanho nem remocao
+    // de caractere de controle, ao contrario de todo outro campo de texto
+    // livre da base (ex. savePayableFn.description).
+    reason: requireLine(d.reason, "Motivo do cancelamento", 300),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "pdv.cancel");
@@ -1266,7 +1279,12 @@ export const createReturnFn = createServerFn({ method: "POST" })
       // Sem variantId: a variante sai do item da venda original. Vinda do
       // cliente, devolvia-se o item barato creditando estoque de outro.
       items: { saleItemId: number; quantity: number }[];
-    }) => d,
+    }) => ({
+      ...d,
+      // Mesmo motivo do cancelSaleFn: ia cru pro banco e pra notificacao
+      // de outros usuarios, sem limite nem remocao de caractere de controle.
+      reason: requireLine(d.reason, "Motivo da devolução", 300),
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);

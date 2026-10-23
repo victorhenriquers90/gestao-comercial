@@ -1,4 +1,4 @@
-import type { ReceiptCompany } from "@/components/receipt";
+import type { ReceiptCompany, ReceiptData } from "@/components/receipt";
 import type { PaymentMethod } from "@/lib/constants";
 import { MAX_CREDIARIO_INSTALLMENTS, splitCrediario } from "@/lib/crediario";
 import { formatBRL } from "@/lib/format";
@@ -66,17 +66,33 @@ export function resumoCrediario(p: PayRow): string | null {
   return `${corpo}${primeiraDiferente ? ` (a 1ª de ${formatBRL(primeira.amount)})` : ""} · 1ª em ${quando}`;
 }
 
-/** Monta os dados da empresa do recibo a partir das configuracoes — mesma funcao pro PDV desktop e tablet. */
+/**
+ * Monta os dados da empresa do recibo a partir das configuracoes — mesma
+ * funcao pro PDV desktop e tablet.
+ *
+ * `sale` e o retrato CONGELADO que `checkoutFn` devolve (ver `ReceiptData`
+ * em receipt.tsx) -- preferido sempre que existir, mesma regra de
+ * `receiptCompany` em vendas.tsx (migration 0035). Sem isto, reabrir "ver
+ * ultima venda" no PDV depois que alguem editou cabecalho/rodape/mensagem
+ * em Configuracoes mostrava o texto NOVO, nao o que foi impresso de
+ * verdade na hora da venda.
+ */
 export function receiptCompany(
   settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined,
+  sale?: ReceiptData | null,
 ): ReceiptCompany {
   const company = (settings?.company ?? {}) as ReceiptCompany;
   const extra = (settings?.settings ?? {}) as Record<string, unknown>;
-  return {
-    ...company,
+  const live = {
     print_header: extra.print_header != null ? String(extra.print_header) : company.print_header,
     print_footer: extra.print_footer != null ? String(extra.print_footer) : company.print_footer,
     receipt_message:
       extra.receipt_message != null ? String(extra.receipt_message) : company.receipt_message,
+  };
+  return {
+    ...company,
+    print_header: sale?.print_header != null ? sale.print_header : live.print_header,
+    print_footer: sale?.print_footer != null ? sale.print_footer : live.print_footer,
+    receipt_message: sale?.receipt_message != null ? sale.receipt_message : live.receipt_message,
   };
 }
