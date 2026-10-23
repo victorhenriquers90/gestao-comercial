@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { DataTable, EmptyState, KpiCard, Td, Th } from "@/components/shared";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
+import { parseMoneyInput } from "@/lib/money-input";
 import { runAction } from "@/lib/run-action";
 import {
   divergenceValue,
@@ -96,7 +97,13 @@ export function StockCountPanel({ storeId }: { storeId: number | null }) {
 
   async function contar() {
     if (!alvo || contagemId == null) return;
-    const n = Number(String(qtd).replace(",", "."));
+    // parseMoneyInput, nao Number(qtd.replace(",",".")): "1.234" digitado
+    // (mil duzentos e trinta e quatro, convencao BR) virava 1.234 unidades
+    // -- contagem de ~1234 pecas registrada como se faltassem ~1232, uma
+    // divergencia de estoque falsa. A funcao e a mesma usada pra dinheiro,
+    // mas o que resolve e so a desambiguacao ponto-milhar/ponto-decimal,
+    // que vale igual pra quantidade.
+    const n = parseMoneyInput(qtd);
     if (!Number.isFinite(n) || n < 0) return;
     setOcupado(true);
     const ok = await runAction(

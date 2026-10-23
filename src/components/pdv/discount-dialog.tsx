@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { formatBRL } from "@/lib/format";
+import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -24,7 +25,10 @@ export function DiscountDialog(p: Props) {
     if (p.open) setInput("");
   }, [p.open]);
 
-  const n = Number(input.replace(",", "."));
+  // parseMoneyInput, nao Number(input.replace(",",".")): "1.500" digitado
+  // (mil e quinhentos, convencao BR sem casas decimais) virava 1.5 --
+  // um desconto de R$1.500 silenciosamente aplicado como R$1,50.
+  const n = parseMoneyInput(input);
   const valido = input.trim() !== "" && Number.isFinite(n) && n >= 0;
   const valor = !valido ? 0 : mode === "pct" ? Number(((p.subtotal * n) / 100).toFixed(2)) : n;
   const pct = mode === "pct" ? n : p.subtotal ? (n / p.subtotal) * 100 : 0;

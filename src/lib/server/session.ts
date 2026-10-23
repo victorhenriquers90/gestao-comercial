@@ -22,6 +22,7 @@ import {
   parseUf,
   requireIsoDate,
   requireLine,
+  requireRange,
   sanitizeCode,
   sanitizeImageUrl,
   sanitizeMultiline,
@@ -914,9 +915,14 @@ export const updateMemberFn = createServerFn({ method: "POST" })
         const admins = rows.filter((r) => r.role === "admin" && r.is_active).length;
         if (admins <= 1) throw new Error("Mantenha ao menos um administrador.");
       }
+      // Mesmo padrao do commissionPct (party.ts): sem isto, um valor gigante
+      // ou negativo gravado em discount_limit vira a UNICA trava do servidor
+      // contra desconto ilimitado no PDV (checkoutFn compara discPct contra
+      // isto) -- gigante libera desconto sem fim, negativo trava QUALQUER
+      // venda daquele operador, mesmo sem desconto nenhum.
       const limit =
         data.discountLimit != null
-          ? data.discountLimit
+          ? requireRange(data.discountLimit, "Limite de desconto", 0, 100)
           : role === member.role && member.discount_limit != null
             ? member.discount_limit
             : DEFAULT_DISCOUNT_LIMIT[role as Role];

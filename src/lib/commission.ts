@@ -219,7 +219,12 @@ export function normalizeTiers(raw: unknown): CommissionTier[] {
     const min = Number((row as { min?: unknown }).min);
     const percent = Number((row as { percent?: unknown }).percent);
     if (!Number.isFinite(min) || min < 0) continue;
-    if (!Number.isFinite(percent) || percent < 0) continue;
+    // Mesmo teto do percent_sales/percent_profit no nivel da regra (linha
+    // 168) -- faixa so e usada mesmo quando o kind e um desses dois
+    // (fixed_unit/exclude zeram tierBasis e tiers logo abaixo), entao o
+    // mesmo limite vale aqui. Sem isto, uma faixa com percent: 50000
+    // pagava 500x o valor da venda em comissao, sem nenhum erro.
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) continue;
     out.push({ min: money(min), percent: money(percent) });
   }
   out.sort((a, b) => a.min - b.min);

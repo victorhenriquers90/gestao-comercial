@@ -474,6 +474,25 @@ describe("parseCommissionRuleInput", () => {
     ]);
   });
 
+  it("faixa com percentual acima de 100 (ou Infinity) e descartada, nao vira comissao de 500x", () => {
+    // Mesmo teto do percent_sales/percent_profit no nivel da regra --
+    // sem isto uma faixa com percent: 50000 pagava 500x o valor da venda.
+    const r = parseCommissionRuleInput({
+      ...ok,
+      tierBasis: "month",
+      tiers: [
+        { min: 0, percent: 5 },
+        { min: 1000, percent: 50000 },
+        { min: 2000, percent: Number.POSITIVE_INFINITY },
+        { min: 3000, percent: 100 },
+      ],
+    });
+    assert.deepEqual(r.tiers, [
+      { min: 0, percent: 5 },
+      { min: 3000, percent: 100 },
+    ]);
+  });
+
   it("forma de pagamento, valor minimo e prioridade", () => {
     assert.equal(parseCommissionRuleInput({ ...ok, paymentMethod: "pix" }).paymentMethod, "pix");
     assert.equal(parseCommissionRuleInput({ ...ok, paymentMethod: "" }).paymentMethod, null);

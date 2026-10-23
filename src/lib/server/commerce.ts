@@ -37,7 +37,6 @@ import {
 } from "./commission";
 import { assertOwned, assertStore, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
-import { ymdLocal } from "@/lib/local-date";
 
 export type CartItemIn = {
   variantId: number;
@@ -1464,7 +1463,6 @@ export const createReturnFn = createServerFn({ method: "POST" })
          order by due_date asc, id asc
       `;
       let restanteDevolucao = total;
-      const today = ymdLocal();
       for (const parcela of arsAbertas) {
         if (restanteDevolucao <= 0.009) break;
         const amt = num(parcela.amount);
@@ -1487,13 +1485,22 @@ export const createReturnFn = createServerFn({ method: "POST" })
         const abate = Math.min(aindaDevido, restanteDevolucao);
         const nextAmt = Number((amt - abate).toFixed(2));
         restanteDevolucao = Number((restanteDevolucao - abate).toFixed(2));
+        // 'vencido' e derivado na leitura (accountStatus, finance.ts) e
+        // NUNCA deve ser gravado -- era exatamente isto que quebrava aqui:
+        // comparar com `today` e gravar "vencido" direto na coluna. Isso
+        // sumia a parcela de tres lugares que filtram so
+        // pendente/parcial sem incluir vencido (sino de cobranca em
+        // atraso, KPIs do Dashboard, conciliacao de cartao). O estado
+        // certo pra gravar depende so de quanto ja foi recebido, igual
+        // ao resto do arquivo: nada recebido = pendente, algo recebido
+        // mas nao tudo = parcial.
         const status =
           nextAmt <= 0.009
             ? "cancelado"
             : received + 0.009 >= nextAmt
               ? "pago"
-              : String(parcela.due_date).slice(0, 10) < today
-                ? "vencido"
+              : received > 0.009
+                ? "parcial"
                 : "pendente";
         await sql`
           update accounts_receivable set amount = ${nextAmt}, status = ${status}

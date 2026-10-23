@@ -538,6 +538,14 @@ export const listStockFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.read");
     const params: unknown[] = [tenant.companyId];
+    // Precisa entrar no ON do join, nao no WHERE: uma variante que nunca
+    // teve movimento de estoque em loja nenhuma (produto novo sem compra
+    // recebida) nao tem linha em `inventories`, entao o LEFT JOIN devolve
+    // i.* nulo -- "WHERE i.store_id = $N" descartava essa linha (NULL = $N
+    // nunca e verdadeiro), virando um INNER JOIN disfarcado e escondendo o
+    // produto de QUALQUER filtro por loja especifica, inclusive "Zerados"
+    // e "Abaixo do minimo", que sao exatamente os alertas que deveriam
+    // pegar esse caso.
     let storeSql = "";
     if (data.storeId != null) {
       params.push(data.storeId);
@@ -580,7 +588,7 @@ export const listStockFn = createServerFn({ method: "POST" })
               lm.last_move
          from product_variants v
          join products p on p.id = v.product_id
-         left join inventories i on i.variant_id = v.id and i.company_id = v.company_id
+         left join inventories i on i.variant_id = v.id and i.company_id = v.company_id ${storeSql}
          left join stores s on s.id = i.store_id
          left join (
            select variant_id, max(created_at) as last_move
@@ -589,7 +597,6 @@ export const listStockFn = createServerFn({ method: "POST" })
             group by variant_id
          ) lm on lm.variant_id = v.id
         where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null
-          ${storeSql}
           ${qSql}
           ${filterSql}
         order by p.name, v.id, i.store_id

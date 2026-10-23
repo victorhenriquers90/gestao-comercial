@@ -5567,6 +5567,74 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      relatório da sessão, não corrigidos ainda — o usuário pediu
      explicitamente só os 3 primeiros.
 
+117. **Continuação do item 116: mais 5 achados da mesma revisão
+     completa, corrigidos.**
+
+     1. **Faixa de comissão sem teto** (`lib/commission.ts`,
+        `normalizeTiers`) — a regra em si já limitava `percent` a 100 (ou
+        10000 pra "valor por peça"), mas a faixa (usada quando a regra é
+        por volume) só checava finito e não-negativo. Uma faixa com
+        `percent: 50000` pagava 500x o valor da venda em comissão, sem
+        erro nenhum. Corrigido com o mesmo teto de 100 (tiers só valem
+        pra `percent_sales`/`percent_profit`, que já usam esse teto).
+        Teste novo cobrindo faixa > 100 e `Infinity` sendo descartada.
+
+     2. **Status "vencido" sendo GRAVADO** (`server/commerce.ts`,
+        `createReturnFn`) — a devolução que abate parcela em aberto
+        comparava com a data de hoje e gravava o literal `"vencido"` na
+        coluna `status`, violando a regra documentada no próprio arquivo
+        850 linhas antes ("vencido é derivado na leitura e nunca chega a
+        ser gravado"). Três lugares reais filtram
+        `status in ('pendente','parcial')` sem incluir vencido —
+        `session.ts` (sino de cobrança em atraso), `insight.ts` (KPIs do
+        Dashboard), `card-settlement.ts` (conciliação de cartão) — então
+        a dívida real desaparecia dos três depois de uma devolução
+        parcial numa parcela já vencida. Corrigido: o status gravado
+        agora depende só de quanto já foi recebido (nada = pendente,
+        algo mas não tudo = parcial), igual ao resto do arquivo — nunca
+        mais compara com a data. Variável `today`/import `ymdLocal` que
+        ficaram sem uso foram removidos.
+
+     3. **"1.500" virando 1,5** (`discount-dialog.tsx` e
+        `stock-count-panel.tsx`) — os dois usavam
+        `Number(input.replace(",","."))` em vez de `parseMoneyInput`
+        (que já existe pra resolver exatamente a ambiguidade
+        ponto-milhar vs. ponto-decimal), igual ao bug já corrigido em
+        `metas.tsx`/`caixa.tsx`. Um desconto de R$1.500 digitado no PDV
+        virava R$1,50; uma contagem de 1.234 peças virava 1,234,
+        gerando uma "falta" de estoque fantasma de ~1232 unidades.
+        Corrigido trocando pela função certa nos dois lugares.
+
+     4. **Limite de desconto do membro sem validação**
+        (`server/session.ts`, `updateMemberFn`) — `discountLimit` é a
+        ÚNICA trava do servidor contra desconto ilimitado no PDV
+        (`checkoutFn` compara `discPct` contra ele), e não tinha
+        `requireRange` nenhum, ao contrário do `commissionPct` irmão
+        (`party.ts`). Um valor gigante liberava desconto sem fim; um
+        negativo travava QUALQUER venda daquele operador (a comparação
+        `discPct > limite` vira sempre verdadeira). Corrigido com
+        `requireRange(..., 0, 100)`, mesmo padrão do resto da base.
+
+     5. **JOIN de estoque virando INNER sem querer** (`server/catalog.ts`,
+        `listStockFn`) — o filtro de loja ficava no `WHERE i.store_id =
+        $N` em vez do `ON` do `LEFT JOIN inventories`; pra uma variante
+        sem NENHUMA linha de estoque em loja nenhuma (produto novo sem
+        compra recebida), o LEFT JOIN devolve `i.*` nulo, e
+        `NULL = $N` nunca é verdadeiro no WHERE — a linha inteira
+        desaparecia. Resultado: produto novo filtrado "Zerados" ou
+        "Abaixo do mínimo" numa loja específica nunca aparecia, mesmo
+        tendo 0 de estoque de verdade ali (só aparecia com "todas as
+        lojas"). Corrigido movendo o filtro pro `ON` do join.
+        **Verificado ao vivo** contra o Postgres: criado produto/variante
+        descartável (`ZZTESTE joinfix`, sem nenhuma linha em
+        `inventories`) e rodada a query antiga vs. a nova lado a lado —
+        antiga devolvia 0 linhas pra loja 7, nova devolvia 1 linha com
+        `quantity = 0`. Produto e variante removidos depois, empresa 4
+        de volta a 0 produtos.
+
+     **Verificação geral**: `typecheck`/`lint`/`build` limpos, `npm test`
+     508/508 (era 507, +1 novo pra faixa de comissão).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
