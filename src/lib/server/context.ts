@@ -1,6 +1,6 @@
 import { dbSource, getSql, type Sql } from "@/lib/db";
 import { demoSeedEnabled } from "@/lib/demo-seed";
-import { INVITE_COOKIE, NO_ACCESS_MESSAGE } from "@/lib/invite-constants";
+import { INVITE_COOKIE, NO_ACCESS_MESSAGE, multiTenantEnabled } from "@/lib/invite-constants";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { seedCompany } from "./seed";
@@ -307,10 +307,19 @@ export async function ensureTenant(
     if (tenant) return tenant;
   }
 
-  // Empresa nova so no servidor vazio: e o dono instalando. Antes qualquer
-  // conta sem convite ganhava empresa propria no mesmo banco.
+  // Empresa nova: no SaaS (`GC_MULTI_TENANT=1`, so Vercel) qualquer conta
+  // sem convite ganha a propria empresa, mesmo com outras ja existindo --
+  // e assim que um cliente novo se cadastra sozinho. Sem a flag (padrao,
+  // toda instalacao on-premise), so no servidor vazio: e o dono instalando.
+  // Antes da flag existir, qualquer conta sem convite ganhava empresa
+  // propria no mesmo banco sempre -- virou bug numa instalacao de loja
+  // unica (empresa extra por engano) e so foi fechado de vez pro caso
+  // on-premise; o multi-tenant reabre exatamente essa porta, de proposito,
+  // so onde a flag liga.
   const [{ n: empresas }] = await sql<{ n: number }>`select count(*)::int as n from companies`;
-  if (Number(empresas) > 0) throw new Error(NO_ACCESS_MESSAGE);
+  if (Number(empresas) > 0 && !multiTenantEnabled(process.env.GC_MULTI_TENANT)) {
+    throw new Error(NO_ACCESS_MESSAGE);
+  }
 
   const user = await loadUser(sql, userId);
   const firstName = user.name?.split(" ")[0] || "Minha";

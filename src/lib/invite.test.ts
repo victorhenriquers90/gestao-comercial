@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { hashInviteToken, inviteExpiry, newInviteToken } from "./invite.ts";
-import { INVITE_TTL_DAYS, isInviteTokenShape } from "./invite-constants.ts";
+import { INVITE_TTL_DAYS, isInviteTokenShape, multiTenantEnabled } from "./invite-constants.ts";
 
 describe("token de convite", () => {
   it("gera token com o formato que a validacao aceita", () => {
@@ -30,5 +30,22 @@ describe("token de convite", () => {
     const agora = new Date("2026-09-23T12:00:00Z");
     const dias = (inviteExpiry(agora).getTime() - agora.getTime()) / 86_400_000;
     assert.equal(dias, INVITE_TTL_DAYS);
+  });
+});
+
+describe("multiTenantEnabled", () => {
+  it("padrao (flag ausente, toda instalacao on-premise) fica fechado", () => {
+    assert.equal(multiTenantEnabled(undefined), false);
+  });
+
+  it("GC_MULTI_TENANT=1 liga o SaaS multi-empresa", () => {
+    assert.equal(multiTenantEnabled("1"), true);
+  });
+
+  it("valor vazio ou estranho cai no padrao, nao liga por acidente", () => {
+    assert.equal(multiTenantEnabled(""), false);
+    assert.equal(multiTenantEnabled("true"), false);
+    assert.equal(multiTenantEnabled("0"), false);
+    assert.equal(multiTenantEnabled(" 1 "), false);
   });
 });

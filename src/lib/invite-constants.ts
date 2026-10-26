@@ -12,3 +12,19 @@ export const NO_ACCESS_MESSAGE =
 export function isInviteTokenShape(token: unknown): token is string {
   return typeof token === "string" && /^[A-Za-z0-9_-]{32}$/.test(token);
 }
+
+/**
+ * SaaS multi-empresa: com `GC_MULTI_TENANT=1` (so no projeto Vercel),
+ * qualquer um pode criar conta E empresa nova, mesmo com outras empresas ja
+ * existindo no mesmo banco. Sem a flag (padrao -- inclusive em toda
+ * instalacao on-premise, que nunca a define), o comportamento antigo
+ * continua: so o primeiro usuario do servidor vazio ou quem traz convite --
+ * evita que alguem crie uma empresa extra por engano numa instalacao de
+ * loja unica. Usado por `signupAllowed` (invite-gate.ts) e `ensureTenant`
+ * (context.ts); exportado daqui (em vez de invite-gate.ts) porque este
+ * arquivo e o unico dos dois que o bundle do navegador pode importar
+ * estaticamente sem puxar `node:crypto` (ver comentario no topo).
+ */
+export function multiTenantEnabled(flag: string | undefined): boolean {
+  return flag === "1";
+}

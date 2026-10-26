@@ -45,6 +45,17 @@ export const authClient = createAuthClient({
  */
 export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
 
+/**
+ * True só no SaaS multi-empresa (`VITE_MULTI_TENANT=true`, só no projeto
+ * Vercel) — mostra o link de cadastro na tela de login normal. Em toda
+ * instalação on-premise (padrão, flag ausente) o cadastro continua só
+ * alcançável por `/login?cadastro` ou link de convite, de propósito: o
+ * login do dia a dia da loja não deve convidar ninguém a criar empresa
+ * nova por engano. O servidor (`GC_MULTI_TENANT`) é quem decide de
+ * verdade; esta flag só controla se o link aparece.
+ */
+export const multiTenantEnabled = import.meta.env.VITE_MULTI_TENANT === "true";
+
 /** The upstream providers to render sign-in buttons for. */
 export { GROK_PROVIDERS };
 export { ensureCsrfCookie };

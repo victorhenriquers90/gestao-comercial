@@ -5,7 +5,7 @@ import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { authClient, authEnabled, ensureCsrfCookie } from "@/lib/auth/client";
+import { authClient, authEnabled, ensureCsrfCookie, multiTenantEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME } from "@/lib/constants";
 import { ROLE_LABELS, type Role } from "@/lib/permissions";
@@ -38,10 +38,14 @@ function authErrorMessage(code: string | undefined, fallback: string): string {
 }
 
 /**
- * Cadastro so acessivel via "/login?cadastro" (sem link visivel na tela
- * normal) -- quem instala o sistema usa esse endereco uma vez pra criar a
- * primeira conta/empresa; no dia a dia da loja o login nao deve convidar
- * ninguem a criar uma empresa nova por engano.
+ * On-premise (padrao): cadastro so acessivel via "/login?cadastro" (sem
+ * link visivel na tela normal) -- quem instala o sistema usa esse endereco
+ * uma vez pra criar a primeira conta/empresa; no dia a dia da loja o login
+ * nao deve convidar ninguem a criar uma empresa nova por engano.
+ *
+ * SaaS multi-tenant (`multiTenantEnabled`): o link de cadastro aparece
+ * direto na tela normal (ver fundo do formulario), porque aqui QUALQUER
+ * visitante pode ser um cliente novo criando a propria loja.
  */
 function useSearchParam(name: string): string | null {
   const loc = useLocation();
@@ -338,6 +342,17 @@ function LoginPage() {
                   onClick={switchMode}
                 >
                   Criar conta
+                </button>
+              </p>
+            ) : multiTenantEnabled ? (
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                Ainda não tem uma loja cadastrada?{" "}
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center font-medium text-primary"
+                  onClick={switchMode}
+                >
+                  Cadastre a sua
                 </button>
               </p>
             ) : null}

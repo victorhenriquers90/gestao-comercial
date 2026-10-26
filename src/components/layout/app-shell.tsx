@@ -67,6 +67,31 @@ export function AppShell({
     ensureCsrfCookie();
   }, []);
 
+  const storeId = useSelection((s) => s.storeId);
+  const setStoreId = useSelection((s) => s.setStoreId);
+  // `useSelection` persiste a loja escolhida no localStorage -- sobrevive a
+  // troca de CONTA inteira no mesmo navegador (saiu, outra pessoa ou agora
+  // com o SaaS multi-tenant outra EMPRESA entrou), nao so de pagina. Sem
+  // corrigir aqui, no topo, antes de qualquer tela filha montar, cada tela
+  // que le `storeId` direto do `useSelection` (PDV, Dashboard, Estoque,
+  // Vendas, Financeiro, Compras, Relatorios, Vendedores, Caixa -- quase
+  // tudo) mandava pro servidor um storeId de OUTRA empresa e tomava "Loja
+  // inválida para esta empresa" na cara, sem se recuperar sozinha. Achado
+  // testando o cadastro multi-tenant pela primeira vez: a PRIMEIRA tela que
+  // uma empresa nova via, no mesmo navegador que tinha acabado de sair de
+  // outra conta, era esse erro. Fica centralizado aqui (em vez de só no
+  // `StorePicker`, que nem renderiza no PDV/PDV tablet -- cabeçalho
+  // escondido de propósito) pra cobrir toda tela de uma vez.
+  useEffect(() => {
+    const restrito = tenant.role !== "admin" && tenant.homeStoreId != null;
+    if (restrito) {
+      if (storeId !== tenant.homeStoreId) setStoreId(tenant.homeStoreId);
+      return;
+    }
+    const valido = storeId != null && tenant.stores.some((s) => s.id === storeId);
+    if (!valido && tenant.defaultStoreId) setStoreId(tenant.defaultStoreId);
+  }, [tenant.role, tenant.homeStoreId, tenant.defaultStoreId, tenant.stores, storeId, setStoreId]);
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className={cn("min-h-screen bg-background", isPdvTablet && "h-dvh min-h-0 overflow-hidden")}>
@@ -241,25 +266,16 @@ function StorePicker({ tenant }: { tenant: Tenant }) {
   const setStoreId = useSelection((s) => s.setStoreId);
   // Mesma regra do assertStore (servidor): admin sempre ve o seletor
   // inteiro; quem tem loja fixa no cadastro (homeStoreId != null) e nao e
-  // admin so tem a propria. `useSelection` persiste no localStorage --
-  // alguem que ja tinha trocado de loja antes de virar restrito (ou
-  // testando em navegador compartilhado) ficava com outra loja em cache,
-  // e cada tela que le o seletor direto (nao so este componente) herdava
-  // o valor errado ate o servidor recusar a acao.
+  // admin so tem a propria. A correcao do valor persistido (localStorage
+  // de outra conta/empresa) agora mora em `AppShell`, que roda pra toda
+  // tela, nao so esta -- `current` aqui fica so como fallback de EXIBICAO
+  // pro instante antes daquele efeito rodar.
   const restrito = tenant.role !== "admin" && tenant.homeStoreId != null;
   const current = restrito
     ? tenant.homeStoreId!
     : storeId && tenant.stores.some((s) => s.id === storeId)
       ? storeId
       : tenant.defaultStoreId;
-
-  useEffect(() => {
-    if (restrito) {
-      if (storeId !== tenant.homeStoreId) setStoreId(tenant.homeStoreId);
-      return;
-    }
-    if (storeId == null && tenant.defaultStoreId) setStoreId(tenant.defaultStoreId);
-  }, [restrito, storeId, tenant.homeStoreId, tenant.defaultStoreId, setStoreId]);
 
   if (restrito) {
     const nome = tenant.stores.find((s) => s.id === tenant.homeStoreId)?.name ?? "Loja";

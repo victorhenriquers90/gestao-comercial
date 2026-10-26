@@ -5841,6 +5841,103 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      da Vercel, conferir no Postgres da Vercel (não no local), limpar
      depois.
 
+121. **Pedido do usuário: atuar como analista de testes sênior "pra colocar o
+     sistema em produção para comercialização" — achado de arquitetura
+     grande antes de qualquer teste de tela, mais um bug real achado
+     testando a correção ao vivo.**
+
+     **O achado**: lendo `auth/server.ts` + `invite-gate.ts`, o sistema só
+     deixa criar empresa nova quando o banco está TOTALMENTE vazio ("o dono
+     instalando") — desenhado pro modelo on-premise (cada loja com seu
+     próprio Postgres). Como o piloto (`company_id=4`) já existe no MESMO
+     banco do Vercel, HOJE ninguém mais conseguia se cadastrar sozinho: o
+     único jeito de uma pessoa nova entrar era um convite manual do
+     Victor, e esse convite só adiciona alguém DENTRO da empresa dele —
+     nunca cria uma empresa independente. Ou seja, antes deste item, a
+     instalação do Vercel só servia UM cliente, nunca vários ao mesmo
+     tempo — incompatível com "comercializar" como SaaS self-service.
+     Perguntei ao usuário qual modelo ele queria (self-service
+     multi-empresa vs. um deploy por cliente); escolheu self-service.
+
+     **Corrigido**: nova flag `GC_MULTI_TENANT` (servidor) /
+     `VITE_MULTI_TENANT` (cliente), **desligada por padrão** — toda
+     instalação on-premise continua com o comportamento de sempre (cadastro
+     fechado, só convite), sem precisar saber que a flag existe. Só liga de
+     verdade no projeto Vercel. Com a flag:
+     - `signupAllowed` (`invite-gate.ts`): libera criar CONTA pra qualquer
+       um, não só pro primeiro usuário do servidor.
+     - `ensureTenant` (`context.ts`): libera criar EMPRESA nova pra quem
+       não trouxe convite, mesmo com outras empresas já existindo —
+       exatamente o caminho que já existia pra "servidor vazio", só que sem
+       a trava de contagem.
+     - `multiTenantEnabled(flag)` nova em `invite-constants.ts` (não em
+       `invite-gate.ts`): é o único dos dois arquivos que o bundle do
+       navegador importa estaticamente sem puxar `node:crypto` — mesmo
+       motivo que já valia pra `isInviteTokenShape`/`NO_ACCESS_MESSAGE`.
+       4 testes novos em `invite.test.ts`.
+     - `login.tsx`: com a flag, a tela de login normal (não só
+       `/login?cadastro`) ganha um link visível "Cadastre a sua" — sem a
+       flag (padrão), cadastro continua escondido do dia a dia da loja,
+       mesmo comportamento de sempre.
+     - **`GC_MULTI_TENANT`/`VITE_MULTI_TENANT` ainda NÃO estão setadas no
+       Vercel** — o código está pronto e no ar, mas o cadastro público
+       continua fechado em produção até o usuário confirmar que quer ligar
+       (abrir cadastro público é uma mudança de comportamento visível pra
+       fora, não uma correção de bug — pedir confirmação antes).
+
+     **Bug real achado testando a correção ao vivo** (não só revisão de
+     código): criei uma empresa de teste de verdade via
+     `POST /api/auth/sign-up/email` + `/sign-in/email` direto (driver de
+     navegador ficou instável nesta sessão — reload sozinho a cada poucos
+     segundos, refs sempre stale; não investiguei a fundo por ser
+     claramente ambiente local, não causado por este código, e outro
+     caminho direto já dava o mesmo resultado de forma confiável) no MESMO
+     navegador que segundos antes tinha saído da conta admin do piloto. A
+     tela de Dashboard da empresa nova veio com **"Loja inválida para esta
+     empresa"** em vez do painel vazio esperado. Causa: `useSelection`
+     (`src/hooks/use-selection.ts`) persiste `storeId` no localStorage, e
+     esse valor sobrevive a trocar de CONTA inteira no mesmo navegador —
+     `StorePicker` (`app-shell.tsx`) já corrigia isso só pra si mesma
+     (comentário no código já avisava "cada tela que le o seletor direto
+     herdava o valor errado"), mas as outras 9 telas que leem `storeId`
+     direto do `useSelection` (PDV, Dashboard, Estoque, Vendas,
+     Financeiro, Compras, Relatórios, Vendedores, Caixa) **não tinham
+     correção nenhuma** — mandavam o storeId da empresa ANTERIOR pro
+     servidor e tomavam o erro na cara, sem se recuperar sozinhas. No
+     on-premise isso já era possível (raro: troca de usuário no mesmo
+     caixa físico); no SaaS multi-tenant fica muito mais comum (qualquer
+     visitante que teste e depois um cliente de verdade entrar no mesmo
+     navegador).
+
+     **Corrigido na raiz, um lugar só**: a correção que só existia dentro
+     de `StorePicker` subiu pro `AppShell` (pai de toda rota `/app/*`,
+     inclusive PDV/PDV tablet, que nem renderizam `StorePicker` — cabeçalho
+     escondido de propósito). Um `useEffect` ali corrige `storeId` no
+     Zustand assim que detecta que ele não pertence às lojas do tenant
+     atual, ANTES de qualquer tela filha montar. `StorePicker` ficou mais
+     simples (só o fallback de exibição, sem duplicar o efeito).
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos, `npm test`
+     511/511. Ao vivo contra o Postgres local (banco descartável, não o
+     que o on-premise usa de verdade): cadastro criou empresa 18 "ZZTESTE
+     Comércio" isolada (loja própria, `cash_accounts`/`company_settings`
+     próprios, zero dado do company_id=4), Dashboard E PDV carregaram
+     certo depois do fix (antes do fix, os dois mostravam o erro). Limpeza
+     completa depois: `session`/`account`/`memberships`/`cash_accounts`/
+     `company_settings`/`stores`/`companies`/`user` do teste, confirmado
+     zero traço e as 4 empresas que já existiam antes (1-4) intactas.
+
+     **Fora do escopo de código, acrescentando ao achado original**: pra
+     SaaS de verdade ainda faltam (não implementado agora, ficam como
+     próximo passo se o usuário confirmar o rumo): recuperação de senha
+     (não existe NENHUM caminho — nem "esqueci minha senha" pro usuário,
+     nem reset pelo admin; hoje uma conta perdida fica trancada pra
+     sempre sem mexer direto no banco), página pública de marketing/preço
+     (`/` hoje só redireciona pro login, sem explicar o produto pra quem
+     nunca ouviu falar), e billing/plano/limite por empresa (não existe
+     nenhuma cobrança ou limite — qualquer empresa nova tem acesso
+     ilimitado ao sistema inteiro de graça).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -234,9 +234,10 @@ export const auth = betterAuth({
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
 
-  // Cadastro fechado: toda criacao de usuario (e-mail/senha, OAuth, gate)
-  // passa por aqui. So o primeiro usuario do servidor (o dono instalando)
-  // ou quem traz um convite valido no cookie do link.
+  // Toda criacao de usuario (e-mail/senha, OAuth, gate) passa por aqui.
+  // `signupAllowed` decide: aberto pra qualquer um no SaaS multi-tenant
+  // (`GC_MULTI_TENANT=1`), fechado pro primeiro usuario do servidor (o dono
+  // instalando) ou quem traz convite valido em toda instalacao on-premise.
   databaseHooks: {
     user: {
       create: {

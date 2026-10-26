@@ -1,6 +1,6 @@
 import type { Sql } from "@/lib/db";
 import { hashInviteToken } from "@/lib/invite";
-import { isInviteTokenShape } from "@/lib/invite-constants";
+import { isInviteTokenShape, multiTenantEnabled } from "@/lib/invite-constants";
 
 /*
   Sem server functions aqui de proposito: o auth/server.ts importa este
@@ -50,11 +50,15 @@ export async function findOpenInvite(sql: Sql, token: unknown): Promise<OpenInvi
 }
 
 /**
- * Quem pode CRIAR conta: o primeiro usuario do servidor (vira o dono ao
- * entrar) ou quem traz um convite valido. O resto -- qualquer um que
- * alcance a maquina pela rede -- nao.
+ * Quem pode CRIAR conta: com `GC_MULTI_TENANT=1` (SaaS, so no Vercel),
+ * qualquer um -- `ensureTenant` decide depois se vira empresa nova ou
+ * entrada por convite. Sem a flag (padrao, instalacao on-premise): so o
+ * primeiro usuario do servidor (vira o dono ao entrar) ou quem traz um
+ * convite valido. O resto -- qualquer um que alcance a maquina pela rede --
+ * nao.
  */
 export async function signupAllowed(sql: Sql, token: unknown): Promise<boolean> {
+  if (multiTenantEnabled(process.env.GC_MULTI_TENANT)) return true;
   const [{ n }] = await sql<{ n: number }>`select count(*)::int as n from "user"`;
   if (Number(n) === 0) return true;
   return (await findOpenInvite(sql, token)) !== null;
