@@ -466,12 +466,14 @@ sem impacto hoje.
 
 ## Próximos (se o usuário disser “continuar”)
 
-1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decidido e feito de outro
-   jeito**: o sistema roda **on-premise**, instalado na máquina da loja
-   (Postgres local + serviço do Windows via NSSM + acesso remoto por
-   Tailscale). Ver `installer\README.md`. O caminho Vercel + Neon continua
-   existindo no código (migrations no `npm run build`), mas não é o que está
-   em produção — não mexa nele achando que é o alvo.
+1. ~~Hospedagem de produção (Vercel + Neon)~~ — **decisão revertida de novo,
+   a pedido explícito do usuário**: a loja piloto (`company_id=4`, Victor
+   Comércio) saiu do on-premise e está no **Vercel + Postgres (Neon-backed
+   via Vercel Storage)**. Ver item 120 pra todos os detalhes da migração.
+   O serviço on-premise desta máquina **continua instalado e rodando**,
+   intencionalmente — não foi desinstalado, é a rede de segurança enquanto
+   o Vercel é testado. Não reverta pro texto antigo deste item achando que
+   é desatualização.
 
 2. ~~Devolução parcial some da venda inteira em faturamento/relatório/LTV~~
    — **corrigido por completo** em `commission.ts`, `insight.ts`,
@@ -5779,6 +5781,65 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      checagem (erro "estouro de campo numeric" em vez da mensagem
      amigável). Descasamento de 0,01, praticamente nunca alcançável na
      prática; não mexi, só registrando.
+
+120. **Migração da loja piloto pro Vercel + Postgres (reversão do item 1),
+     registrada aqui porque nunca tinha sido — achei o buraco revisando o
+     HANDOFF hoje: item 114 já citava "migrada pro Vercel no item do
+     deploy", mas esse item não existia.** Resumo de ponta a ponta do que
+     foi feito (span de várias sessões, plano aprovado antes de começar):
+
+     **Código, 2 commits**: `75db010` troca `preset: "node-server"` fixo
+     (`vite.config.ts`) por `process.env.VERCEL ? "vercel" : "node-server"`
+     — a Vercel seta essa variável sozinha em todo build dela, a máquina
+     da loja nunca tem, então os dois presets convivem sem flag manual e o
+     build on-premise ficou idêntico a antes (conferido). `c4babd3`
+     atualiza `@tanstack/react-start` pra sair do CVE-2026-102989 (XSS),
+     achado no primeiro build da Vercel (o build local não pegava porque
+     usava uma versão de cache diferente).
+
+     **Infra, fora do repo**: Postgres criado via Vercel Storage (Neon por
+     baixo, sem precisar de conta Neon separada); projeto importado do
+     GitHub (`victorhenriquers90/gestao-comercial`); env vars configuradas
+     (`DATABASE_URL`, `VITE_AUTH_ENABLED=true`, `BETTER_AUTH_SECRET` novo,
+     `BETTER_AUTH_URL` com o domínio da Vercel) — **não** levou
+     `EXTRA_AUTH_HOSTS`/`HOST`/`PORT`/`GC_STATE_DIR`, específicas do
+     servidor Windows.
+
+     **Dados migrados** (só configuração — a empresa piloto nunca teve
+     venda/cliente/produto real, confirmado antes de começar): `pg_dump`
+     formato custom do Postgres local, `pg_restore --no-owner --no-acl`
+     contra o banco novo da Vercel. Isso incluiu a tabela `_migrations` já
+     marcada como aplicada, então o primeiro `npm run build` da Vercel
+     (que roda `db:migrate` sozinho) só conferiu e não recriou nada —
+     confirmado "up to date".
+
+     **Contas/sessão do Better Auth**: migradas à parte via CSV
+     (`\copy`), porque o dump original não incluía sessão ativa. No meio
+     disso apareceu um problema de login que levou a comparar hash byte a
+     byte pra descartar corrupção de dado (não era isso) — resolvido de
+     vez com o fluxo de convite (`lib/invite.ts`, token sha256 base64url),
+     porque **não insiro login/senha por conta do usuário em hipótese
+     nenhuma, regra fixa sem exceção** — isso inclui gerar token de
+     convite "pro usuário", tive que entregar como script pra ele rodar
+     (o classificador de segurança do Auto Mode bloqueou duas tentativas
+     minhas de gerar sozinho, decisão certa).
+
+     **Confirmado funcionando**: todos os deploys desde então aparecem
+     "Ready" na página de deployments (ex. `4897a2f`, o item 119, 20s de
+     build, Production). Os 4 fixes do PDV tablet (item 114) só foram
+     encontrados PORQUE o usuário já estava testando no ambiente novo.
+
+     **Em aberto, não confirmado nesta sessão**: a venda de teste
+     `ZZTESTE` ponta a ponta especificamente no PDV do Vercel (passo 5 do
+     plano original) nunca fechou com sucesso enquanto eu acompanhava —
+     os logs de request mostravam "zero tráfego" repetidas vezes (às
+     vezes porque o usuário estava sem querer num atalho antigo apontando
+     pro ambiente errado). Não é um bug conhecido, só uma verificação que
+     ficou pra trás quando o foco mudou pra revisão de código/QA/DBA. Se
+     "continuar" cair numa sessão livre, vale fechar isso: produto
+     `ZZTESTE` descartável, venda completa pelo PDV publicado no domínio
+     da Vercel, conferir no Postgres da Vercel (não no local), limpar
+     depois.
 
 ## Como a próxima IA deve trabalhar
 
