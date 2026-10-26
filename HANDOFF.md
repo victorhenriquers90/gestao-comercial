@@ -5716,6 +5716,70 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      testar — são handlers de servidor e componentes de UI, mesmo padrão
      "ao vivo" do resto da sessão).
 
+119. **Bateria de QA ao vivo (não só revisão de código) confirmou os
+     fixes dos itens 116-118, e revisão como DBA achou uma lacuna real
+     de defesa em profundidade no banco.**
+
+     **QA ao vivo**: usando a sessão local já autenticada (sem entrar
+     com credencial nenhuma — só usei o que já estava logado), testei
+     pela tela de verdade: diálogo de desconto com "1.500" (virou
+     R$1.500 certinho, não R$1,50), filtro "Zerados" com loja
+     específica (produto novo sem estoque agora aparece), e o mais
+     importante — criei uma venda em crediário, vencei a parcela via
+     SQL, fiz devolução parcial pela tela, e confirmei no banco que o
+     `status` gravado ficou `pendente` (não o literal `vencido`), com
+     o sino de cobrança e o Dashboard continuando a enxergar a dívida
+     corretamente. Achado menor: o formulário de "Novo produto" não
+     expõe preço por variante, então aquele bug específico (item 3 do
+     116) só era alcançável via chamada direta ao servidor, nunca pela
+     tela normal — risco prático bem menor do que parecia. Todo dado de
+     teste limpo depois, baseline conferido zerado de novo.
+
+     **Revisão como DBA**: o banco já tinha 148 índices (bem desenhados
+     — GIN/trigram pra busca fuzzy, parciais pra soft-delete, compostos
+     batendo com os filtros reais) e 112 foreign keys, mas um padrão
+     real: várias tabelas de dinheiro JÁ tinham CHECK constraint
+     (`payments`, `sale_items`, `sales`, `commissions`,
+     `cash_registers`, `card_rates`...), e os campos que os itens
+     116-118 corrigiram NO CÓDIGO esta mesma sessão não tinham
+     NENHUMA trava equivalente no banco: `memberships.discount_limit`,
+     `commission_rules.percent`, `product_variants.cost`/`price`,
+     `products.cost`/`price`, `purchases.total`/`discount`/`freight`/
+     `tax`, `accounts_receivable` e `accounts_payable`
+     (`amount`/`discount`/`*_amount`). Até agora a única coisa
+     impedindo um valor inválido nesses campos era a aplicação — se
+     algum caminho futuro no código esquecer de validar, o banco
+     aceitava.
+
+     **Corrigido**: `migrations/0036_money_percent_checks.sql` — sete
+     CHECK constraints novas, uma por tabela, espelhando exatamente os
+     limites que já existem no código (`requireRange(0,100)` pro
+     desconto do membro, o teto condicional por `kind` da comissão,
+     `>= 0` pros demais). `NOT VALID` de propósito, mesmo padrão já
+     usado em `cash_registers_close_sane` (migration 0025) — vale pro
+     que entrar daqui pra frente, sem varrer a tabela da loja em
+     produção durante a atualização.
+
+     **Verificação**: conferi ANTES de aplicar que zero linha do banco
+     real violaria qualquer uma das sete constraints novas. Depois de
+     aplicar (`npm run db:migrate`, idempotente — rodei de novo via
+     `npm run build` e deu "up to date"), testei ao vivo contra o
+     Postgres: `UPDATE memberships SET discount_limit = 150` e `INSERT
+     commission_rules ... percent = 200` foram REJEITADOS pelo banco
+     direto, em transação revertida depois — sem passar pela aplicação
+     nenhuma vez. Valores válidos (`percent = 50`, `percent = 5000`
+     pra `fixed_unit`) continuaram inserindo normal, confirmando que a
+     trava nova não ficou restritiva demais. `typecheck`/`lint`/`test`/
+     `build` limpos (migração não mexe em código TS/JS).
+
+     **Nota lateral, bem menor**: `commission_rules.percent` é
+     `numeric(6,2)` (máximo 9999,99), mas a mensagem de erro do código
+     pra `fixed_unit` fala em limite de 10000 — um valor de exatamente
+     10000,00 já estoura o TIPO da coluna antes mesmo de chegar na
+     checagem (erro "estouro de campo numeric" em vez da mensagem
+     amigável). Descasamento de 0,01, praticamente nunca alcançável na
+     prática; não mexi, só registrando.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
