@@ -72,6 +72,17 @@ export async function signupAllowed(sql: Sql, token: unknown): Promise<boolean> 
 export async function acceptInvite(sql: Sql, userId: string, token: unknown): Promise<void> {
   if (!isInviteTokenShape(token)) throw new Error("Convite inválido ou expirado.");
   await sql.transaction(async (tx) => {
+    // Serializa aceites concorrentes do MESMO usuario (duas abas, dois
+    // convites de empresas DIFERENTES ao mesmo tempo -- cenario real agora
+    // que o SaaS multi-tenant deixa a mesma pessoa receber convites de
+    // clientes distintos): sem isso, a checagem de "ja pertence a outra
+    // empresa" logo abaixo e um TOCTOU -- com zero membership gravada
+    // ainda, um `for update` normal nao tem linha nenhuma pra travar, e as
+    // duas transacoes passam pela checagem antes de qualquer uma COMMITar,
+    // deixando a conta com membership ativa em duas empresas ao mesmo
+    // tempo. Lock consultivo por usuario fecha essa janela sem precisar de
+    // uma linha pre-existente pra travar.
+    await tx`select pg_advisory_xact_lock(hashtext(${userId}))`;
     const [inv] = await tx<{ id: number; company_id: number; role: string; store_id: number | null }>`
       select id, company_id, role, store_id from pending_invites
        where token_hash = ${hashInviteToken(token)}

@@ -937,7 +937,7 @@ export const updateMemberFn = createServerFn({ method: "POST" })
                discount_limit = ${limit},
                is_active = ${isActive},
                store_id = ${storeId}
-         where id = ${member.id}
+         where id = ${member.id} and company_id = ${tenant.companyId}
       `;
       await audit(
         sql,

@@ -122,14 +122,18 @@ export const saveCardRatesFn = createServerFn({ method: "POST" })
  * sair do caixa como estorno -- nem mais (troco nao volta duas vezes), nem
  * menos (senao o esperado do fechamento fica inflado).
  */
-export async function dinheiroAindaNaVenda(sql: Sql, saleId: number): Promise<number> {
+export async function dinheiroAindaNaVenda(
+  sql: Sql,
+  companyId: number,
+  saleId: number,
+): Promise<number> {
   const [pago] = await sql<{ v: string | number }>`
     select coalesce(sum(amount), 0) as v from payments
-     where sale_id = ${saleId} and method = 'dinheiro'
+     where sale_id = ${saleId} and company_id = ${companyId} and method = 'dinheiro'
   `;
   const [devolvido] = await sql<{ v: string | number }>`
     select coalesce(sum(amount), 0) as v from cash_movements
-     where sale_id = ${saleId} and type in ('devolucao', 'cancelamento')
+     where sale_id = ${saleId} and company_id = ${companyId} and type in ('devolucao', 'cancelamento')
   `;
   return Number(Math.max(0, num(pago?.v) - num(devolvido?.v)).toFixed(2));
 }
@@ -1197,14 +1201,16 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
       `;
       await tx`
         update accounts_receivable set status = 'cancelado'
-        where sale_id = ${sale.id} and status in ('pendente','parcial')
+        where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status in ('pendente','parcial')
       `;
       await tx`
         update commissions set status = 'cancelado'
          where sale_id = ${sale.id} and company_id = ${tenant.companyId} and status = 'pendente'
       `;
       const [reg] = await tx<{ id: number }>`
-        select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
+        select id from cash_registers
+         where store_id = ${sale.store_id} and company_id = ${tenant.companyId} and status = 'open'
+         limit 1
       `;
       if (reg) {
         /*
@@ -1213,7 +1219,7 @@ export const cancelSaleFn = createServerFn({ method: "POST" })
           contando a venda cancelada, e a diferenca aparecia como FALTA do
           operador. Desconta o que ja voltou em devolucao parcial.
         */
-        const estorno = await dinheiroAindaNaVenda(tx, sale.id);
+        const estorno = await dinheiroAindaNaVenda(tx, tenant.companyId, sale.id);
         await tx`
           insert into cash_movements (company_id, store_id, register_id, user_id, type, method, amount, description, sale_id)
           values (${tenant.companyId}, ${sale.store_id}, ${reg.id}, ${tenant.userId}, 'cancelamento',
@@ -1538,10 +1544,15 @@ export const createReturnFn = createServerFn({ method: "POST" })
         devolvido depois de abater as parcelas -- zero aqui significa que o
         crediario/cartao ja cobriu tudo, e nao deve sair mais nada da gaveta.
       */
-      const cashRefund = Math.min(await dinheiroAindaNaVenda(sql, sale.id), restanteDevolucao);
+      const cashRefund = Math.min(
+        await dinheiroAindaNaVenda(sql, tenant.companyId, sale.id),
+        restanteDevolucao,
+      );
       if (cashRefund > 0.009) {
         const [reg] = await sql<{ id: number }>`
-          select id from cash_registers where store_id = ${sale.store_id} and status = 'open' limit 1
+          select id from cash_registers
+           where store_id = ${sale.store_id} and company_id = ${tenant.companyId} and status = 'open'
+           limit 1
         `;
         if (reg) {
           await sql`

@@ -1024,7 +1024,9 @@ export const saveSellerFn = createServerFn({ method: "POST" })
     const document = data.document ?? null;
     const storeName = async (id: unknown) => {
       if (id == null) return null;
-      const [st] = await sql<{ name: string }>`select name from stores where id = ${id as number}`;
+      const [st] = await sql<{ name: string }>`
+        select name from stores where id = ${id as number} and company_id = ${tenant.companyId}
+      `;
       return st?.name ?? null;
     };
     if (data.id) {

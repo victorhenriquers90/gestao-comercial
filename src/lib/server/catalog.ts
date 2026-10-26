@@ -1040,7 +1040,7 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
       }
       await sql`
         update purchases set status = 'recebido', received_at = now(), updated_at = now()
-        where id = ${p.id}
+        where id = ${p.id} and company_id = ${tenant.companyId}
       `;
       await sql`
         insert into accounts_payable (
@@ -1160,7 +1160,10 @@ export const undoReceivePurchaseFn = createServerFn({ method: "POST" })
       }
 
       if (pagavel) {
-        await sql`update accounts_payable set status = 'cancelado' where id = ${pagavel.id}`;
+        await sql`
+          update accounts_payable set status = 'cancelado'
+          where id = ${pagavel.id} and company_id = ${tenant.companyId}
+        `;
       }
 
       // Volta pra 'enviado' (nao pro status original, que nao fica
@@ -1169,7 +1172,7 @@ export const undoReceivePurchaseFn = createServerFn({ method: "POST" })
       // novo, pronto pra corrigir e tentar outra vez.
       await sql`
         update purchases set status = 'enviado', received_at = null, updated_at = now()
-        where id = ${p.id}
+        where id = ${p.id} and company_id = ${tenant.companyId}
       `;
       await audit(sql, tenant, "undo-receive", "purchase", p.id);
     });

@@ -613,7 +613,7 @@ export const reverseSettlementFn = createServerFn({ method: "POST" })
       await sql`
         update account_settlements set reversed_at = now(), reversed_by = ${tenant.userId},
           reverse_reason = ${data.reason}, reverse_movement_id = ${estornoId}
-         where id = ${num(ultima.id)}
+         where id = ${num(ultima.id)} and company_id = ${tenant.companyId}
       `;
       await audit(
         sql,
@@ -848,18 +848,20 @@ async function loadOpenRegister(
   const revelar = opts.force === true || (opts.canReveal === true && reg.expected_revealed_at != null);
 
   const movements = await sql<Row>`
-    select * from cash_movements where register_id = ${num(reg.id)} order by created_at desc
+    select * from cash_movements
+     where register_id = ${num(reg.id)} and company_id = ${companyId}
+     order by created_at desc
   `;
   const byMethod = await sql<{ method: string | null; type: string; total: string | number }>`
     select method, type, coalesce(sum(amount),0) as total
-    from cash_movements where register_id = ${num(reg.id)}
+    from cash_movements where register_id = ${num(reg.id)} and company_id = ${companyId}
     group by method, type
   `;
   // count(distinct sale_id) e nao count(*): venda paga metade no cartao e
   // metade em dinheiro gera dois lancamentos e continua sendo uma venda.
   const [vendas] = await sql<{ n: number }>`
     select count(distinct sale_id)::int as n from cash_movements
-     where register_id = ${num(reg.id)} and type = 'venda'
+     where register_id = ${num(reg.id)} and company_id = ${companyId} and type = 'venda'
   `;
 
   const sales = byMethod.filter((m) => m.type === "venda").reduce((a, m) => a + num(m.total), 0);
@@ -1638,7 +1640,7 @@ export const cancelExpenseFn = createServerFn({ method: "POST" })
         const [mov] = await sql<Row>`
           select m.store_id, m.register_id, r.status as register_status
             from cash_movements m
-            join cash_registers r on r.id = m.register_id
+            join cash_registers r on r.id = m.register_id and r.company_id = ${tenant.companyId}
            where m.id = ${num(cur.cash_movement_id)} and m.company_id = ${tenant.companyId}
            for update of r
         `;

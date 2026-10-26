@@ -5938,6 +5938,101 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      nenhuma cobrança ou limite — qualquer empresa nova tem acesso
      ilimitado ao sistema inteiro de graça).
 
+122. **Antes de ligar o SaaS multi-tenant de verdade (item 121), usuário
+     pediu pra revisar mais — auditoria completa de isolamento por
+     `company_id` em todo `src/lib/server/*` (12.792 linhas, ~130
+     funções), 6 agentes em paralelo cobrindo o código inteiro, mais a
+     correção do único bug real achado.**
+
+     **Resultado principal, a boa notícia**: **zero vazamento confirmado
+     entre empresas** em toda a base. O invariante documentado no topo
+     deste arquivo ("Toda mutation de negócio: requireTenant → assertCan
+     → SQL com company_id = tenant.companyId") se sustenta na prática,
+     não só na documentação — cada agente releu o arquivo inteiro (não
+     trechos de grep) e seguiu toda cadeia de confiança (`assertOwned`,
+     `assertStore`/`assertStoreOptional`, join por linha já filtrada)
+     antes de aceitar uma query como segura.
+
+     **O único bug de verdade (corrigido)**: condição de corrida em
+     `acceptInvite` (`invite-gate.ts`) — duas abas aceitando convites de
+     DUAS EMPRESAS DIFERENTES ao mesmo tempo, pro MESMO usuário, podiam
+     passar as duas pela checagem "já pertence a outra empresa" antes de
+     qualquer uma das duas commitar (a checagem lê `memberships`, que
+     ainda está vazia nesse instante — um `for update` comum não tem
+     linha nenhuma pra travar). Resultado: uma conta com membership ativa
+     em duas empresas ao mesmo tempo. Irrelevante enquanto só existia uma
+     empresa de verdade no banco; vira cenário real com o SaaS
+     multi-tenant (alguém que trabalha com/para duas lojas diferentes
+     recebendo dois convites por perto). **Corrigido** com
+     `pg_advisory_xact_lock(hashtext(userId))` logo no início da
+     transação — serializa aceites concorrentes do mesmo usuário sem
+     precisar de uma linha pré-existente pra travar. Confirmado direto
+     contra o Postgres (duas conexões reais, não só leitura de código):
+     a segunda transação ficou bloqueada até a primeira commitar, exatamente
+     como esperado.
+
+     **Nove reforços de defesa em profundidade** (nenhum explorável hoje —
+     todos "seguros porque reusam um id já validado na mesma
+     transação/função", confirmado por cada agente — mas frágeis a
+     refatoração futura, e o custo de corrigir é uma linha cada):
+     `commerce.ts` — `cancelSaleFn`/`createReturnFn`: UPDATE em
+     `accounts_receivable` e duas buscas de `cash_registers` por
+     `store_id` sozinho, agora com `company_id` também; `dinheiroAindaNaVenda`
+     ganhou parâmetro `companyId` (antes não tinha NENHUM — helper
+     compartilhado sem defesa própria, só seguro porque os dois call
+     sites de hoje passam um `sale.id` pré-validado). `finance.ts` —
+     `reverseSettlementFn` (UPDATE em `account_settlements`),
+     `loadOpenRegister` (3 leituras de `cash_movements` por
+     `register_id` sozinho), `cancelExpenseFn` (JOIN com `cash_registers`
+     sem repetir `company_id`). `catalog.ts` — `receivePurchaseFn`/
+     `undoReceivePurchaseFn`: 3 UPDATEs que eram os únicos sem
+     `company_id` no meio de funções onde toda linha vizinha já repetia.
+     `party.ts` — `saveSellerFn`'s `storeName`: helper interno que lia
+     `stores` por id sem filtro nenhum (só seguro hoje porque os dois
+     call sites já passam um id validado). `session.ts` —
+     `updateMemberFn`: UPDATE em `memberships` era exatamente o cenário
+     "usuário da empresa A edita membership da empresa B?" que pedi pros
+     agentes caçarem — confirmado seguro (o id já vem de um SELECT
+     travado com `company_id = tenant.companyId` na mesma transação),
+     reforçado mesmo assim.
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos, `npm test`
+     511/511 (sem teste novo — são reforços de query, não lógica de
+     domínio nova). Lock testado direto contra Postgres com duas conexões
+     reais (não só leitura de código).
+
+     **Riscos achados mas deliberadamente NÃO corrigidos agora** (todos
+     exigem reescrever lógica existente ou mudar schema, não é "reforçar
+     uma query"; ficam documentados pro usuário decidir):
+     - Quatro padrões "join por FK sem repetir company_id na tabela
+       filha" que dependem de uma invariante garantida em OUTRO arquivo
+       (`crediario.ts`→`customers`, `purchase-suggestion.ts`→`suppliers`,
+       `card-settlement.ts`→`payments`, `retention.ts`→`sellers`,
+       `party.ts`'s `listSellersFn`→`sales`/`commissions`) — todos
+       CONFIRMADOS seguros pelos próprios agentes cruzando com os outros
+       5 relatórios (ex.: `seller_id` em `sales` é validado por
+       `assertOwned` dentro do próprio `checkoutFn`, achado pelo agente
+       do commerce.ts).
+     - `stock.ts`'s `applyStockChange`: o `ON CONFLICT (store_id,
+       variant_id)` do INSERT em `inventories` não inclui `company_id` —
+       não dá pra "só adicionar o filtro" porque o alvo do ON CONFLICT
+       tem que bater com a constraint única de verdade da tabela; mudar
+       isso é alterar schema, não só a query. Hoje é seguro porque todo
+       `variantId` que chega em `applyStockChange` já passou por
+       `assertVariants` antes (confirmado nos 2 call sites lidos:
+       `stock-count.ts` e, por outro agente, `catalog.ts`/`commerce.ts`).
+     - `ensureTenant` (criar empresa nova) não roda dentro de uma
+       `sql.transaction` — uma falha no meio (crash, timeout) entre
+       criar a empresa e criar a loja/membership deixaria uma empresa
+       órfã sem dono. Mesma classe de corrida do bug corrigido acima
+       (duplo-clique no cadastro sem convite criaria DUAS empresas vazias
+       pro mesmo usuário), só que de impacto bem menor (autoinfligido,
+       cosmético, não vaza dado de ninguém) — envolve reestruturar várias
+       inserções em uma transação só, maior que um reforço pontual.
+
+     **Ainda de fora** (já estava no item 121, reafirmando): recuperação
+     de senha, página de marketing, billing/limite por empresa.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
