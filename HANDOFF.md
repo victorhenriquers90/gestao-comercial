@@ -6069,6 +6069,31 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      código: recuperação de senha, página de marketing, billing/limite
      por empresa.
 
+124. **`GC_MULTI_TENANT`/`VITE_MULTI_TENANT` ligadas no Vercel — usuário
+     confirmou explicitamente pelo chat, depois da auditoria dos itens
+     121-123.** `GC_MULTI_TENANT=1` e `VITE_MULTI_TENANT=true`
+     cadastradas como variável tipo "Config" (não secreta — são só
+     flags), escopo Production, direto pelo painel do Vercel. Cadastro
+     público agora abre de verdade em
+     `https://gestao-comercial-tawny-mu.vercel.app` assim que o próximo
+     deploy pegar as variáveis novas — o botão "Redeploy" do próprio
+     painel pediu reautenticação por código de e-mail da conta (passo de
+     segurança do Vercel, não algo que eu deva completar por conta
+     própria), então o deploy que aplica a flag é este mesmo commit,
+     empurrado pro `main` logo em seguida — mais simples e dentro do
+     fluxo normal da sessão inteira (push = deploy automático) do que
+     pedir pro usuário digitar um código.
+
+     **Ainda de fora, continua valendo** (itens 121-123): recuperação de
+     senha (nenhum caminho, self-service ou admin), página de
+     marketing/preço (`/` só redireciona pro login), billing/limite por
+     empresa (acesso ilimitado de graça pra qualquer empresa nova). Vale
+     testar ao vivo na URL de produção assim que possível: cadastro de
+     uma empresa de teste descartável de ponta a ponta (sinal "Cadastre a
+     sua" deve aparecer na tela de login agora), confirmar isolamento,
+     limpar depois — mesma disciplina de sempre, só que agora contra o
+     banco de produção de verdade em vez do Postgres local.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
