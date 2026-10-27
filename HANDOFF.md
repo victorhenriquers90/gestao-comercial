@@ -6094,6 +6094,53 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      limpar depois — mesma disciplina de sempre, só que agora contra o
      banco de produção de verdade em vez do Postgres local.
 
+125. **Cadastro multi-tenant testado de ponta a ponta DE VERDADE em
+     produção (não local), a pedido do usuário logo depois de ligar a
+     flag no item 124.**
+
+     Pela URL real (`gestao-comercial-tawny-mu.vercel.app`), sem nenhum
+     atalho/bypass desta vez (nas verificações locais anteriores usei
+     `fetch` direto pra contornar a instabilidade do servidor de dev —
+     aqui não precisou, o build de produção não tem esse problema):
+     cliquei "Cadastre a sua" na tela de login normal, preenchi
+     nome/e-mail/senha descartáveis (`ZZTESTE Producao E2E`,
+     `zzteste-producao-e2e@example.com`) e cliquei "Criar conta" pela
+     UI de verdade. Resultado: Dashboard abriu direto em "ZZTESTE
+     COMÉRCIO" com "Loja principal", tudo zerado, sem nenhum erro — e o
+     PDV (`/app/pdv`) também carregou limpo, "Caixa fechado" como
+     esperado numa empresa nova. Confirmei contra os Request Logs do
+     Vercel (não só a tela): `POST /api/auth/sign-up/email` → 200,
+     seguido de várias chamadas `/_serverFn/...` (inclusive a que faz o
+     `ensureTenant` transacional do item 123) → todas 200, depois
+     `GET /app/pdv` → 200. Rastro completo, limpo, sem erro nenhum — a
+     mesma verificação de tráfego real que tinha ficado em aberto desde
+     o início da migração pro Vercel (ver item 120) finalmente fecha,
+     só que agora provando o caminho novo (cadastro multi-tenant) em vez
+     da venda manual que nunca tinha sido confirmada.
+
+     **Importante, diferente de todo teste anterior nesta sessão: não
+     consegui limpar depois.** Todo teste local sempre foi apagado do
+     banco por mim via `psql`/script Node direto contra o Postgres —
+     isso exige a `DATABASE_URL` de produção, que eu nunca puxei de
+     propósito (bloqueado pelo classificador de segurança quando tentei
+     uma vez, ver item 120, e não tentei de novo). **Ficou uma empresa
+     de teste de verdade no banco de produção**: `ZZTESTE Comércio`
+     (nome que o cadastro gerou a partir de "ZZTESTE" no campo Nome),
+     conta `zzteste-producao-e2e@example.com`, uma loja ("Loja
+     principal"), sem nenhuma venda/produto/cliente — só o esqueleto
+     vazio que todo cadastro novo ganha. Se o usuário quiser remover:
+     não existe exclusão de empresa pela tela (nunca foi construída,
+     nem precisa pra isto); precisa apagar direto no Postgres do Vercel
+     (mesmas tabelas do script de limpeza usado nos testes locais:
+     `session`/`account` do usuário, `memberships`, `cash_accounts`,
+     `company_settings`, `stores`, `companies`, `user`) — ou simplesmente
+     deixar, já que não é dado real nem custa nada.
+
+     **Nota pequena, achada nos logs, não é bug**: aparece um aviso do
+     driver `pg` sobre `sslmode=prefer/require` virarem alias de
+     `verify-full` numa major futura da lib — é só um deprecation
+     warning do Node, não afeta nada hoje, não mexi.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
