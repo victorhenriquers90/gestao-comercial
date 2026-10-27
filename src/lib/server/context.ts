@@ -316,87 +316,108 @@ export async function ensureTenant(
   // unica (empresa extra por engano) e so foi fechado de vez pro caso
   // on-premise; o multi-tenant reabre exatamente essa porta, de proposito,
   // so onde a flag liga.
-  const [{ n: empresas }] = await sql<{ n: number }>`select count(*)::int as n from companies`;
-  if (Number(empresas) > 0 && !multiTenantEnabled(process.env.GC_MULTI_TENANT)) {
-    throw new Error(NO_ACCESS_MESSAGE);
-  }
-
   const user = await loadUser(sql, userId);
   const firstName = user.name?.split(" ")[0] || "Minha";
   const companyName = `${firstName} Comércio`;
-  const [company] = await sql<{ id: number }>`
-    insert into companies (name, trade_name, email)
-    values (${companyName}, ${companyName}, ${user.email})
-    returning id
-  `;
-  const companyId = company!.id;
   const demo = demoSeedEnabled(dbSource, process.env.GC_DEMO_SEED);
 
-  // Sem demonstracao: uma loja so, sem cidade inventada -- endereco errado
-  // aqui iria parar em cupom e nota. O dono completa em Configuracoes.
-  const [store] = demo
-    ? await sql<{ id: number }>`
+  // Tudo numa transacao so, com lock consultivo por usuario logo no
+  // inicio -- fecha duas falhas de uma vez, achadas numa auditoria de
+  // isolamento (ver HANDOFF, item 122): (1) sem transacao, uma queda no
+  // meio das insercoes (empresa criada, loja/membership nao) deixava uma
+  // empresa orfa sem dono; (2) sem o lock, duas chamadas concorrentes pro
+  // MESMO usuario sem convite (duplo clique, duas abas) passavam as duas
+  // pela checagem de "servidor vazio" antes de qualquer uma commitar e
+  // criavam DUAS empresas vazias pro mesmo usuario -- mesma familia de
+  // corrida corrigida em `acceptInvite` (invite-gate.ts), mesma tecnica.
+  const tenant = await sql.transaction(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext(${userId}))`;
+
+    // Confere de novo DENTRO da transacao/lock: outra chamada concorrente
+    // pode ter acabado de criar a empresa (via convite ou via este mesmo
+    // caminho) enquanto esperava o lock.
+    const existingLocked = await loadTenant(tx, userId);
+    if (existingLocked) return existingLocked;
+
+    const [{ n: empresas }] = await tx<{ n: number }>`select count(*)::int as n from companies`;
+    if (Number(empresas) > 0 && !multiTenantEnabled(process.env.GC_MULTI_TENANT)) {
+      throw new Error(NO_ACCESS_MESSAGE);
+    }
+
+    const [company] = await tx<{ id: number }>`
+      insert into companies (name, trade_name, email)
+      values (${companyName}, ${companyName}, ${user.email})
+      returning id
+    `;
+    const companyId = company!.id;
+
+    // Sem demonstracao: uma loja so, sem cidade inventada -- endereco errado
+    // aqui iria parar em cupom e nota. O dono completa em Configuracoes.
+    const [store] = demo
+      ? await tx<{ id: number }>`
+          insert into stores (company_id, name, code, city, state)
+          values (${companyId}, 'Loja Centro', 'LJ01', 'São Paulo', 'SP')
+          returning id
+        `
+      : await tx<{ id: number }>`
+          insert into stores (company_id, name, code)
+          values (${companyId}, 'Loja principal', 'LJ01')
+          returning id
+        `;
+    const storeId = store!.id;
+
+    if (demo) {
+      await tx`
         insert into stores (company_id, name, code, city, state)
-        values (${companyId}, 'Loja Centro', 'LJ01', 'São Paulo', 'SP')
-        returning id
-      `
-    : await sql<{ id: number }>`
-        insert into stores (company_id, name, code)
-        values (${companyId}, 'Loja principal', 'LJ01')
-        returning id
+        values (${companyId}, 'Loja Shopping', 'LJ02', 'São Paulo', 'SP')
       `;
-  const storeId = store!.id;
+    }
 
-  if (demo) {
-    await sql`
-      insert into stores (company_id, name, code, city, state)
-      values (${companyId}, 'Loja Shopping', 'LJ02', 'São Paulo', 'SP')
+    await tx`
+      insert into memberships (company_id, user_id, role, store_id)
+      values (${companyId}, ${userId}, 'admin', ${storeId})
     `;
-  }
 
-  await sql`
-    insert into memberships (company_id, user_id, role, store_id)
-    values (${companyId}, ${userId}, 'admin', ${storeId})
-  `;
-
-  await sql`
-    insert into company_settings (company_id, print_header, print_footer, receipt_message)
-    values (
-      ${companyId},
-      ${companyName},
-      'Obrigado pela preferência.',
-      'Trocas em até 7 dias com nota fiscal.'
-    )
-  `;
-
-  for (const kind of ["caixa", "banco", "pix", "cartao", "carteira"] as const) {
-    const label =
-      kind === "caixa"
-        ? "Caixa da loja"
-        : kind === "banco"
-          ? "Conta corrente"
-          : kind === "pix"
-            ? "PIX"
-            : kind === "cartao"
-              ? "Maquininha"
-              : "Carteira";
-    await sql`
-      insert into cash_accounts (company_id, store_id, name, kind, opening_balance)
-      values (${companyId}, ${storeId}, ${label}, ${kind}, ${demo && kind === "caixa" ? 350 : 0})
+    await tx`
+      insert into company_settings (company_id, print_header, print_footer, receipt_message)
+      values (
+        ${companyId},
+        ${companyName},
+        'Obrigado pela preferência.',
+        'Trocas em até 7 dias com nota fiscal.'
+      )
     `;
-  }
 
-  if (demo) {
-    await seedCompany(sql, {
-      companyId,
-      storeId,
-      userId,
-      companyName,
-      userName: user.name,
-    });
-  }
+    for (const kind of ["caixa", "banco", "pix", "cartao", "carteira"] as const) {
+      const label =
+        kind === "caixa"
+          ? "Caixa da loja"
+          : kind === "banco"
+            ? "Conta corrente"
+            : kind === "pix"
+              ? "PIX"
+              : kind === "cartao"
+                ? "Maquininha"
+                : "Carteira";
+      await tx`
+        insert into cash_accounts (company_id, store_id, name, kind, opening_balance)
+        values (${companyId}, ${storeId}, ${label}, ${kind}, ${demo && kind === "caixa" ? 350 : 0})
+      `;
+    }
 
-  const tenant = await loadTenant(sql, userId);
+    if (demo) {
+      await seedCompany(tx, {
+        companyId,
+        storeId,
+        userId,
+        companyName,
+        userName: user.name,
+      });
+    }
+
+    return loadTenant(tx, userId);
+  });
+
   if (!tenant) throw new Error("Falha ao inicializar a empresa.");
   return tenant;
 }

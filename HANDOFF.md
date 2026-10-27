@@ -6021,17 +6021,53 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        `variantId` que chega em `applyStockChange` já passou por
        `assertVariants` antes (confirmado nos 2 call sites lidos:
        `stock-count.ts` e, por outro agente, `catalog.ts`/`commerce.ts`).
-     - `ensureTenant` (criar empresa nova) não roda dentro de uma
-       `sql.transaction` — uma falha no meio (crash, timeout) entre
-       criar a empresa e criar a loja/membership deixaria uma empresa
-       órfã sem dono. Mesma classe de corrida do bug corrigido acima
-       (duplo-clique no cadastro sem convite criaria DUAS empresas vazias
-       pro mesmo usuário), só que de impacto bem menor (autoinfligido,
-       cosmético, não vaza dado de ninguém) — envolve reestruturar várias
-       inserções em uma transação só, maior que um reforço pontual.
+     - ~~`ensureTenant` (criar empresa nova) não roda dentro de uma
+       `sql.transaction`~~ — **corrigido no item 123**, ver abaixo.
 
      **Ainda de fora** (já estava no item 121, reafirmando): recuperação
      de senha, página de marketing, billing/limite por empresa.
+
+123. **Continuação do item 122: fechado o único risco que tinha ficado
+     deliberadamente pra depois ("maior que um reforço pontual").**
+
+     `ensureTenant` (`context.ts`) criava empresa nova com ~7 `insert`
+     separados, nenhum dentro de transação — uma queda no meio (crash,
+     timeout, deploy no momento errado) deixava uma empresa órfã, criada
+     mas sem loja/membership/caixa, inacessível e invisível pro próprio
+     dono. E sem lock nenhum, duas chamadas concorrentes do MESMO usuário
+     sem convite (duplo clique no cadastro, duas abas) passavam as duas
+     pela checagem de "servidor vazio"/multi-tenant antes de qualquer
+     uma commitar, criando DUAS empresas vazias pro mesmo usuário —
+     mesma família de corrida do `acceptInvite` corrigido no item 122,
+     só que entre uma conta nova e ela mesma em vez de duas empresas
+     diferentes.
+
+     **Corrigido com a mesma técnica**: todo o bloco de criação (empresa,
+     loja(s), membership, `company_settings`, os 5 `cash_accounts`, e o
+     seed de demonstração quando ligado) agora roda dentro de um único
+     `sql.transaction`, com `pg_advisory_xact_lock(hashtext(userId))`
+     logo no início — fecha a corrida igual ao `acceptInvite`, e de
+     quebra fecha a falha parcial (tudo grava junto ou nada grava).
+     Reconferida a condição de servidor vazio/multi-tenant DENTRO do
+     lock (outra chamada pode ter acabado de criar a empresa enquanto
+     esta esperava), e o atalho de "já tem empresa" também passou a
+     rodar dentro da transação, pelo mesmo motivo.
+
+     **Verificação**: `typecheck`/`lint`/`build` limpos, `npm test`
+     511/511. Ao vivo contra o Postgres local (empresa descartável,
+     limpa depois): cadastro criou empresa 19 "ZZTESTE Comércio" com
+     todas as 5 linhas esperadas na mesma transação (loja, membership,
+     company_settings, 5 cash_accounts), Dashboard carregou certo sem
+     erro. Recarreguei a página com a mesma conta depois — confirmado
+     que não duplicou a empresa (o atalho de "já tem tenant" segue
+     funcionando normal dentro da transação). Limpeza completa depois,
+     zero traço.
+
+     Com isso, os dois riscos de corrida achados na auditoria do item
+     122 (`acceptInvite` e `ensureTenant`) estão corrigidos. O que falta
+     pra "comercialização" continua sendo o mesmo de sempre, fora do
+     código: recuperação de senha, página de marketing, billing/limite
+     por empresa.
 
 ## Como a próxima IA deve trabalhar
 
