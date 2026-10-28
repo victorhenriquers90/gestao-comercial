@@ -6224,6 +6224,92 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Verificação final**: `typecheck`/`lint`/`build` limpos, `npm test`
      511/511 (nada aqui é lógica de domínio testável por unit test).
 
+128. **Pedido grande do usuário: "evoluir pra produto profissional" — UX/UI,
+     qualidade, comercialização. Etapa 1 de um trabalho que vai continuar
+     em várias sessões: protegeu ações destrutivas que disparavam
+     instantâneas, sem confirmação nenhuma.**
+
+     **Diagnóstico antes de mexer em qualquer coisa** (pra não redesenhar o
+     que já está bom): o sistema JÁ tem uma base de design madura —
+     `src/styles.css` com tokens de cor com contraste calculado e
+     documentado (6,93:1, ajustado depois de achar o texto secundário
+     ilegível), `src/components/shared.tsx` com biblioteca própria
+     (`PageHeader`, `EmptyState`, `KpiCard`, `DataTable`, `Pager`,
+     `PageSkeleton`, `ConfirmBar`), foco visível já embutido nos
+     componentes de formulário (`focus-visible:ring-2`), Dashboard com 8
+     indicadores reais (não decorativos) com tendência vs. período
+     anterior. Não é um sistema amador — avaliar isso primeiro evitou
+     desperdiçar a etapa 1 "consertando" coisa que já funcionava.
+
+     Rodei uma auditoria dedicada (agente lendo as ~20 telas sob
+     `src/routes/app`) atrás de inconsistências reais, não suposições.
+     Achado nº 1 em impacto: `ConfirmBar` (o componente de confirmação)
+     **existia no `shared.tsx` mas nunca tinha sido importado em lugar
+     nenhum** — toda tela que protege uma ação destrutiva reinventa seu
+     próprio diálogo, e cinco telas não protegiam nada: a venda cancelava,
+     o pedido de compra recebia/desfazia, a comissão pagava, a
+     sangria/suprimento saía do caixa, e o usuário desativava — tudo no
+     instante do clique, sem nenhum "tem certeza?".
+
+     **Corrigido**: `ConfirmBar` finalmente ligado nos 5 pontos achados (8
+     chamadas ao todo):
+     - `vendas.tsx` — cancelar venda (estoque volta, não dá pra desfazer).
+     - `compras.tsx` — receber pedido E desfazer recebimento (dois
+       pontos de entrada cada: linha da lista E diálogo de detalhe, ambos
+       cobertos porque passam pela mesma função).
+     - `vendedores.tsx` — pagar comissão, nas três formas que existem
+       (uma comissão, todas de um vendedor, todas do filtro atual) — uma
+       `ConfirmBar` só, com mensagem que muda pelo caso, mostrando o valor
+       de verdade quando dá pra calcular.
+     - `caixa.tsx` — sangria e suprimento (valor digitado só é validado
+       ANTES de abrir a confirmação, pra não confirmar um valor inválido).
+     - `configuracoes.tsx` — desativar membro da equipe (reativar continua
+       instantâneo de propósito — não é uma ação destrutiva, não precisa
+       de fricção).
+
+     **Verificação**: `typecheck`/`lint`/`build`/`npm test` limpos
+     (511/511, nenhum teste novo — é UI, não lógica de domínio). Sem
+     sessão autenticada disponível (expirou desde a verificação anterior,
+     e login continua sendo proibido eu fazer), usei a mesma técnica de
+     laboratório estático já documentada neste HANDOFF (CSS compilado de
+     verdade + marcação real do componente, servido localmente): o
+     `ConfirmBar` renderiza certo — cartão centralizado, título legível,
+     botão destrutivo em vermelho bem diferenciado do "Cancelar" neutro,
+     consistente com o resto do sistema. **Não testei clicando de
+     verdade dentro de cada uma das 5 telas** — isso ainda precisa de
+     alguém logado (usuário ou uma sessão futura) confirmando que o fluxo
+     completo (abrir confirmação → confirmar → ação realmente executa;
+     abrir → cancelar → nada acontece) funciona em cada tela específica.
+
+     **Pendências desta etapa, registradas pelo próprio agente de
+     auditoria, pra próxima(s) etapa(s)** (ver relatório completo citado
+     acima pra file:line de cada um):
+     1. Nenhuma tela tem ordenação de coluna (afeta todas as listas).
+     2. 5 telas sem busca (financeiro contas a pagar/receber, compras
+        pedidos, promoções, devoluções, vendedores/equipe) vs. 5 que já
+        têm busca com debounce.
+     3. 4 telas sem paginação em dado potencialmente ilimitado
+        (financeiro contas a pagar/receber, promoções, devoluções,
+        vendedores/equipe).
+     4. Linhas de tabela clicáveis sem acesso por teclado (5 telas:
+        clientes, fornecedores, produtos, compras, vendas — `<tr
+        onClick>` sem `role`/`tabIndex`/`onKeyDown`).
+     5. Formulário de cliente/fornecedor/produto sem validação de campo
+        obrigatório no cliente (nome vazio pode salvar sem aviso nenhum).
+     6. Toda validação do sistema é só por toast — nenhum formulário
+        mostra erro junto do campo específico.
+     7. Três mecanismos de validação coexistindo (toast, `required`
+        nativo do HTML no formulário de despesa, diálogo com motivo
+        obrigatório) — escolher um e padronizar.
+     8. Textos soltos de "Carregando…"/vazio dentro de diálogos/sub-abas
+        (compras, produtos, configurações) em vez de reusar
+        `PageSkeleton`/`EmptyState`.
+
+     Próxima etapa (quando o usuário confirmar o rumo): provavelmente
+     busca/paginação nas 4-5 telas que ficaram pra trás (acham #2/#3
+     acima), por ser o maior ganho de uso diário depois da proteção
+     contra clique acidental já feita aqui.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { ConfirmBar, DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,6 +42,8 @@ function ComprasPage() {
   const [salvandoPedido, setSalvandoPedido] = useState(false);
   const [recebendoId, setRecebendoId] = useState<number | null>(null);
   const [desfazendoId, setDesfazendoId] = useState<number | null>(null);
+  const [confirmReceive, setConfirmReceive] = useState<number | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState<number | null>(null);
   const [supplier, setSupplier] = useState<PickedSupplier | null>(null);
   const [status, setStatus] = useState("pedido");
   const [freight, setFreight] = useState("0");
@@ -167,7 +169,7 @@ function ComprasPage() {
                     disabled={recebendoId != null}
                     onClick={(e) => {
                       e.stopPropagation();
-                      void receive(row.id);
+                      setConfirmReceive(row.id);
                     }}
                   >
                     {recebendoId === row.id ? "Recebendo…" : "Receber"}
@@ -356,7 +358,7 @@ function ComprasPage() {
                 </div>
               </div>
               {p.status !== "recebido" && p.status !== "cancelado" ? (
-                <Button className="w-full" disabled={recebendoId === p.id} onClick={() => void receive(p.id)}>
+                <Button className="w-full" disabled={recebendoId === p.id} onClick={() => setConfirmReceive(p.id)}>
                   {recebendoId === p.id ? "Recebendo…" : "Receber pedido"}
                 </Button>
               ) : p.receivedAt ? (
@@ -371,7 +373,7 @@ function ComprasPage() {
                       size="sm"
                       variant="outline"
                       disabled={desfazendoId === p.id}
-                      onClick={() => void undoReceive(p.id)}
+                      onClick={() => setConfirmUndo(p.id)}
                     >
                       {desfazendoId === p.id
                         ? "Desfazendo…"
@@ -384,6 +386,39 @@ function ComprasPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmBar
+        open={confirmReceive != null}
+        title={`Receber o pedido${
+          confirmReceive != null
+            ? " nº " + (purchases.find((x) => x.id === confirmReceive)?.number ?? confirmReceive)
+            : ""
+        }? Lança o estoque e a conta a pagar na hora.`}
+        confirmLabel="Receber pedido"
+        onCancel={() => setConfirmReceive(null)}
+        onConfirm={() => {
+          const id = confirmReceive!;
+          setConfirmReceive(null);
+          void receive(id);
+        }}
+      />
+
+      <ConfirmBar
+        open={confirmUndo != null}
+        title={`Desfazer o recebimento${
+          confirmUndo != null
+            ? " do pedido nº " + (purchases.find((x) => x.id === confirmUndo)?.number ?? confirmUndo)
+            : ""
+        }? Reverte estoque e conta a pagar.`}
+        confirmLabel="Desfazer recebimento"
+        danger
+        onCancel={() => setConfirmUndo(null)}
+        onConfirm={() => {
+          const id = confirmUndo!;
+          setConfirmUndo(null);
+          void undoReceive(id);
+        }}
+      />
     </div>
   );
 }

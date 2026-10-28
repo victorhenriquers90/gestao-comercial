@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
@@ -60,6 +60,9 @@ function VendedoresPage() {
   const [statusFilter, setStatusFilter] = useState("pendente");
   const [taxOpen, setTaxOpen] = useState<number | null>(null);
   const [slips, setSlips] = useState<CommissionSlipData[] | null>(null);
+  const [payConfirm, setPayConfirm] = useState<
+    { kind: "one"; id: number } | { kind: "all"; sellerId?: number } | null
+  >(null);
   const list = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const [commissionsPage, setCommissionsPage] = useState(0);
@@ -298,7 +301,7 @@ function VendedoresPage() {
                 <Td>
                   <div className="flex flex-wrap justify-end gap-1">
                     {s.pending_commission > 0.009 ? (
-                      <Button size="sm" onClick={() => void payAll(s.id)}>
+                      <Button size="sm" onClick={() => setPayConfirm({ kind: "all", sellerId: s.id })}>
                         Pagar
                       </Button>
                     ) : null}
@@ -329,7 +332,7 @@ function VendedoresPage() {
               <option value="cancelado">Canceladas</option>
             </Select>
             {statusFilter === "pendente" || statusFilter === "" ? (
-              <Button variant="outline" onClick={() => void payAll()}>
+              <Button variant="outline" onClick={() => setPayConfirm({ kind: "all" })}>
                 Pagar pendentes
               </Button>
             ) : null}
@@ -374,7 +377,7 @@ function VendedoresPage() {
                 <Td>{formatDateTime(c.createdAt)}</Td>
                 <Td>
                   {c.status === "pendente" ? (
-                    <Button size="sm" variant="outline" onClick={() => void pay(c.id)}>
+                    <Button size="sm" variant="outline" onClick={() => setPayConfirm({ kind: "one", id: c.id })}>
                       Pagar
                     </Button>
                   ) : (
@@ -614,6 +617,30 @@ function VendedoresPage() {
           ))}
         </DialogContent>
       </Dialog>
+
+      <ConfirmBar
+        open={payConfirm != null}
+        title={(() => {
+          if (!payConfirm) return "";
+          if (payConfirm.kind === "one") {
+            const c = commissionItems.find((x) => x.id === payConfirm.id);
+            return `Pagar a comissão de ${c ? formatBRL(c.net) + " de " + c.sellerName : "este item"}? Não dá pra desfazer pela tela.`;
+          }
+          if (payConfirm.sellerId != null) {
+            const s = sellers.find((x) => x.id === payConfirm.sellerId);
+            return `Pagar ${s ? formatBRL(s.pending_net ?? s.pending_commission) + " em comissões pendentes de " + s.name : "as comissões pendentes deste vendedor"}? Não dá pra desfazer pela tela.`;
+          }
+          return "Pagar todas as comissões pendentes do filtro atual? Não dá pra desfazer pela tela.";
+        })()}
+        confirmLabel="Pagar"
+        onCancel={() => setPayConfirm(null)}
+        onConfirm={() => {
+          const confirm = payConfirm!;
+          setPayConfirm(null);
+          if (confirm.kind === "one") void pay(confirm.id);
+          else void payAll(confirm.sellerId);
+        }}
+      />
     </div>
   );
 }

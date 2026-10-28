@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input, Textarea } from "@/components/ui/input";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { ConfirmBar, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
@@ -41,6 +41,7 @@ function VendasPage() {
   const [to, setTo] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
   // para o esqueleto e o campo de busca perdia o foco.
@@ -411,16 +412,9 @@ function VendasPage() {
                   <Input placeholder="Motivo do cancelamento" value={reason} onChange={(e) => setReason(e.target.value)} />
                   <Button
                     variant="destructive"
-                    onClick={async () => {
+                    onClick={() => {
                       if (!reason.trim()) return toast.error("Informe o motivo.");
-                      try {
-                        await cancelSaleFn({ data: { id: openId!, reason } });
-                        toast.success("Venda cancelada. Estoque restaurado.");
-                        setOpenId(null);
-                        void qc.invalidateQueries({ queryKey: ["sales"] });
-                      } catch (e) {
-                        toast.error(e instanceof Error ? e.message : "Falha");
-                      }
+                      setConfirmCancel(true);
                     }}
                   >
                     Cancelar venda
@@ -431,6 +425,25 @@ function VendasPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ConfirmBar
+        open={confirmCancel}
+        title={`Cancelar a venda${detail.data ? " nº " + String(detail.data.sale.number) : ""}? O estoque volta e não dá pra desfazer.`}
+        confirmLabel="Cancelar venda"
+        danger
+        onCancel={() => setConfirmCancel(false)}
+        onConfirm={async () => {
+          setConfirmCancel(false);
+          try {
+            await cancelSaleFn({ data: { id: openId!, reason } });
+            toast.success("Venda cancelada. Estoque restaurado.");
+            setOpenId(null);
+            void qc.invalidateQueries({ queryKey: ["sales"] });
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Falha");
+          }
+        }}
+      />
     </div>
   );
 }

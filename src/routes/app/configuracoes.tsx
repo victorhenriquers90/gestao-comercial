@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageHeader, PageSkeleton } from "@/components/shared";
+import { ConfirmBar, PageHeader, PageSkeleton } from "@/components/shared";
 import { can, ROLE_LABELS, ROLES } from "@/lib/permissions";
 import {
   closeStoreFn,
@@ -137,6 +137,7 @@ function ConfigPage() {
   });
   /** Loja aguardando confirmação de fechamento; `null` fecha o diálogo. */
   const [fechandoLoja, setFechandoLoja] = useState<{ id: number; name: string } | null>(null);
+  const [desativando, setDesativando] = useState<{ id: number; label: string } | null>(null);
 
   /**
    * Caminho unico de gravacao desta tela. Quatro botoes daqui (nova loja,
@@ -545,14 +546,13 @@ function ConfigPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        const desativar = m.is_active;
-                        void updateMemberFn({ data: { id: m.id, isActive: !desativar } })
+                        if (m.is_active) {
+                          setDesativando({ id: m.id, label: m.name || m.email || "Usuário" });
+                          return;
+                        }
+                        void updateMemberFn({ data: { id: m.id, isActive: true } })
                           .then(() => {
-                            toast.success(
-                              desativar
-                                ? `${m.name || m.email || "Usuário"} desativado: não consegue mais entrar.`
-                                : `${m.name || m.email || "Usuário"} reativado.`,
-                            );
+                            toast.success(`${m.name || m.email || "Usuário"} reativado.`);
                             void qc.invalidateQueries({ queryKey: ["settings"] });
                           })
                           .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
@@ -759,6 +759,24 @@ function ConfigPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmBar
+        open={desativando != null}
+        title={`Desativar ${desativando?.label ?? "este usuário"}? Não consegue mais entrar até ser reativado.`}
+        confirmLabel="Desativar"
+        danger
+        onCancel={() => setDesativando(null)}
+        onConfirm={() => {
+          const alvo = desativando!;
+          setDesativando(null);
+          void updateMemberFn({ data: { id: alvo.id, isActive: false } })
+            .then(() => {
+              toast.success(`${alvo.label} desativado: não consegue mais entrar.`);
+              void qc.invalidateQueries({ queryKey: ["settings"] });
+            })
+            .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+        }}
+      />
     </div>
   );
 }

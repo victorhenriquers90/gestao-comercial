@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { CashClosuresPanel } from "@/components/cash-closures-panel";
 import { CashCountSheet, type CountMode } from "@/components/cash-count-sheet";
-import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { ConfirmBar, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import {
   CASH_DIFFERENCE_TOLERANCE,
@@ -59,6 +59,7 @@ function CaixaPage() {
   const [moveAmt, setMoveAmt] = useState("");
   const [moveDesc, setMoveDesc] = useState("");
   const [movendo, setMovendo] = useState(false);
+  const [confirmMove, setConfirmMove] = useState<"sangria" | "suprimento" | null>(null);
   const [modo, setModo] = useState<CountMode>("cedula");
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const [totalDireto, setTotalDireto] = useState("");
@@ -90,13 +91,18 @@ function CaixaPage() {
    * vezes menor que o real, sem erro nenhum. Mesma classe ja corrigida na
    * abertura e no fechamento deste mesmo caixa (ver comentarios abaixo).
    */
-  async function registrarMovimento(type: "sangria" | "suprimento") {
+  function pedirMovimento(type: "sangria" | "suprimento") {
     if (movendo) return;
     const valor = parseMoneyInput(moveAmt);
     if (!Number.isFinite(valor) || valor <= 0) {
       toast.error("Informe um valor maior que zero.");
       return;
     }
+    setConfirmMove(type);
+  }
+
+  async function registrarMovimento(type: "sangria" | "suprimento") {
+    const valor = parseMoneyInput(moveAmt);
     setMovendo(true);
     try {
       await cashMoveFn({
@@ -410,14 +416,14 @@ function CaixaPage() {
                 <Button
                   variant="outline"
                   disabled={movendo || !podeFechar}
-                  onClick={() => void registrarMovimento("sangria")}
+                  onClick={() => pedirMovimento("sangria")}
                 >
                   {movendo ? "Registrando…" : "Sangria"}
                 </Button>
                 <Button
                   variant="outline"
                   disabled={movendo || !podeFechar}
-                  onClick={() => void registrarMovimento("suprimento")}
+                  onClick={() => pedirMovimento("suprimento")}
                 >
                   {movendo ? "Registrando…" : "Suprimento"}
                 </Button>
@@ -543,6 +549,20 @@ function CaixaPage() {
         <p className="mb-block ed-title">Fechamentos recentes</p>
         <CashClosuresPanel storeId={activeStore} />
       </Card>
+
+      <ConfirmBar
+        open={confirmMove != null}
+        title={`${confirmMove === "sangria" ? "Retirar" : "Colocar"} ${formatBRL(parseMoneyInput(moveAmt))} ${
+          confirmMove === "sangria" ? "do" : "no"
+        } caixa${moveDesc.trim() ? " — " + moveDesc.trim() : ""}?`}
+        confirmLabel={confirmMove === "sangria" ? "Registrar sangria" : "Registrar suprimento"}
+        onCancel={() => setConfirmMove(null)}
+        onConfirm={() => {
+          const type = confirmMove!;
+          setConfirmMove(null);
+          void registrarMovimento(type);
+        }}
+      />
     </div>
   );
 }
