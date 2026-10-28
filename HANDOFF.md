@@ -6310,6 +6310,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      acima), por ser o maior ganho de uso diário depois da proteção
      contra clique acidental já feita aqui.
 
+129. **Continuação do item 128 (etapa 2, tocada em loop autônomo): busca e
+     paginação em Contas a pagar/receber — a lacuna que o próprio agente
+     de auditoria marcou como "a mais consequente", porque é a lista
+     financeira que mais cresce sem teto.**
+
+     `listPayablesFn`/`listReceivablesFn` (`finance.ts`) traziam a tabela
+     inteira sempre, sem busca nem limite nenhum — `financeiro.tsx`
+     renderizava `pay.data.map(...)` direto. Adicionado busca (descrição
+     + fornecedor/cliente, `ilike`) e paginação (`parsePaging`, mesmo
+     helper que `listExpensesFn` já usava nesta mesma tela, `count(*)
+     over()` pro total) nas duas funções, com `Input` de busca com debounce
+     e `Pager` nas duas abas, seguindo o padrão já estabelecido em
+     `clientes.tsx`/`fornecedores.tsx`.
+
+     **Achado no meio do caminho, corrigido antes de virar regressão**: o
+     card "Títulos vencidos" do topo da tela contava `vencido` somando
+     `pay.data`/`rec.data` INTEIROS — se eu só limitasse a lista (SQL
+     `limit`/`offset`), esse contador passaria a mostrar só os vencidos da
+     PÁGINA atual, não da empresa inteira, quebrando um KPI financeiro de
+     verdade sem ninguém perceber até reclamarem do número errado.
+     Corrigido adicionando uma contagem separada (`overdueTotal`), em SQL,
+     INDEPENDENTE da busca/paginação — mesma definição de "vencido" que
+     `accountStatus()` já usa linha a linha (saldo aberto > 0 centavos e
+     vencimento passou), só que como agregado. Pra não arriscar a data
+     "hoje" do SQL (`current_date`, fuso do servidor) descasar da do
+     Node (`ymdLocal()`, já usada em todo o resto do financeiro — mesma
+     cautela de sempre com data/fuso neste projeto), passei `ymdLocal()`
+     como parâmetro em vez de deixar o Postgres decidir sozinho o que é
+     "hoje".
+
+     **Verificação, não só tipo batendo**: criei 5 lançamentos
+     descartáveis em `accounts_payable` da empresa piloto cobrindo os
+     casos que importam — pendente futuro (não vencido), pendente
+     vencido, parcial vencido (saldo aberto + venceu = ainda conta como
+     vencido, mesma prioridade do `accountStatus`), pago com vencimento
+     no passado (NÃO conta, já quitado) e cancelado com vencimento no
+     passado (NÃO conta) — e rodei a MESMA query SQL que a função usa
+     direto no Postgres: `overdue_count` voltou 2 (exatamente os dois
+     certos), busca por "ZZTESTE" achou os 5, busca por "Parcial" achou
+     só 1, paginação com `limit 2 offset 2` devolveu as linhas certas na
+     ordem certa. Limpo depois, zero traço.
+     `typecheck`/`lint`/`build`/`npm test` limpos (511/511).
+
+     **Pendências do item 128 que ainda restam**: compras (pedidos),
+     promoções, devoluções e vendedores (aba Equipe) continuam sem busca
+     nem paginação — mesmo padrão a aplicar, telas diferentes. Ordenação
+     de coluna, linhas de tabela sem acesso por teclado, e validação só
+     por toast continuam de fora desta etapa também.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

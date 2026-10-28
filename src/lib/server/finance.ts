@@ -33,12 +33,24 @@ function accountStatus(row: { status: string; due_date: string; amount: unknown;
 
 export const listPayablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string }) => d)
+  .validator((d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
+    const termo = data.q?.trim();
+    // Sem busca nem paginacao antes: uma despesa recorrente (aluguel,
+    // fornecedor fixo) sozinha ja passa de 100 lancamentos em menos de um
+    // ano, mesmo teto silencioso do item 63/77 (ver listExpensesFn acima) --
+    // so que aqui ninguem tinha notado ainda porque a lista nunca tinha
+    // ficado grande o bastante no piloto. `status` continua filtrado em JS
+    // (accountStatus calcula "vencido" por linha, nao da pra repetir isso
+    // no SQL sem arriscar descasar da mesma logica) -- so busca e paginacao
+    // viram SQL.
     const rows = await sql.query<Row>(
-      `select ap.*, s.legal_name as supplier_name,
+      `select count(*) over() as row_count, ap.*, s.legal_name as supplier_name,
               ls.amount as last_settlement_amount, ls.method as last_settlement_method
          from accounts_payable ap
          left join suppliers s on s.id = ap.supplier_id
@@ -50,22 +62,47 @@ export const listPayablesFn = createServerFn({ method: "POST" })
          ) ls on true
         where ap.company_id = $1 and ap.deleted_at is null
           and ($2::int is null or ap.store_id = $2)
-        order by ap.due_date asc`,
-      [tenant.companyId, data.storeId ?? null],
+          and ($3::text is null or ap.description ilike $3 or s.legal_name ilike $3)
+        order by ap.due_date asc
+        limit $4 offset $5`,
+      [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );
-    return rows
-      .map((r) => ({
-        ...r,
-        amount: num(r.amount),
-        paid_amount: num(r.paid_amount),
-        status: accountStatus({
-          status: String(r.status),
-          due_date: String(r.due_date).slice(0, 10),
-          amount: r.amount,
-          paid: r.paid_amount,
-        }),
-      }))
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows
+      .map((r) => {
+        const { row_count: _rc, ...rest } = r;
+        return {
+          ...rest,
+          amount: num(r.amount),
+          paid_amount: num(r.paid_amount),
+          status: accountStatus({
+            status: String(r.status),
+            due_date: String(r.due_date).slice(0, 10),
+            amount: r.amount,
+            paid: r.paid_amount,
+          }),
+        };
+      })
       .filter((r) => !data.status || r.status === data.status);
+    // Contagem de vencidos independente da busca/paginacao -- o card
+    // "Títulos vencidos" do financeiro precisa do total real da empresa,
+    // nao so do que coube na pagina atual ou bateu com o termo buscado.
+    // Mesma definicao de "vencido" do accountStatus (saldo aberto > 0 e
+    // venceu), so que calculada em SQL pra nao precisar trazer a tabela
+    // inteira so pra contar -- `ymdLocal()` continua sendo quem decide
+    // "hoje" (passado como parametro), o mesmo valor que accountStatus usa
+    // pra cada linha, pra nao arriscar as duas contas descasarem.
+    const [{ overdue_count }] = await sql.query<{ overdue_count: number }>(
+      `select count(*)::int as overdue_count
+         from accounts_payable ap
+        where ap.company_id = $1 and ap.deleted_at is null
+          and ($2::int is null or ap.store_id = $2)
+          and ap.status not in ('pago', 'cancelado')
+          and (ap.amount - ap.paid_amount) > 0.009
+          and ap.due_date < $3::date`,
+      [tenant.companyId, data.storeId ?? null, ymdLocal()],
+    );
+    return { items: dump(items), total, overdueTotal: overdue_count };
   });
 
 export const savePayableFn = createServerFn({ method: "POST" })
@@ -281,12 +318,16 @@ export const settlePayableFn = createServerFn({ method: "POST" })
 
 export const listReceivablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string }) => d)
+  .validator((d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
+    const termo = data.q?.trim();
     const rows = await sql.query<Row>(
-      `select ar.*, c.name as customer_name,
+      `select count(*) over() as row_count, ar.*, c.name as customer_name,
               ls.amount as last_settlement_amount, ls.method as last_settlement_method
          from accounts_receivable ar
          left join customers c on c.id = ar.customer_id
@@ -298,22 +339,41 @@ export const listReceivablesFn = createServerFn({ method: "POST" })
          ) ls on true
         where ar.company_id = $1 and ar.deleted_at is null
           and ($2::int is null or ar.store_id = $2)
-        order by ar.due_date asc`,
-      [tenant.companyId, data.storeId ?? null],
+          and ($3::text is null or ar.description ilike $3 or c.name ilike $3)
+        order by ar.due_date asc
+        limit $4 offset $5`,
+      [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );
-    return rows
-      .map((r) => ({
-        ...r,
-        amount: num(r.amount),
-        received_amount: num(r.received_amount),
-        status: accountStatus({
-          status: String(r.status),
-          due_date: String(r.due_date).slice(0, 10),
-          amount: r.amount,
-          received: r.received_amount,
-        }),
-      }))
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows
+      .map((r) => {
+        const { row_count: _rc, ...rest } = r;
+        return {
+          ...rest,
+          amount: num(r.amount),
+          received_amount: num(r.received_amount),
+          status: accountStatus({
+            status: String(r.status),
+            due_date: String(r.due_date).slice(0, 10),
+            amount: r.amount,
+            received: r.received_amount,
+          }),
+        };
+      })
       .filter((r) => !data.status || r.status === data.status);
+    // Mesmo raciocinio do listPayablesFn: contagem de vencidos independente
+    // da busca/paginacao, pro card "Títulos vencidos".
+    const [{ overdue_count }] = await sql.query<{ overdue_count: number }>(
+      `select count(*)::int as overdue_count
+         from accounts_receivable ar
+        where ar.company_id = $1 and ar.deleted_at is null
+          and ($2::int is null or ar.store_id = $2)
+          and ar.status not in ('pago', 'cancelado')
+          and (ar.amount - ar.received_amount) > 0.009
+          and ar.due_date < $3::date`,
+      [tenant.companyId, data.storeId ?? null, ymdLocal()],
+    );
+    return { items: dump(items), total, overdueTotal: overdue_count };
   });
 
 export const saveReceivableFn = createServerFn({ method: "POST" })

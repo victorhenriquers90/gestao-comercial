@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
 import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
 import {
   ACCOUNT_STATUS_LABELS,
@@ -112,14 +113,53 @@ function FinanceiroPage() {
   const [motivo, setMotivo] = useState("");
   const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false);
 
+  const PAY_PAGE_SIZE = 100;
+  const [payQ, setPayQ] = useState("");
+  const [payPage, setPayPage] = useState(0);
+  const payTermo = useDebounced(payQ.trim(), 250);
   const pay = useQuery({
-    queryKey: ["ap", storeId],
-    queryFn: () => listPayablesFn({ data: { storeId: storeId ?? undefined } }),
+    queryKey: ["ap", storeId, payTermo, payPage],
+    queryFn: () =>
+      listPayablesFn({
+        data: {
+          storeId: storeId ?? undefined,
+          q: payTermo || undefined,
+          limit: PAY_PAGE_SIZE,
+          offset: payPage * PAY_PAGE_SIZE,
+        },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const payItems = pay.data?.items ?? [];
+  const payTotal = pay.data?.total ?? 0;
+  const payPaginaVazia = !pay.isPlaceholderData && pay.data != null && payItems.length === 0 && payPage > 0;
+  useEffect(() => {
+    if (payPaginaVazia) setPayPage(0);
+  }, [payPaginaVazia]);
+
+  const REC_PAGE_SIZE = 100;
+  const [recQ, setRecQ] = useState("");
+  const [recPage, setRecPage] = useState(0);
+  const recTermo = useDebounced(recQ.trim(), 250);
   const rec = useQuery({
-    queryKey: ["ar", storeId],
-    queryFn: () => listReceivablesFn({ data: { storeId: storeId ?? undefined } }),
+    queryKey: ["ar", storeId, recTermo, recPage],
+    queryFn: () =>
+      listReceivablesFn({
+        data: {
+          storeId: storeId ?? undefined,
+          q: recTermo || undefined,
+          limit: REC_PAGE_SIZE,
+          offset: recPage * REC_PAGE_SIZE,
+        },
+      }),
+    placeholderData: keepPreviousData,
   });
+  const recItems = rec.data?.items ?? [];
+  const recTotal = rec.data?.total ?? 0;
+  const recPaginaVazia = !rec.isPlaceholderData && rec.data != null && recItems.length === 0 && recPage > 0;
+  useEffect(() => {
+    if (recPaginaVazia) setRecPage(0);
+  }, [recPaginaVazia]);
   const flow = useQuery({
     queryKey: ["flow", storeId, range.from, range.to],
     queryFn: () => cashflowFn({ data: { from: range.from, to: range.to, storeId: storeId ?? undefined } }),
@@ -200,8 +240,8 @@ function FinanceiroPage() {
   }
 
   const ehEstorno = cancelando?.kind === "estorno-pagar" || cancelando?.kind === "estorno-receber";
-  const overduePay = (pay.data ?? []).filter((r) => String(r.status) === "vencido").length;
-  const overdueRec = (rec.data ?? []).filter((r) => String(r.status) === "vencido").length;
+  const overduePay = pay.data?.overdueTotal ?? 0;
+  const overdueRec = rec.data?.overdueTotal ?? 0;
 
   return (
     <div>
@@ -253,14 +293,30 @@ function FinanceiroPage() {
           >
             Nova conta
           </Button>
-          {!pay.data?.length ? (
+          <Input
+            className="mb-block max-w-sm"
+            placeholder="Descrição ou fornecedor"
+            aria-label="Buscar conta a pagar por descrição ou fornecedor"
+            value={payQ}
+            onChange={(e) => {
+              setPayQ(e.target.value);
+              setPayPage(0);
+            }}
+          />
+          {!payItems.length ? (
             <EmptyState
-              title="Nenhuma conta a pagar cadastrada."
-              description="Lance a primeira conta ou receba um pedido de compra para gerar automaticamente."
+              title={payTermo ? `Nenhuma conta a pagar encontrada para “${payTermo}”.` : "Nenhuma conta a pagar cadastrada."}
+              description={
+                payTermo
+                  ? undefined
+                  : "Lance a primeira conta ou receba um pedido de compra para gerar automaticamente."
+              }
               action={
-                <Button size="sm" onClick={() => setOpenPay(true)}>
-                  Nova conta
-                </Button>
+                payTermo ? undefined : (
+                  <Button size="sm" onClick={() => setOpenPay(true)}>
+                    Nova conta
+                  </Button>
+                )
               }
             />
           ) : (
@@ -276,7 +332,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {pay.data.map((r: Record<string, unknown>) => {
+            {payItems.map((r: Record<string, unknown>) => {
               const late = String(r.status) === "vencido";
               return (
                 <tr
@@ -400,6 +456,7 @@ function FinanceiroPage() {
             })}
           </DataTable>
           )}
+          <Pager page={payPage} pageSize={PAY_PAGE_SIZE} shown={payItems.length} total={payTotal} onPage={setPayPage} />
         </TabsContent>
         <TabsContent value="cartoes">
           <CardSettlementPanel storeId={storeId ?? null} />
@@ -421,14 +478,28 @@ function FinanceiroPage() {
           >
             Novo título
           </Button>
-          {!rec.data?.length ? (
+          <Input
+            className="mb-block max-w-sm"
+            placeholder="Descrição ou cliente"
+            aria-label="Buscar conta a receber por descrição ou cliente"
+            value={recQ}
+            onChange={(e) => {
+              setRecQ(e.target.value);
+              setRecPage(0);
+            }}
+          />
+          {!recItems.length ? (
             <EmptyState
-              title="Nenhuma conta a receber cadastrada."
-              description="Lance o primeiro título ou venda a prazo para gerar automaticamente."
+              title={recTermo ? `Nenhuma conta a receber encontrada para “${recTermo}”.` : "Nenhuma conta a receber cadastrada."}
+              description={
+                recTermo ? undefined : "Lance o primeiro título ou venda a prazo para gerar automaticamente."
+              }
               action={
-                <Button size="sm" onClick={() => setOpenRec(true)}>
-                  Novo título
-                </Button>
+                recTermo ? undefined : (
+                  <Button size="sm" onClick={() => setOpenRec(true)}>
+                    Novo título
+                  </Button>
+                )
               }
             />
           ) : (
@@ -444,7 +515,7 @@ function FinanceiroPage() {
               </tr>
             }
           >
-            {rec.data.map((r: Record<string, unknown>) => {
+            {recItems.map((r: Record<string, unknown>) => {
               const late = String(r.status) === "vencido";
               return (
                 <tr
@@ -569,6 +640,7 @@ function FinanceiroPage() {
             })}
           </DataTable>
           )}
+          <Pager page={recPage} pageSize={REC_PAGE_SIZE} shown={recItems.length} total={recTotal} onPage={setRecPage} />
         </TabsContent>
         <TabsContent value="fluxo">
           <div className="space-y-2 text-sm">
