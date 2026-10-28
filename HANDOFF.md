@@ -6169,6 +6169,61 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      'zzteste-producao-e2e@example.com'` voltou `0`. Banco de produção
      limpo, só a empresa piloto real nele.
 
+127. **Pedido "continuar" depois do cadastro multi-tenant no ar: revisei o
+     que mudou com o cadastro público aberto e achei um achado real na
+     trava de força bruta do login.**
+
+     O Better Auth já vem com rate limit ligado em produção por padrão (3
+     tentativas de sign-in/sign-up a cada 10s — bom o bastante, não mexi
+     na regra). O problema era o ARMAZENAMENTO: sem `storage`/
+     `secondaryStorage` configurado, ele usa um `Map()` em memória do
+     próprio processo Node. Numa instalação on-premise (um processo só,
+     sempre o mesmo) isso funciona. No Vercel — funções serverless, cada
+     uma podendo nascer do zero a qualquer momento, múltiplas instâncias
+     concorrentes sob carga — esse `Map()` reinicia o tempo todo; a trava
+     vira decorativa bem na hora que mais importa, agora que qualquer um
+     na internet alcança `/sign-in` e `/sign-up`. Não era um problema
+     teórico-nunca-testado: confirmei lendo o próprio código-fonte do
+     Better Auth (`node_modules/better-auth/.../rate-limiter/index.mjs`),
+     não só a documentação.
+
+     **Corrigido**: `rateLimit: { storage: "database" }` em
+     `auth/server.ts`, reaproveitando o MESMO Postgres que já existe (sem
+     infra nova). Precisa de uma tabela que o próprio Better Auth espera
+     (`migrations/0037_rate_limit_storage.sql`, seguindo a mesma
+     convenção camelCase/aspas duplas de `0001_auth.sql`).
+
+     **Verificação, não só leitura de código**: rodei o BUILD DE
+     PRODUÇÃO de verdade local (`npm run build` + `node
+     .output/server/index.mjs` com `NODE_ENV=production`, não o servidor
+     de dev — evita toda a instabilidade de HMR já documentada em outros
+     itens) e disparei 5 tentativas de login seguidas via curl: as 3
+     primeiras voltaram `401` (credencial errada, esperado), a 4ª e 5ª
+     voltaram `429` (bloqueado), exatamente no limite certo. Conferi
+     direto no Postgres que a trava realmente gravou lá (`select * from
+     "rateLimit"` mostrou a linha com `count: 3`), não só confiei na
+     resposta HTTP. Linha de teste limpa depois.
+
+     **Investigado e descartado** (pra não repetir a dúvida numa sessão
+     futura): cheguei a suspeitar que a identificação por IP também
+     pudesse estar quebrada em produção — se o Vercel entregasse
+     `x-forwarded-for` como uma cadeia de vários IPs (comum atrás de
+     proxy), o Better Auth sem `trustedProxies` configurado cai num balde
+     único "sem IP confiável" pra TODO MUNDO, e aí 3 tentativas de UM
+     usuário bloqueariam o login de QUALQUER outro por 10s — um problema
+     bem pior que o de armazenamento. Confirmei na documentação oficial
+     do Vercel (`vercel.com/docs/headers/request-headers`) que isso não
+     se aplica aqui: `x-forwarded-for` no Vercel é sobrescrito pelo
+     próprio Vercel com o IP público real do cliente, um valor só, sem
+     encadear hops — só vira cadeia se tiver OUTRO proxy na frente do
+     Vercel, que não é o caso deste projeto (domínio é `*.vercel.app`
+     direto, sem Cloudflare nem nada no meio). Não mexi em nada
+     relacionado a IP/proxy — confirmado que já funciona certo por
+     padrão.
+
+     **Verificação final**: `typecheck`/`lint`/`build` limpos, `npm test`
+     511/511 (nada aqui é lógica de domínio testável por unit test).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

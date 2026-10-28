@@ -200,6 +200,15 @@ export const auth = betterAuth({
   secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
   database,
 
+  // Trava de sign-in/sign-up (3 tentativas/10s, padrão do Better Auth em
+  // produção) precisa persistir no banco, não no `Map()` em memória padrão
+  // -- no Vercel cada função serverless pode nascer do zero a qualquer
+  // momento, e com várias instâncias concorrentes cada uma teria seu
+  // próprio contador isolado. Sem isto a trava virava decorativa assim
+  // que o cadastro público abriu (ver HANDOFF.md, item 127). Tabela
+  // `rateLimit` em `migrations/0037_rate_limit_storage.sql`.
+  rateLimit: { storage: "database" },
+
   // CSRF / origin check for credentialed auth POSTs (email sign-up/sign-in, …).
   // See `trustedOrigins` construction above — must cover live preview hosts AND
   // local loopback variants, or clients get "Invalid origin".
