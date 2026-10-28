@@ -6412,6 +6412,53 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      fora desta etapa: ordenação de coluna (nenhuma tela tem), linhas de
      tabela sem acesso por teclado, validação só por toast.
 
+131. **Continuação do item 128: linhas de tabela clicáveis sem acesso por
+     teclado (5 telas, mesmo padrão idêntico) — a próxima pendência da
+     lista, tocada em loop autônomo.**
+
+     `clientes.tsx`, `fornecedores.tsx`, `produtos.tsx`, `compras.tsx` e
+     `vendas.tsx` abrem o detalhe clicando numa `<tr>` inteira
+     (`cursor-pointer` + `onClick`), sem `tabIndex`, `onKeyDown` nem
+     `role` nenhum — só funcionava no mouse. Como é o MESMO padrão nas 5
+     telas (não uma inconsistência entre elas), criei um helper
+     reutilizável (`clickableRow`, novo em `shared.tsx`, ao lado de
+     `DataTable`/`Th`/`Td`) em vez de repetir a lógica 5 vezes — devolve
+     `role="button"`, `tabIndex={0}`, `onClick` e `onKeyDown`
+     (Enter/Espaço) pra espalhar na `<tr>`.
+
+     `role="button"` em vez de deixar a `<tr>` como `row` implícito foi
+     decisão deliberada: a linha já FUNCIONA como botão (um alvo
+     clicável, uma ação só), então anunciar ela como tal pro leitor de
+     tela é mais honesto do que focar em algo "clicável" sem nunca
+     avisar que dá pra ativar.
+
+     **Achado no meio do caminho, corrigido antes de virar bug**:
+     `compras.tsx` tem um botão "Receber" DENTRO da linha clicável (ação
+     rápida, já com `stopPropagation()` no clique pra não abrir o
+     detalhe junto). `stopPropagation()` no clique não impede o
+     `keydown` de borbulhar (evento diferente) — sem tratar isso, apertar
+     Enter com foco no botão interno disparava a ação dele E a da linha
+     inteira, em dobro. Corrigido no helper com `e.target !==
+     e.currentTarget` (só reage quando o Enter/Espaço aconteceu na
+     própria linha, não borbulhado de um filho).
+
+     **Verificação**: `typecheck`/`lint`/`build`/`npm test` limpos
+     (511/511 — puro JS de interação, nada de lógica de domínio pra
+     testar). Visual conferido com a técnica de laboratório estático já
+     documentada (CSS compilado de verdade): `role="button"` +
+     `tabIndex` não baguncem o layout da tabela, cabeçalho continua
+     opaco e visível. E o mais importante — testado com Tab de verdade
+     no navegador (não só lido o código): o foco realmente entra na
+     linha e mostra o contorno padrão do navegador, visível (conferido
+     que o CSS deste projeto não zera `outline` globalmente, só em
+     elementos específicos como `.pdv-search-input`).
+
+     Com isso, as 3 pendências do item 128 ficam reduzidas a 2: ordenação
+     de coluna (nenhuma tela tem — maior escopo, toca praticamente toda
+     lista do sistema) e validação só por toast (decisão de design de
+     UI, não só mecânica — melhor esperar mais direção antes de
+     arquitetar isso).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -6,7 +6,7 @@ import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { formatBRL, formatDoc } from "@/lib/format";
@@ -112,7 +112,7 @@ function FornecedoresPage() {
             <tr
               key={s.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => setDetailId(s.id)}
+              {...clickableRow(() => setDetailId(s.id))}
             >
               <Td>
                 <p className="font-medium">{s.tradeName || s.legalName}</p>

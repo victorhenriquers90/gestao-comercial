@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { ConfirmBar, DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -168,7 +168,7 @@ function ComprasPage() {
             <tr
               key={row.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => setDetailId(row.id)}
+              {...clickableRow(() => setDetailId(row.id))}
             >
               <Td className="tabular">{row.number}</Td>
               <Td>{row.supplierName ?? "—"}</Td>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { CustomerPanel } from "@/components/customer-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId, useSearchParam } from "@/hooks/use-search-id";
@@ -149,7 +149,7 @@ function ClientesPage() {
             <tr
               key={c.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => setDetailId(c.id)}
+              {...clickableRow(() => setDetailId(c.id))}
             >
               <Td className="font-medium">{c.name}</Td>
               <Td>{formatDoc(c.document)}</Td>

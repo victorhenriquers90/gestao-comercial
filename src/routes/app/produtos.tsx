@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
@@ -331,7 +331,7 @@ function ProdutosPage() {
             <tr
               key={p.id}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => void openForEdit(p.id)}
+              {...clickableRow(() => void openForEdit(p.id))}
             >
               <Td>
                 <div className="flex items-center gap-3">

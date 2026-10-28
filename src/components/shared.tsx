@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { pageRangeLabel } from "@/lib/paging";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -112,6 +112,41 @@ export function KpiCard({
       ) : null}
     </Card>
   );
+}
+
+/**
+ * Props pra espalhar numa `<tr>` que abre um detalhe ao clicar (padrão já
+ * usado em clientes/fornecedores/produtos/compras/vendas, sempre com
+ * `className="cursor-pointer"` do lado de fora).
+ *
+ * Sem isto, a linha só funcionava no mouse: nenhuma tinha `tabIndex`,
+ * `onKeyDown` ou `role` — quem navega só pelo teclado não alcançava o
+ * detalhe nenhum jeito. `role="button"` em vez de deixar a `<tr>` como
+ * `row` implícito é de propósito: a linha JÁ FUNCIONA como botão (um alvo
+ * clicável, uma ação), então anunciar ela como tal é mais honesto que
+ * fingir que é só uma linha de dado estática — o alternativo (manter
+ * `role="row"` e só adicionar foco/tecla) deixaria quem usa leitor de tela
+ * focando em algo "clicável" sem o leitor nunca avisar que dá pra ativar.
+ * Mesmo botão (Enter e Espaço) que qualquer `<button>` nativo já aceita.
+ */
+export function clickableRow(onClick: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick,
+    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
+      // So reage quando o Enter/Espaco aconteceu na PROPRIA linha. Linha
+      // com botao de acao rapida dentro (ex.: "Receber" em compras.tsx) ja
+      // tem seu proprio onClick com stopPropagation — isso cobre cliques
+      // de mouse, mas keydown continua borbulhando (evento diferente).
+      // Sem este filtro, apertar Enter com foco no botao INTERNO disparava
+      // a acao dele E a da linha, em dobro.
+      if (e.target !== e.currentTarget) return;
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      onClick();
+    },
+  };
 }
 
 export function TableWrap({ children }: { children: ReactNode }) {

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input, Textarea } from "@/components/ui/input";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
-import { ConfirmBar, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
@@ -198,7 +198,7 @@ function VendasPage() {
             <tr
               key={String(s.id)}
               className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
-              onClick={() => setOpenId(num(s.id))}
+              {...clickableRow(() => setOpenId(num(s.id)))}
             >
               <Td className="tabular">{String(s.number)}</Td>
               <Td>{formatDateTime(String(s.sold_at))}</Td>
