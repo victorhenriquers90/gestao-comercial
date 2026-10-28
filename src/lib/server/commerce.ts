@@ -1606,21 +1606,32 @@ export const createReturnFn = createServerFn({ method: "POST" })
     return { id: ret.id, kind: ret.kind, total: ret.total, pendenciaFiscal: pendencia };
   });
 
-export const listReturnsFn = createServerFn({ method: "GET" })
+export const listReturnsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
+  .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "returns.write");
-    return dump(
-      await sql<Row>`
-      select r.*, s.number as sale_number
-      from returns r
-      join sales s on s.id = r.sale_id
-      where r.company_id = ${tenant.companyId}
-      order by r.created_at desc
-      limit 100
-    `,
+    const termo = data.q?.trim();
+    // `limit 100` fixo, sem busca nem contagem -- achado numa auditoria de
+    // UX (ver HANDOFF, item 128), mesma classe do item 63/77. Busca por
+    // numero da venda OU motivo da devolucao.
+    const rows = await sql.query<Row>(
+      `select count(*) over() as row_count, r.*, s.number as sale_number
+         from returns r
+         join sales s on s.id = r.sale_id
+        where r.company_id = $1
+          and ($2::text is null or s.number::text ilike $2 or r.reason ilike $2)
+        order by r.created_at desc
+        limit $3 offset $4`,
+      [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows.map((r) => {
+      const { row_count: _rc, ...rest } = r;
+      return rest;
+    });
+    return { items: dump(items), total };
   });
 
 export type HeldPayload = {
@@ -1838,6 +1849,44 @@ export const listPromotionsFn = createServerFn({ method: "GET" })
       productName: r.product_name == null ? null : String(r.product_name),
       categoryName: r.category_name == null ? null : String(r.category_name),
     }));
+  });
+
+/**
+ * Lista de promoções pra TELA de administração (`promocoes.tsx`) — busca e
+ * paginação, achado faltando numa auditoria de UX (ver HANDOFF, item 128).
+ *
+ * Função SEPARADA de `listPromotionsFn` de propósito: aquela é usada pelo
+ * PDV (`use-pdv-sale.ts`) pra calcular o melhor preço de cada item na
+ * venda, e precisa de TODAS as promoções ativas, nunca só uma página --
+ * paginar ali faria uma promoção real ficar fora do cálculo e cobrar
+ * errado no caixa. Reaproveitar a mesma função pras duas telas trocando só
+ * os parâmetros arriscava esse descasamento silencioso; mais seguro ter
+ * duas funções com responsabilidades diferentes do que uma só emendada.
+ */
+export const listPromotionsAdminFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
+  .handler(async ({ context, data }): Promise<{ items: PromoRow[]; total: number }> => {
+    const { sql, tenant } = await requireTenant(context.userId);
+    const termo = data.q?.trim();
+    const rows = await sql.query<Row>(
+      `select count(*) over() as row_count, pr.*, p.name as product_name, c.name as category_name
+         from promotions pr
+         left join products p on p.id = pr.product_id
+         left join categories c on c.id = pr.category_id
+        where pr.company_id = $1
+          and ($2::text is null or pr.name ilike $2 or p.name ilike $2 or c.name ilike $2)
+        order by pr.created_at desc, pr.id desc
+        limit $3 offset $4`,
+      [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
+    );
+    const total = rows.length ? num(rows[0]!.row_count) : 0;
+    const items = rows.map((r) => ({
+      ...mapPromo(r),
+      productName: r.product_name == null ? null : String(r.product_name),
+      categoryName: r.category_name == null ? null : String(r.category_name),
+    }));
+    return { items: dump(items) as PromoRow[], total };
   });
 
 function promoSnapshot(p: Promo) {

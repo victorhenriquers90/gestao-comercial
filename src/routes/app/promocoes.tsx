@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { useDebounced } from "@/hooks/use-debounced";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { listCategoriesFn } from "@/lib/server/catalog";
-import { listPromotionsFn, savePromotionFn, setPromotionActiveFn } from "@/lib/server/commerce";
+import { listPromotionsAdminFn, savePromotionFn, setPromotionActiveFn } from "@/lib/server/commerce";
 
 export const Route = createFileRoute("/app/promocoes")({ component: PromocoesPage });
 
@@ -38,8 +39,23 @@ function PromocoesPage() {
   const [product, setProduct] = useState<PickedProduct | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [alternando, setAlternando] = useState<number | null>(null);
-  const list = useQuery({ queryKey: ["promos"], queryFn: () => listPromotionsFn() });
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
+  const termo = useDebounced(q.trim(), 250);
+  const list = useQuery({
+    queryKey: ["promos", "admin", termo, page],
+    queryFn: () =>
+      listPromotionsAdminFn({ data: { q: termo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+    placeholderData: keepPreviousData,
+  });
+  const promos = list.data?.items ?? [];
+  const promosTotal = list.data?.total ?? 0;
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
+  const paginaVazia = !list.isPlaceholderData && list.data != null && promos.length === 0 && page > 0;
+  useEffect(() => {
+    if (paginaVazia) setPage(0);
+  }, [paginaVazia]);
 
   // Antes nao havia como encerrar uma promocao: ela ficava "Ativa" ate o
   // fim do periodo e entrava no preco do PDV via bestPromo sem saida.
@@ -67,11 +83,21 @@ function PromocoesPage() {
         description="Percentual, valor, preço promocional, leve X pague Y e desconto por quantidade."
         actions={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
       />
-      {!list.data?.length ? (
+      <Input
+        className="mb-block max-w-sm"
+        placeholder="Nome da promoção"
+        aria-label="Buscar promoção por nome, produto ou categoria"
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setPage(0);
+        }}
+      />
+      {!promos.length ? (
         <EmptyState
-          title="Você ainda não possui promoções cadastradas."
-          description="Crie a primeira promoção para aplicar desconto automático no PDV."
-          action={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
+          title={termo ? `Nenhuma promoção encontrada para “${termo}”.` : "Você ainda não possui promoções cadastradas."}
+          description={termo ? undefined : "Crie a primeira promoção para aplicar desconto automático no PDV."}
+          action={termo ? undefined : <Button onClick={() => setOpen(true)}>Nova promoção</Button>}
         />
       ) : (
         <DataTable
@@ -86,7 +112,7 @@ function PromocoesPage() {
             </tr>
           }
         >
-          {list.data.map((p) => (
+          {promos.map((p) => (
             <tr key={p.id} className="border-b border-border last:border-0">
               <Td className="font-medium">{p.name}</Td>
               <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
@@ -113,6 +139,7 @@ function PromocoesPage() {
           ))}
         </DataTable>
       )}
+      <Pager page={page} pageSize={PAGE_SIZE} shown={promos.length} total={promosTotal} onPage={setPage} />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>

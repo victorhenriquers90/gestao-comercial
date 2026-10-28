@@ -6359,6 +6359,59 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      de coluna, linhas de tabela sem acesso por teclado, e validação só
      por toast continuam de fora desta etapa também.
 
+130. **Fecha o item 128/129: busca e paginação nas 4 telas que faltavam
+     (compras, promoções, devoluções, equipe de vendedores) — cada uma
+     com uma decisão diferente de arquitetura, não um find-replace.**
+
+     - **`compras.tsx` (Pedidos)**: `listPurchasesFn` já tinha paginação
+       (`parsePaging`, `count(*) over()`) — só faltava busca. Adicionado
+       `q` buscando por número do pedido (`p.number::text ilike`,
+       precisa do cast porque `number` é `integer`) ou fornecedor.
+     - **`promocoes.tsx`**: achado um risco real antes de mexer —
+       `listPromotionsFn` é usada TAMBÉM pelo PDV
+       (`use-pdv-sale.ts`) pra calcular o melhor preço de cada item na
+       venda, que precisa de TODAS as promoções ativas, nunca uma
+       página só. Paginar ali arriscaria uma promoção ficar fora do
+       cálculo e cobrar errado no caixa. Criada `listPromotionsAdminFn`
+       SEPARADA só pra esta tela, com busca+paginação; `listPromotionsFn`
+       ficou 100% intocada. Mesmo raciocínio que `listActiveSellerNamesFn`
+       já usa pra vendedores (ver item abaixo) — padrão já existente no
+       projeto, não inventado agora.
+     - **`devolucoes.tsx`**: mesmo padrão do item 63/77 (`limit 100` fixo,
+       sem busca nem contagem) — `listReturnsFn` não é usada em mais
+       nenhum lugar, segura pra mudar direto. Busca por número da venda
+       ou motivo da devolução.
+     - **`vendedores.tsx` (aba Equipe)**: achado outro risco igual ao de
+       promoções — `sellers`/`ranked` (vindos de `listSellersFn`)
+       alimentam TAMBÉM o seletor de vendedor da aba Pagamentos e a
+       mensagem da `ConfirmBar` de pagamento de comissão (item 128),
+       que precisam enxergar QUALQUER vendedor, não só os da página
+       atual. Em vez de criar mais uma função no servidor, busca e
+       paginação ficaram só no CLIENTE (filtro em memória sobre a lista
+       já carregada) — decisão deliberada: equipe de loja é lista de
+       dezenas, não milhares como financeiro/compras, então filtrar em
+       memória é proporcional e evita qualquer risco de descasamento
+       entre a tabela paginada e os outros usos da mesma lista. Página
+       atual "trava" num máximo calculado a cada render (não um
+       `useEffect`, que teria que vir antes do primeiro `return` do
+       componente, antes da lista filtrada existir) em vez de telas em
+       branco quando a busca estreita o resultado.
+
+     **Verificação**: `typecheck`/`lint`/`build`/`npm test` limpos
+     (511/511) depois de cada tela. SQL novo (compras, devoluções)
+     confirmado executando sem erro contra o schema real; a busca de
+     promoções testada com 2 lançamentos descartáveis (achou 1 por nome
+     parcial, achou os 2 por "ZZTESTE", limpo depois) — mesmo grau de
+     confiança que o item 129 já tinha estabelecido pro padrão de busca
+     SQL (`ilike` + `count(*) over()`), não repetido em cada tela por já
+     estar provado. `listActiveSellerNamesFn`/`listPromotionsFn`
+     conferidas como intocadas (grep nos arquivos que as usam).
+
+     Com isso, as 5 lacunas de busca/paginação do item 128 (financeiro,
+     compras, promoções, devoluções, equipe) estão fechadas. Seguem de
+     fora desta etapa: ordenação de coluna (nenhuma tela tem), linhas de
+     tabela sem acesso por teclado, validação só por toast.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

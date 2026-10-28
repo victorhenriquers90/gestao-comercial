@@ -11,6 +11,7 @@ import { ConfirmBar, DataTable, EmptyState, Pager, PageHeader, PageSkeleton, Que
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
@@ -53,11 +54,15 @@ function ComprasPage() {
   >([]);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
+  const [listQ, setListQ] = useState("");
+  const listTermo = useDebounced(listQ.trim(), 250);
 
   const list = useQuery({
-    queryKey: ["purchases", storeId, page],
+    queryKey: ["purchases", storeId, listTermo, page],
     queryFn: () =>
-      listPurchasesFn({ data: { storeId: storeId ?? undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+      listPurchasesFn({
+        data: { storeId: storeId ?? undefined, q: listTermo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      }),
     placeholderData: keepPreviousData,
   });
   const purchases = list.data?.items ?? [];
@@ -130,8 +135,21 @@ function ComprasPage() {
           <TabsTrigger value="sugestao">Sugestão de compra</TabsTrigger>
         </TabsList>
         <TabsContent value="pedidos">
+      <Input
+        className="mb-block max-w-sm"
+        placeholder="Nº do pedido ou fornecedor"
+        aria-label="Buscar pedido de compra por número ou fornecedor"
+        value={listQ}
+        onChange={(e) => {
+          setListQ(e.target.value);
+          setPage(0);
+        }}
+      />
       {!purchases.length ? (
-        <EmptyState title="Nenhum pedido de compra." description="Crie o primeiro pedido para abastecer o estoque." />
+        <EmptyState
+          title={listTermo ? `Nenhum pedido encontrado para “${listTermo}”.` : "Nenhum pedido de compra."}
+          description={listTermo ? undefined : "Crie o primeiro pedido para abastecer o estoque."}
+        />
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable

@@ -1,13 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { useDebounced } from "@/hooks/use-debounced";
 import { RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
 import { createReturnFn, getSaleFn, listReturnsFn, listSalesFn } from "@/lib/server/commerce";
@@ -39,7 +40,25 @@ function DevolucoesPage() {
    * a peca ao estoque duas vezes E devolve o dinheiro duas vezes.
    */
   const [confirmando, setConfirmando] = useState(false);
-  const list = useQuery({ queryKey: ["returns"], queryFn: () => listReturnsFn() });
+  const [listQ, setListQ] = useState("");
+  const [listPage, setListPage] = useState(0);
+  const LIST_PAGE_SIZE = 100;
+  const listTermo = useDebounced(listQ.trim(), 250);
+  const list = useQuery({
+    queryKey: ["returns", listTermo, listPage],
+    queryFn: () =>
+      listReturnsFn({
+        data: { q: listTermo || undefined, limit: LIST_PAGE_SIZE, offset: listPage * LIST_PAGE_SIZE },
+      }),
+    placeholderData: keepPreviousData,
+  });
+  const returnItems = list.data?.items ?? [];
+  const returnsTotal = list.data?.total ?? 0;
+  const returnsPaginaVazia =
+    !list.isPlaceholderData && list.data != null && returnItems.length === 0 && listPage > 0;
+  useEffect(() => {
+    if (returnsPaginaVazia) setListPage(0);
+  }, [returnsPaginaVazia]);
   const recent = useQuery({
     queryKey: ["sales", "returns-pick"],
     queryFn: () => listSalesFn({ data: { status: "finalizada", limit: 8 } }),
@@ -100,8 +119,21 @@ function DevolucoesPage() {
         description="Parcial ou total, com estoque, título e caixa atualizados."
         actions={<Button onClick={() => setOpen(true)}>Nova devolução</Button>}
       />
-      {!list.data?.length ? (
-        <EmptyState title="Nenhuma devolução registrada." description="As devoluções do PDV e das vendas aparecem aqui." />
+      <Input
+        className="mb-block max-w-sm"
+        placeholder="Nº da venda ou motivo"
+        aria-label="Buscar devolução por número da venda ou motivo"
+        value={listQ}
+        onChange={(e) => {
+          setListQ(e.target.value);
+          setListPage(0);
+        }}
+      />
+      {!returnItems.length ? (
+        <EmptyState
+          title={listTermo ? `Nenhuma devolução encontrada para “${listTermo}”.` : "Nenhuma devolução registrada."}
+          description={listTermo ? undefined : "As devoluções do PDV e das vendas aparecem aqui."}
+        />
       ) : (
         <DataTable
           headers={
@@ -114,7 +146,7 @@ function DevolucoesPage() {
             </tr>
           }
         >
-          {(list.data as Record<string, unknown>[]).map((r) => (
+          {(returnItems as Record<string, unknown>[]).map((r) => (
             <tr key={String(r.id)} className="border-b border-border last:border-0">
               <Td>{formatDateTime(String(r.created_at))}</Td>
               <Td>nº {String(r.sale_number)}</Td>
@@ -127,6 +159,7 @@ function DevolucoesPage() {
           ))}
         </DataTable>
       )}
+      <Pager page={listPage} pageSize={LIST_PAGE_SIZE} shown={returnItems.length} total={returnsTotal} onPage={setListPage} />
       <Dialog
         open={open}
         onOpenChange={(v) => {

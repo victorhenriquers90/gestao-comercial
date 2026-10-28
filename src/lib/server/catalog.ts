@@ -747,7 +747,7 @@ export const transferStockFn = createServerFn({ method: "POST" })
 export const listPurchasesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { storeId?: number; status?: string; limit?: number; offset?: number }) => ({
+    (d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
       ...d,
       page: parsePaging(d),
     }),
@@ -761,6 +761,11 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
     // `row_count`, nao `total`: `p.*` ja traz uma coluna `total` (o valor do
     // pedido) -- usar o mesmo nome faria o objeto da linha sobrescrever a
     // contagem pelo valor do pedido (a ultima coluna repetida vence).
+    const termo = data.q?.trim();
+    // Busca por numero do pedido OU fornecedor -- achado numa auditoria de
+    // UX (ver HANDOFF, item 128): tinha paginacao mas nenhum jeito de achar
+    // um pedido especifico sem rolar a lista inteira. `p.number::text`
+    // porque numero de pedido e inteiro, `ilike` nao compara com int direto.
     const rows = await sql.query<Row>(
       `select count(*) over() as row_count,
               p.*, s.legal_name as supplier_name, st.name as store_name
@@ -770,9 +775,17 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
         where p.company_id = $1 and p.deleted_at is null
           and ($2::int is null or p.store_id = $2)
           and ($3::text is null or p.status = $3)
+          and ($4::text is null or p.number::text ilike $4 or s.legal_name ilike $4)
         order by p.created_at desc
-        limit $4 offset $5`,
-      [tenant.companyId, data.storeId ?? null, data.status ?? null, data.page.limit, data.page.offset],
+        limit $5 offset $6`,
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        data.status ?? null,
+        termo ? `%${termo}%` : null,
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
     const items = rows.map((r) => ({

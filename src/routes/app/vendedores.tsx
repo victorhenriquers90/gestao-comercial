@@ -63,6 +63,8 @@ function VendedoresPage() {
   const [payConfirm, setPayConfirm] = useState<
     { kind: "one"; id: number } | { kind: "all"; sellerId?: number } | null
   >(null);
+  const [equipeQ, setEquipeQ] = useState("");
+  const [equipePage, setEquipePage] = useState(0);
   const list = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const [commissionsPage, setCommissionsPage] = useState(0);
@@ -101,6 +103,34 @@ function VendedoresPage() {
   const ranked = [...(list.data ?? [])].sort((a, b) => b.month_revenue - a.month_revenue);
   const pendingTotal = (list.data ?? []).reduce((a, s) => a + s.pending_commission, 0);
   const sellers = list.data ?? [];
+  // Busca e paginação so do lado do cliente, de proposito: equipe de loja
+  // e lista de dezenas, nao milhares (diferente de financeiro/compras) --
+  // paginar no SERVIDOR exigiria uma segunda query so pra tabela, porque
+  // `sellers`/`ranked` tambem alimentam o seletor de vendedor da aba
+  // Pagamentos e a mensagem da confirmacao de pagamento (precisam de TODOS
+  // os vendedores, nao so da pagina atual). Filtrar em memoria evita esse
+  // risco de descasamento sem precisar de uma funcao nova no servidor.
+  const equipeTermo = equipeQ.trim().toLowerCase();
+  const rankedFiltered = equipeTermo
+    ? ranked.filter(
+        (s) =>
+          s.name.toLowerCase().includes(equipeTermo) ||
+          (s.email ?? "").toLowerCase().includes(equipeTermo) ||
+          (s.phone ?? "").toLowerCase().includes(equipeTermo),
+      )
+    : ranked;
+  const EQUIPE_PAGE_SIZE = 20;
+  // Recorte, nao efeito: busca estreitar a lista pode deixar a pagina atual
+  // vazia (ex.: via pagina 3 de 60 vendedores, busca so acha 5) -- travar
+  // num maximo calculado toda renderizacao evita a tela em branco sem
+  // precisar de useEffect (que teria que vir antes do `return
+  // <PageSkeleton />` acima, antes de `rankedFiltered` existir).
+  const equipeMaxPage = Math.max(0, Math.ceil(rankedFiltered.length / EQUIPE_PAGE_SIZE) - 1);
+  const equipePageAtual = Math.min(equipePage, equipeMaxPage);
+  const rankedShown = rankedFiltered.slice(
+    equipePageAtual * EQUIPE_PAGE_SIZE,
+    (equipePageAtual + 1) * EQUIPE_PAGE_SIZE,
+  );
 
   function refreshPay() {
     void qc.invalidateQueries({ queryKey: ["commissions"] });
@@ -253,11 +283,23 @@ function VendedoresPage() {
               hint={pendingTotal !== pendingNet ? `bruto ${formatBRL(pendingTotal)}` : undefined}
             />
           </div>
-          {ranked.length === 0 ? (
+          <Input
+            className="mb-block max-w-sm"
+            placeholder="Nome, e-mail ou telefone"
+            aria-label="Buscar vendedor por nome, e-mail ou telefone"
+            value={equipeQ}
+            onChange={(e) => {
+              setEquipeQ(e.target.value);
+              setEquipePage(0);
+            }}
+          />
+          {rankedFiltered.length === 0 ? (
             <EmptyState
-              title="Nenhum vendedor cadastrado."
-              description="Cadastre o primeiro vendedor para simular comissão, receber e pagar."
-              action={<Button onClick={() => startSeller()}>Novo vendedor</Button>}
+              title={equipeTermo ? `Nenhum vendedor encontrado para “${equipeQ.trim()}”.` : "Nenhum vendedor cadastrado."}
+              description={
+                equipeTermo ? undefined : "Cadastre o primeiro vendedor para simular comissão, receber e pagar."
+              }
+              action={equipeTermo ? undefined : <Button onClick={() => startSeller()}>Novo vendedor</Button>}
             />
           ) : (
           <DataTable
@@ -274,7 +316,7 @@ function VendedoresPage() {
               </tr>
             }
           >
-            {ranked.map((s) => (
+            {rankedShown.map((s) => (
               <tr key={s.id} className="border-b border-border last:border-0">
                 <Td className="font-medium">
                   <span>{s.name}</span>
@@ -314,6 +356,13 @@ function VendedoresPage() {
             ))}
           </DataTable>
           )}
+          <Pager
+            page={equipePageAtual}
+            pageSize={EQUIPE_PAGE_SIZE}
+            shown={rankedShown.length}
+            total={rankedFiltered.length}
+            onPage={setEquipePage}
+          />
         </TabsContent>
         <TabsContent value="pagamentos">
           <div className="mb-3 flex flex-wrap gap-2">
