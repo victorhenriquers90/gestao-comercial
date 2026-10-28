@@ -6141,6 +6141,34 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `verify-full` numa major futura da lib — é só um deprecation
      warning do Node, não afeta nada hoje, não mexi.
 
+126. **Limpeza da empresa de teste do item 125 — feita, confirmada.**
+     Pedi pro usuário apagar porque o classificador de segurança do Auto
+     Mode bloqueou duas tentativas minhas (SQL destrutivo digitado num
+     formulário web, mesmo tipo de bloqueio já visto antes nesta
+     sessão — não tentei contornar quebrando em pedaços menores,
+     decisão certa). Achei o editor "Query" do Vercel/Neon (Storage →
+     gestao-comercial-db → Browse data → Query) e confirmei os IDs exatos
+     com SELECT antes de passar o script pro usuário rodar: `company
+     id=1` era mesmo só a "ZZTESTE Comércio" do teste, `id=4` continuava
+     sendo a "Victor Comércio" real, intocada.
+
+     Duas pegadinhas do editor que o usuário bateu de cara, registradas
+     aqui caso aconteça de novo numa sessão futura: (1) **"cannot insert
+     multiple commands into a prepared statement"** — o driver do Neon
+     não aceita várias instruções separadas por `;` de uma vez, cada
+     DELETE precisa rodar sozinho (sem `begin`/`commit` em volta também,
+     já que essa ferramenta provavelmente não mantém a mesma conexão
+     entre um Run e outro); (2) **"cannot execute DELETE in a read-only
+     transaction"** — tem um toggle "Read-only" no topo do editor, ligado
+     por padrão a cada carregamento de página, precisa desligar antes de
+     qualquer escrita.
+
+     **Confirmado depois, com SELECT**: `select id, name from companies
+     order by id` voltou só `4 | Victor Comércio` (a empresa de teste
+     sumiu); `select count(*) from "user" where email =
+     'zzteste-producao-e2e@example.com'` voltou `0`. Banco de produção
+     limpo, só a empresa piloto real nele.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
