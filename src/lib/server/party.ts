@@ -153,6 +153,29 @@ export const listCustomersFn = createServerFn({ method: "POST" })
     if (data.debit) {
       extra += ` and coalesce(ar.open_balance, 0) > 0`;
     }
+    // KPIs do filtro atual (mesma `extra`/`params` de cima, antes de limit/
+    // offset entrarem) -- a tela so tinha tabela crua, sem nenhum numero de
+    // cabecalho (achado revisando a tela com o usuario, mesma lacuna que
+    // Vendas tinha). Agregando em vez de listar: quantos clientes bateram o
+    // filtro, quanto ja compraram ao todo e quanto esta em aberto -- a
+    // pergunta que a tela de Clientes existe pra responder.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as customer_count,
+              coalesce(sum(coalesce(sv.total_bought, 0)), 0) as total_bought,
+              coalesce(sum(coalesce(ar.open_balance, 0)), 0) as open_balance,
+              count(*) filter (where coalesce(ar.open_balance, 0) > 0.009)::int as debtor_count
+         from customers c
+         ${CUSTOMER_AGGREGATES}
+        where c.company_id = $1 and c.deleted_at is null
+          ${extra}`,
+      params,
+    );
+    const kpis = {
+      customerCount: num(kpiRow?.customer_count ?? 0),
+      totalBought: num(kpiRow?.total_bought ?? 0),
+      openBalance: num(kpiRow?.open_balance ?? 0),
+      debtorCount: num(kpiRow?.debtor_count ?? 0),
+    };
     params.push(data.page.limit, data.page.offset);
     const limitAt = params.length - 1;
     const offsetAt = params.length;
@@ -193,7 +216,7 @@ export const listCustomersFn = createServerFn({ method: "POST" })
       open_tasks: num(r.open_tasks),
       next_due: r.next_due == null ? null : String(r.next_due),
     }));
-    return { items, total };
+    return { items, total, kpis };
   });
 
 /** Cartões por coluna do funil. O resto de cada coluna aparece em Clientes (filtro por etapa). */

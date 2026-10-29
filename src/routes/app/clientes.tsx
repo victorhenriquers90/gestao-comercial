@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { CustomerPanel } from "@/components/customer-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId, useSearchParam } from "@/hooks/use-search-id";
@@ -49,6 +49,7 @@ function ClientesPage() {
   });
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
 
   useEffect(() => {
@@ -77,6 +78,18 @@ function ClientesPage() {
         description="Pessoa física, jurídica e histórico comercial."
         actions={<Button onClick={() => setOpen(true)}>Novo cliente</Button>}
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Clientes" value={String(kpis.customerCount)} />
+          <KpiCard label="Total comprado" value={formatBRL(kpis.totalBought)} tone="success" />
+          <KpiCard
+            label="Em aberto"
+            value={formatBRL(kpis.openBalance)}
+            tone={kpis.openBalance ? "warning" : "default"}
+          />
+          <KpiCard label="Devedores" value={String(kpis.debtorCount)} />
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <Input
           className="max-w-sm"
