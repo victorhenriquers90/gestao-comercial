@@ -6459,6 +6459,89 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      UI, não só mecânica — melhor esperar mais direção antes de
      arquitetar isso).
 
+132. **Fecha a pendência do item 120 ("venda ZZTESTE ponta a ponta no PDV
+     do Vercel, nunca confirmada") e, no caminho, achei e corrigi um bug
+     real de verdade — `ConfirmBar` ficava invisível e perdia a ação
+     quando abria por cima de um `Dialog` já aberto.**
+
+     **O teste em si**: logada a conta real da Victor Comércio (usuário
+     fez o login, eu nunca toco credencial), criei produto descartável
+     "ZZTESTE Produto Vercel Pilot" (R$30 custo / R$50 preço), ajustei
+     estoque pra 10 un. em Loja Centro, vendi 1 un. em dinheiro pelo PDV
+     publicado (`gestao-comercial-tawny-mu.vercel.app/app/pdv`) — venda
+     nº 29 — e conferi no Dashboard em tempo real: faturamento R$50,
+     lucro R$20 (margem batendo com custo/preço), "produto mais vendido"
+     certo. Tudo em produção, banco de verdade.
+
+     **O bug, achado tentando limpar a venda de teste**: cancelar a
+     venda pelo detalhe (`vendas.tsx`) abre um `ConfirmBar`
+     (`shared.tsx`) por cima do `Dialog` que já está aberto. O
+     `ConfirmBar` usava `z-50` — empatado com o `Dialog`
+     (`dialog.tsx`) — e ficava **atrás**, invisível e inclicável.
+     Subi pra `z-[60]` (mesmo padrão já usado em `image-editor.tsx`
+     pro mesmo tipo de caso) achando que resolvia — testei de novo em
+     produção e continuava atrás. Causa real, achada inspecionando a
+     cadeia de ancestrais com `getComputedStyle` ao vivo: a animação de
+     transição de página aplica `transform` num wrapper (classe
+     `page-enter`), e por spec CSS isso cria um **novo contexto de
+     empilhamento** mesmo com a matriz identidade — o `z-[60]` fica
+     preso ali dentro e nunca chega a competir com o portal do Radix
+     `Dialog`, que é filho direto do `body`. Fix de verdade: `ConfirmBar`
+     passou a usar `createPortal` pro `document.body`, igual o próprio
+     `Dialog` já faz — sai do contexto preso.
+
+     **Segundo bug, encontrado testando o primeiro**: pra contornar o
+     primeiro bug enquanto ele ainda não tinha deploy, fechei o `Dialog`
+     de detalhe com Esc pra revelar o `ConfirmBar` escondido atrás — e
+     isso quebrou o cancelamento de um jeito diferente. `confirmCancel`
+     em `vendas.tsx` era só um `boolean`, e o `onConfirm` lia `openId!`
+     (closure) pra montar a chamada — como o Esc aciona
+     `onOpenChange(() => setOpenId(null))` do `Dialog`
+     **independentemente de qual botão fechou**, `openId` já tinha
+     virado `null` quando o confirm finalmente rodava, e `cancelSaleFn`
+     recebia `id: null` → "Venda não encontrada." (erro real, visto ao
+     vivo). Corrigido guardando o **id da venda no próprio estado do
+     confirm** (`confirmCancel: number | null`), mesmo padrão que
+     `compras.tsx` já usa pra receber/desfazer pedido
+     (`confirmReceive`/`confirmUndo`) — só `vendas.tsx` tinha ficado pra
+     trás nesse padrão.
+
+     **Achado à parte, não é bug do produto**: depois dos dois fixes,
+     testei de novo em produção e o `ConfirmBar` passou a aparecer
+     visualmente certo (confirmado por screenshot: "Cancelar a venda nº
+     29?"). Mas o clique por coordenada desta ferramenta de automação
+     (Claude Browser pane) não acertava o botão — `elementsFromPoint` no
+     mesmo pixel devolvia um `<span>` do recibo por baixo, não o botão
+     do confirm, mesmo com o DOM/CSS corretos (`z-index: 60`, último
+     filho do `body`, `display: grid`, `opacity: 1` — tudo conferido via
+     `getComputedStyle`). Clique síntetico direto no elemento
+     (`btn.click()` via JS, só pra diagnosticar — não implementar) disparou
+     a chamada certinho (`cancelSaleFn` no Network, venda virou
+     "Cancelada", estoque voltou de 9 pra 10). Ou seja: o fix é real e
+     funciona pra um usuário de verdade; o que não funcionou foi o
+     clique-por-coordenada desta ferramenta de teste contra um portal
+     recém-montado — registrado aqui caso apareça de novo em testes
+     futuros nesta mesma ferramenta.
+
+     **Limpeza**: venda nº 29 cancelada pela tela (estoque voltou a
+     10), produto não tem exclusão na UI (só desativação — proposital,
+     pra não quebrar a referência da venda cancelada no histórico), então
+     zerei o estoque via "Saída" e desativei o produto. Dashboard
+     conferido de volta a R$0,00 / 0 vendas, igual ao estado antes do
+     teste.
+
+     **Commits**: `2282927` (z-50→z-[60], insuficiente sozinho) +
+     `d770acd` (fix de verdade, portal pro body) — ambos com
+     `typecheck`/`lint` limpos, ambos confirmados "Ready" no Vercel
+     antes do reteste.
+
+     **Impacto**: `ConfirmBar` é componente compartilhado — o fix do
+     portal vale pra TODA tela que abre um confirm por cima de um
+     Dialog já aberto (compras.tsx tem o mesmo padrão no detalhe de
+     pedido), não só vendas.tsx. Não precisei tocar nenhuma tela além
+     de `shared.tsx` (+ o fix do `confirmCancel` em `vendas.tsx`, que é
+     específico de lá).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
