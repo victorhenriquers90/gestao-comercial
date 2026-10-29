@@ -1042,7 +1042,46 @@ export const listSalesFn = createServerFn({ method: "POST" })
         ],
       );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
-    return { items: dump(rows.map(({ row_count: _rc, ...r }) => r)), total };
+    // KPIs do período independentes da paginação -- mesmo motivo do
+    // overdueTotal em listPayablesFn/listReceivablesFn: a tela de Vendas
+    // não tinha nenhum indicador, só a tabela crua (achado revisando a
+    // tela com o usuário). Mesmos filtros da busca principal (loja,
+    // vendedor, período, termo) só que sem `status` -- aqui já se quer os
+    // dois números (finalizada e cancelada) em vez de filtrar por um.
+    const [kpiRow] = await sql.query<{ revenue: string; sales_count: number; cancelled_count: number }>(
+      `select coalesce(sum(s.total) filter (where s.status = 'finalizada'), 0) as revenue,
+              count(*) filter (where s.status = 'finalizada')::int as sales_count,
+              count(*) filter (where s.status = 'cancelada')::int as cancelled_count
+         from sales s
+         left join customers c on c.id = s.customer_id
+        where s.company_id = $1 and s.deleted_at is null
+          and ($2::int is null or s.store_id = $2)
+          and ($3::int is null or s.seller_id = $3)
+          and ($4::date is null or s.sold_at >= $4::date)
+          and ($5::date is null or s.sold_at < ($5::date + interval '1 day'))
+          and ($6::text is null or cast(s.number as text) = $6 or lower(c.name) like $7
+               or to_tsvector('simple', coalesce(c.name,'')) @@ to_tsquery('simple', $8)
+               or c.name ilike ('%' || $6 || '%'))`,
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        data.sellerId ?? null,
+        data.from ?? null,
+        data.to ?? null,
+        data.q?.trim() || null,
+        data.q?.trim() ? prefixLike(data.q) : null,
+        data.q?.trim() ? ftsPrefix(data.q) : "__none__:*",
+      ],
+    );
+    const salesCount = num(kpiRow?.sales_count ?? 0);
+    const revenue = num(kpiRow?.revenue ?? 0);
+    const kpis = {
+      revenue,
+      salesCount,
+      avgTicket: salesCount ? revenue / salesCount : 0,
+      cancelledCount: num(kpiRow?.cancelled_count ?? 0),
+    };
+    return { items: dump(rows.map(({ row_count: _rc, ...r }) => r)), total, kpis };
   });
 
 export const getSaleFn = createServerFn({ method: "POST" })

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input, Textarea } from "@/components/ui/input";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
-import { clickableRow, ConfirmBar, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
@@ -67,6 +67,7 @@ function VendasPage() {
   });
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
   useEffect(() => {
     if (paginaVazia) setPage(0);
@@ -148,6 +149,18 @@ function VendasPage() {
   return (
     <div>
       <PageHeader title="Vendas" description="Histórico, comprovante e cancelamento." />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Faturamento do período" value={formatBRL(kpis.revenue)} tone="success" />
+          <KpiCard label="Vendas" value={String(kpis.salesCount)} />
+          <KpiCard label="Ticket médio" value={formatBRL(kpis.avgTicket)} />
+          <KpiCard
+            label="Canceladas"
+            value={String(kpis.cancelledCount)}
+            tone={kpis.cancelledCount ? "warning" : "default"}
+          />
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <Input
           className="max-w-xs"
