@@ -41,7 +41,11 @@ function VendasPage() {
   const [to, setTo] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  // Guarda o id da venda, não só um boolean (mesmo padrão de confirmReceive
+  // em compras.tsx): se o Dialog de detalhe fechar sozinho (Esc, clique fora)
+  // enquanto o confirm ainda está aberto por cima, `openId` já virou null e um
+  // boolean preso a ele perderia a referência da venda a cancelar.
+  const [confirmCancel, setConfirmCancel] = useState<number | null>(null);
 
   // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
   // para o esqueleto e o campo de busca perdia o foco.
@@ -414,7 +418,7 @@ function VendasPage() {
                     variant="destructive"
                     onClick={() => {
                       if (!reason.trim()) return toast.error("Informe o motivo.");
-                      setConfirmCancel(true);
+                      setConfirmCancel(openId);
                     }}
                   >
                     Cancelar venda
@@ -427,15 +431,17 @@ function VendasPage() {
       </Dialog>
 
       <ConfirmBar
-        open={confirmCancel}
+        open={confirmCancel != null}
         title={`Cancelar a venda${detail.data ? " nº " + String(detail.data.sale.number) : ""}? O estoque volta e não dá pra desfazer.`}
         confirmLabel="Cancelar venda"
         danger
-        onCancel={() => setConfirmCancel(false)}
+        onCancel={() => setConfirmCancel(null)}
         onConfirm={async () => {
-          setConfirmCancel(false);
+          const id = confirmCancel;
+          setConfirmCancel(null);
+          if (id == null) return;
           try {
-            await cancelSaleFn({ data: { id: openId!, reason } });
+            await cancelSaleFn({ data: { id, reason } });
             toast.success("Venda cancelada. Estoque restaurado.");
             setOpenId(null);
             void qc.invalidateQueries({ queryKey: ["sales"] });

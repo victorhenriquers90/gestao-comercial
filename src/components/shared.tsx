@@ -289,7 +289,11 @@ export function ConfirmBar({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4">
+    // z-[60], acima do z-50 do Dialog (dialog.tsx): quando o confirm abre em
+    // cima de um Dialog já aberto (ex. cancelar venda dentro do detalhe), o
+    // portal do Radix é anexado depois no body e vence empate de z-index por
+    // ordem — sem isso o confirm renderizava atrás, invisível e inclicável.
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-foreground/40 p-4">
       <Card className="w-full max-w-sm rounded-2xl p-6 shadow-pop">
         <p className="font-display text-lg font-medium tracking-tight">{title}</p>
         <div className="mt-6 flex justify-end gap-2">
