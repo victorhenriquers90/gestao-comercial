@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { pageRangeLabel } from "@/lib/paging";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -288,11 +289,13 @@ export function ConfirmBar({
   danger?: boolean;
 }) {
   if (!open) return null;
-  return (
-    // z-[60], acima do z-50 do Dialog (dialog.tsx): quando o confirm abre em
-    // cima de um Dialog já aberto (ex. cancelar venda dentro do detalhe), o
-    // portal do Radix é anexado depois no body e vence empate de z-index por
-    // ordem — sem isso o confirm renderizava atrás, invisível e inclicável.
+  // Portal pro body, igual o Dialog do Radix (dialog.tsx) faz. Sem isso o
+  // confirm fica preso no contexto de empilhamento de ".page-enter" (a
+  // transição de página aplica `transform`, que por spec cria um novo
+  // contexto mesmo com a matriz identidade) — nenhum z-index escapa dali.
+  // Confirmado ao vivo: com z-[60] mas sem portal, o confirm abria (estado
+  // React certo) só que invisível e inclicável atrás do Dialog de detalhe.
+  return createPortal(
     <div className="fixed inset-0 z-[60] grid place-items-center bg-foreground/40 p-4">
       <Card className="w-full max-w-sm rounded-2xl p-6 shadow-pop">
         <p className="font-display text-lg font-medium tracking-tight">{title}</p>
@@ -305,6 +308,7 @@ export function ConfirmBar({
           </Button>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }
