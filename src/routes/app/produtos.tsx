@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
@@ -98,6 +98,7 @@ function ProdutosPage() {
   });
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
   useEffect(() => {
     // Produtos apagados/filtrados com a pagina N aberta: volta pro comeco em vez de mostrar "vazio".
@@ -283,6 +284,18 @@ function ProdutosPage() {
           </div>
         }
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Produtos" value={String(kpis.productCount)} />
+          <KpiCard label="Valor em estoque" value={formatBRL(kpis.stockValue)} />
+          <KpiCard
+            label="Estoque baixo"
+            value={String(kpis.lowStockCount)}
+            tone={kpis.lowStockCount ? "warning" : "default"}
+          />
+          <KpiCard label="Inativos" value={String(kpis.inactiveCount)} />
+        </div>
+      ) : null}
       <Input
         className="mb-4 max-w-sm"
         placeholder="Buscar nome, SKU ou código"

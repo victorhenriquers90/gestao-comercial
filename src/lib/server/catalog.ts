@@ -107,6 +107,30 @@ export const listProductsFn = createServerFn({ method: "POST" })
     stockJoin += `
             group by v.product_id
          ) st on st.product_id = p.id`;
+    // KPIs do filtro atual (mesma `extra`/`stockJoin`/`params` de cima, antes
+    // de limit/offset entrarem) -- tela so tinha tabela crua, achado revisando
+    // com o usuario (mesma lacuna de Vendas/Clientes). "Valor em estoque"
+    // (custo x saldo) e "estoque baixo" sao os dois numeros que decidem
+    // reposicao -- o que a tela de Produtos existe pra apoiar.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as product_count,
+              coalesce(sum(p.cost * coalesce(st.stock, 0)), 0) as stock_value,
+              count(*) filter (where p.min_stock > 0 and coalesce(st.stock, 0) <= p.min_stock)::int as low_stock_count,
+              count(*) filter (where not p.is_active)::int as inactive_count
+         from products p
+         left join categories c on c.id = p.category_id
+         left join brands b on b.id = p.brand_id
+         ${stockJoin}
+        where p.company_id = $1 and p.deleted_at is null
+          ${extra}`,
+      params,
+    );
+    const kpis = {
+      productCount: num(kpiRow?.product_count ?? 0),
+      stockValue: num(kpiRow?.stock_value ?? 0),
+      lowStockCount: num(kpiRow?.low_stock_count ?? 0),
+      inactiveCount: num(kpiRow?.inactive_count ?? 0),
+    };
     params.push(data.page.limit, data.page.offset);
     const limitAt = params.length - 1;
     const offsetAt = params.length;
@@ -152,7 +176,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
       brand: strN(r.brand),
       stock: num(r.stock),
     }));
-    return { items, total };
+    return { items, total, kpis };
   });
 
 function strN(v: unknown): string | null {
