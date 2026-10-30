@@ -6675,6 +6675,64 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      continuam R$0,00, e o lançamento de cancelamento continua aparecendo
      normal em "Movimentações" (só os cards de resumo mudaram).
 
+135. **Fecha a rodada "confere se os indicadores batem com as telas" (itens
+     133/134): Compras, Promoções, Devoluções, Vendedores e CRM revisados
+     um por um. Um bug real achado e corrigido (Promoções); Compras e
+     Devoluções ganharam KPI novo (não tinham nenhum); Vendedores e CRM
+     já tinham e continuam corretos, nada mudou neles.**
+
+     **Compras — sem achado, KPI novo** (`c3d791b`): revisei o ciclo
+     inteiro (`savePurchaseFn`/`receivePurchaseFn`/`undoReceivePurchaseFn`)
+     e é um dos trechos mais defensivos do sistema — trava contra duplo
+     clique no recebimento, trava contra desfazer se o estoque já mexeu ou
+     se já tem pagamento registrado, validação contra desconto deixando o
+     total negativo. `total` do pedido (`subtotal - desconto + frete +
+     imposto`) é a mesma fonte que vira conta a pagar, sem divergência.
+     KPIs: Pedidos, Em aberto (pedido/aprovado/enviado — ainda não virou
+     estoque nem conta a pagar), Valor em aberto, Recebido (mesma condição
+     `status = 'recebido'` que `listSuppliersFn` já usa pro "Total
+     comprado" de cada fornecedor).
+
+     **Promoções — bug real achado e corrigido** (`dce5150` + `0a5b235`):
+     o badge de status na tela de admin só olhava a flag `isActive`, nunca
+     o período — uma promoção com `isActive = true` mas `endsAt` no
+     passado aparecia verde "Ativa", mesmo o PDV (`bestPromo`/
+     `isPromoLive`, em `promo.ts`) já não considerando ela mais pro
+     cálculo de preço. Corrigido reaproveitando a própria `isPromoLive`
+     (a mesma função que decide o preço de verdade), diferenciando
+     Ativa/Agendada/Expirada/Inativa em vez do binário anterior. KPIs:
+     Promoções, Ativas agora, Agendadas, Expiradas, Inativas — os 4
+     últimos espelham exatamente os mesmos 4 estados do badge, mesma
+     definição de "hoje" (`ymdLocal()`, não `current_date` do Postgres).
+
+     **Devoluções — sem achado, KPI novo** (`7332106`): revisei
+     `createReturnFn` — abatimento em cascata de parcelas em aberto sem
+     perder nem duplicar centavo (declarado explicitamente no próprio
+     comentário do código, com o cenário que já tinha sido corrigido:
+     venda de R$150 com R$100 em dinheiro + R$50 em crediário, devolução
+     de R$50 não podia perdoar a parcela E devolver em espécie ao mesmo
+     tempo), estorno de comissão proporcional ao que sobrou da venda,
+     'vencido' nunca gravado direto na coluna (mesma disciplina do resto
+     do sistema). KPIs: Devoluções, Valor devolvido, e a quebra por tipo
+     (Devolução total/Parcial/Troca) que a lista já mostra por linha.
+
+     **Vendedores — sem achado, já tinha KPI**: `listSellersFn.month_revenue`
+     já usa a mesma subtração de devolução que o Dashboard
+     (`status in ('finalizada','devolvida_parcial')` líquido de
+     `return_items`), e a soma de `pending_net` de todos os vendedores bate
+     matematicamente com o card "Comissões a pagar" do Dashboard quando
+     nenhum filtro de loja/vendedor está ativo. Nada mudado.
+
+     **CRM — sem achado, já tinha KPI**: "Valor no funil" reaproveita a
+     mesma `CUSTOMER_AGGREGATES` já verificada no item 133 pra Clientes.
+     "Atrasadas" compara `due_at` (timestamp) com `now()` do Postgres, não
+     `current_date` — esse risco de fuso só existe pra coluna de DATA
+     pura (ver `ymdLocal()`), não se aplica aqui. Nada mudado.
+
+     **Verificação**: `typecheck`/`lint` limpos em cada commit, cada
+     deploy conferido "Ready" no Vercel, KPIs novos testados ao vivo na
+     Victor Comércio (zerada — confirma a lógica sem ruído).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
