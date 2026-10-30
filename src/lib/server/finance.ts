@@ -917,18 +917,40 @@ async function loadOpenRegister(
     from cash_movements where register_id = ${num(reg.id)} and company_id = ${companyId}
     group by method, type
   `;
+  /*
+    Vendas canceladas no proprio turno (cancelSaleFn so INSERE um lancamento
+    'cancelamento' novo, nunca apaga o 'venda' original) ficavam contadas em
+    "Vendas no turno"/PIX/Cartoes -- achado ao vivo com a venda nº 29
+    (cancelada) ainda aparecendo como "1 venda no turno". `expectedCash`
+    (dinheiro FISICO) ja ficava certo mesmo assim, porque soma cashSales
+    (a venda) E subtrai refunds (o cancelamento) do `byMethod` SEM filtro --
+    os dois se cancelam. Por isso esta segunda consulta, so pros numeros de
+    EXIBICAO (que nao entram na formula do esperado): join com `sales` pra
+    excluir quem ja foi cancelada, sem tocar em `byMethod`/cashSales/refunds.
+  */
+  const salesByMethod = await sql<{ method: string | null; total: string | number }>`
+    select cm.method, coalesce(sum(cm.amount),0) as total
+      from cash_movements cm
+      join sales s on s.id = cm.sale_id
+     where cm.register_id = ${num(reg.id)} and cm.company_id = ${companyId}
+       and cm.type = 'venda' and s.status <> 'cancelada'
+     group by cm.method
+  `;
   // count(distinct sale_id) e nao count(*): venda paga metade no cartao e
   // metade em dinheiro gera dois lancamentos e continua sendo uma venda.
   const [vendas] = await sql<{ n: number }>`
-    select count(distinct sale_id)::int as n from cash_movements
-     where register_id = ${num(reg.id)} and company_id = ${companyId} and type = 'venda'
+    select count(distinct cm.sale_id)::int as n
+      from cash_movements cm
+      join sales s on s.id = cm.sale_id
+     where cm.register_id = ${num(reg.id)} and cm.company_id = ${companyId}
+       and cm.type = 'venda' and s.status <> 'cancelada'
   `;
 
-  const sales = byMethod.filter((m) => m.type === "venda").reduce((a, m) => a + num(m.total), 0);
+  const sales = salesByMethod.reduce((a, m) => a + num(m.total), 0);
   const cashSales = num(byMethod.find((m) => m.type === "venda" && m.method === "dinheiro")?.total);
-  const pix = num(byMethod.find((m) => m.type === "venda" && m.method === "pix")?.total);
-  const cards = byMethod
-    .filter((m) => m.type === "venda" && (m.method === "debito" || m.method === "credito"))
+  const pix = num(salesByMethod.find((m) => m.method === "pix")?.total);
+  const cards = salesByMethod
+    .filter((m) => m.method === "debito" || m.method === "credito")
     .reduce((a, m) => a + num(m.total), 0);
   // 'sangria_liquidacao' e o mesmo dinheiro saindo da gaveta que
   // settleSellerBatch/settlePayableFn ja lancam quando pagam em especie --
