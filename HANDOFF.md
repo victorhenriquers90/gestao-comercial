@@ -6733,6 +6733,80 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      deploy conferido "Ready" no Vercel, KPIs novos testados ao vivo na
      Victor Comércio (zerada — confirma a lógica sem ruído).
 
+136. **Fechamento geral do pedido "evoluir pra produto profissional" (item
+     128) — 18 commits desde o item 131, resumo pra quem for continuar
+     daqui: o que foi corrigido, o que foi adicionado, o que foi
+     validado e o que ainda falta.**
+
+     **Corrigido (bugs reais, achados testando/conferindo ao vivo, não
+     chutados)**:
+     - `ConfirmBar` (confirmação de ação destrutiva) renderizava atrás de
+       qualquer `Dialog` já aberto — invisível e inclicável — porque um
+       ancestral com `transform` (a animação de transição de página) cria
+       contexto de empilhamento próprio em CSS; `z-[60]` sozinho não
+       bastava, precisou de `createPortal` pro `body`. `2282927`+`d770acd`.
+     - Cancelar venda de dentro do detalhe perdia o id da venda se o
+       `Dialog` fechasse antes do confirm (Esc, clique fora) — `vendas.tsx`
+       guardava só um boolean, não o id; alinhado ao padrão que
+       `compras.tsx` já usava. `2282927`.
+     - KPI de Vendas (quando criado) ignorava devolução parcial por
+       completo — venda de R$500 com devolução de R$10 sumia inteira do
+       faturamento. `7abec13`.
+     - "Estoque baixo" do Dashboard usava `INNER JOIN` em `inventories` —
+       produto nunca estocado sumia do alerta, mesmo bug que a tela de
+       Estoque já tinha corrigido antes, nunca herdado pelo painel.
+       `7abec13`.
+     - "Vendas no turno"/PIX/Cartões do Caixa continuavam contando uma
+       venda já cancelada no mesmo turno — `cancelSaleFn` só insere um
+       lançamento de cancelamento novo, nunca apaga o da venda original.
+       `10b3ef2`.
+     - Promoção vencida (`endsAt` no passado) aparecia "Ativa" (verde) na
+       tela de admin mesmo o PDV já não aplicando mais o desconto dela.
+       `dce5150`.
+     - `theme-color` da barra do navegador ainda apontava pra paleta
+       antiga, de antes do ajuste de saturação. `dc00bdb`.
+
+     **Adicionado — KPIs reais em 8 telas que só tinham tabela crua**
+     (Vendas, Clientes, Produtos, Estoque, Fornecedores, Compras,
+     Promoções, Devoluções — ver itens 133/135 pros números de cada
+     uma). Financeiro, Caixa, Vendedores e CRM já tinham e foram só
+     conferidos, não alterados. Todo KPI novo segue o mesmo molde: uma
+     segunda query SQL agregando o MESMO filtro da tela (sem a
+     paginação), reaproveitando a mesma definição de "vencido"/"ativo
+     agora"/"líquido de devolução" que a própria tela ou o Dashboard já
+     usava em outro lugar — nenhum número novo inventado do zero.
+
+     **Validado**: todo commit teve `typecheck` + `lint` limpos antes de
+     subir, todo deploy conferido "Ready" no Vercel antes do próximo
+     passo, e todo KPI/fix testado ao vivo em produção contra a Victor
+     Comércio (empresa piloto real, zerada — qualquer erro de JOIN ou
+     filtro apareceria como número != 0 inesperado). Uma exceção
+     registrada: o caminho `devolvida_parcial` do fix de Vendas não foi
+     exercitado ao vivo (exigiria criar uma devolução de teste só pra
+     isso) — validado por leitura, reaproveitando literalmente o mesmo
+     `RETURN_BY_SALE` já em produção em outras 6 consultas do Dashboard.
+
+     **Não é uma reivindicação de segurança ou de "pronto pra produção"**:
+     este fechamento cobre indicadores e um punhado de bugs de
+     exibição/contagem achados no caminho — não é uma auditoria de
+     segurança, performance ou integridade de dados (essas já tiveram
+     rodadas próprias, itens 116-119). Nenhuma mudança deste bloco tocou
+     permissão, validação de entrada ou integridade transacional.
+
+     **Pendente, não deste bloco** (seguem do item 128/131, ninguém
+     esqueceu):
+     1. Ordenação de coluna — nenhuma tela do sistema tem, maior escopo
+        ainda não atacado.
+     2. Validação de campo em nível de formulário (hoje só toast) —
+        decisão de design de UI, não só mecânica.
+     3. Nome vazio ainda salva sem aviso em Clientes/Fornecedores/
+        Produtos (campo obrigatório só no servidor, não no formulário).
+     4. Três mecanismos de validação convivendo sem padrão (toast, HTML
+        `required` nativo, diálogo de motivo obrigatório).
+     5. Alguns "Carregando…"/estado vazio ad-hoc dentro de diálogo/sub-aba
+        ainda não usam `PageSkeleton`/`EmptyState` (compras.tsx:316,
+        produtos.tsx:559-560, configuracoes.tsx:693-700).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
