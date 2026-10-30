@@ -6905,6 +6905,56 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      Estoque, Fechamentos do Caixa) é porque o formato não é tabular, não
      por falta de tempo.
 
+139. **Pedido do usuário: "ataca a validação de campo em nível de
+     formulário" — a última pendência de design pendente do item 128.
+     Commit `a168f22`.**
+
+     **O que já existia, conferido antes de mexer**: nome/razão social
+     vazios já eram rejeitados no SERVIDOR (`requireLine` lança "Nome
+     obrigatório."/"Razão social obrigatório.") nos três formulários —
+     não era um buraco de integridade de dado. A lacuna real era de UX:
+     zero indicação de QUAL campo estava errado antes de clicar Salvar,
+     só um toast genérico depois da tentativa falhar.
+
+     **Infra nova, reutilizável** (`src/components/ui/input.tsx`):
+     `Input`/`Textarea` ganham estilo `aria-invalid:` (borda vermelha) —
+     lê o MESMO atributo de acessibilidade que o campo já deveria
+     carregar, não uma prop custom separada que pudesse descasar do que
+     o leitor de tela anuncia. `Field` ganha `error?: string`, mensagem
+     vermelha embaixo do campo.
+
+     **Aplicado nos 3 formulários que o item 128 apontou** (Clientes,
+     Fornecedores, Produtos — campo Nome/Razão social): valida no blur
+     (sair do campo vazio mostra o erro na hora, sem precisar clicar
+     Salvar primeiro), limpa assim que o campo deixa de estar vazio
+     (feedback imediato ao corrigir, não só no próximo Salvar), e
+     também valida ANTES de chamar o servidor no clique de Salvar
+     (cobre quem nunca passou o foco pelo campo, ex. colou um valor).
+     Produtos também limpa o erro ao abrir o diálogo (novo produto OU
+     editar um existente) — sem isso, o erro de uma tentativa anterior
+     podia aparecer grudado num produto diferente ao reabrir o
+     diálogo para editar. Clientes/Fornecedores não precisaram desse
+     cuidado: os diálogos deles são só de criação, nunca reabrem
+     preenchidos com dado de outro registro.
+
+     **Escopo desta etapa, deliberado**: só o campo Nome/Razão social
+     dos 3 formulários explicitamente apontados — não um framework de
+     validação pro sistema inteiro, nem unificação dos outros dois
+     mecanismos que o item 128 também citava (toast de erro do servidor,
+     diálogo de motivo obrigatório em ação destrutiva), que continuam
+     exatamente como estavam. A infra (`Field`/`Input` com `error`/
+     `aria-invalid`) já fica pronta pra outros campos/telas adotarem
+     quando fizer sentido, sem precisar reinventar o padrão.
+
+     **Verificação**: `typecheck`/`lint` limpos, deploy `a168f22`
+     confirmado "Ready". Testado ao vivo em produção na Victor Comércio,
+     nas duas telas (Clientes e Produtos): campo vazio + clique fora →
+     borda vermelha e "Campo obrigatório." aparecem na hora; digitar
+     qualquer caractere → erro some imediatamente. Fornecedores não
+     testado ao vivo clique a clique (mesmo componente, mesmo padrão
+     exato dos outros dois, `typecheck`/`lint` cobrem a parte mecânica)
+     — mas vale um clique rápido se alguém passar por lá.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
