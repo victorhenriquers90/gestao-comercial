@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { clickableRow, ConfirmBar, DataTable, EmptyState, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,6 +67,7 @@ function ComprasPage() {
   });
   const purchases = list.data?.items ?? [];
   const purchasesTotal = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const paginaVazia = !list.isPlaceholderData && list.data != null && purchases.length === 0 && page > 0;
   useEffect(() => {
     if (paginaVazia) setPage(0);
@@ -129,6 +130,18 @@ function ComprasPage() {
         description="Pedidos, recebimento e atualização automática de estoque e custo."
         actions={<Button onClick={() => setOpen(true)}>Novo pedido</Button>}
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Pedidos" value={String(kpis.purchaseCount)} />
+          <KpiCard label="Em aberto" value={String(kpis.openCount)} />
+          <KpiCard
+            label="Valor em aberto"
+            value={formatBRL(kpis.openValue)}
+            tone={kpis.openValue ? "warning" : "default"}
+          />
+          <KpiCard label="Recebido" value={formatBRL(kpis.receivedValue)} tone="success" />
+        </div>
+      ) : null}
       <Tabs defaultValue="pedidos">
         <TabsList>
           <TabsTrigger value="pedidos">Pedidos</TabsTrigger>

@@ -850,7 +850,33 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
       createdAt: String(r.created_at ?? ""),
       notes: r.notes == null ? null : String(r.notes),
     }));
-    return { items, total };
+    // KPIs do filtro atual (loja/busca, mas NAO `status` -- aqui já se
+    // quer os números de cada etapa de uma vez, mesma lacuna de
+    // Vendas/Clientes/Produtos/Estoque/Fornecedores, achada revisando com
+    // o usuário). "Em aberto" é pedido/aprovado/enviado -- já saiu da
+    // cotação mas ainda não virou estoque nem conta a pagar (isso só
+    // acontece em receivePurchaseFn). "Recebido" usa a MESMA condição
+    // (`status = 'recebido'`) que listSuppliersFn já usa pro "Total
+    // comprado" de cada fornecedor, pra não arriscar os dois discordarem.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as purchase_count,
+              count(*) filter (where p.status in ('pedido','aprovado','enviado'))::int as open_count,
+              coalesce(sum(p.total) filter (where p.status in ('pedido','aprovado','enviado')), 0) as open_value,
+              coalesce(sum(p.total) filter (where p.status = 'recebido'), 0) as received_value
+         from purchases p
+         left join suppliers s on s.id = p.supplier_id
+        where p.company_id = $1 and p.deleted_at is null
+          and ($2::int is null or p.store_id = $2)
+          and ($3::text is null or p.number::text ilike $3 or s.legal_name ilike $3)`,
+      [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null],
+    );
+    const kpis = {
+      purchaseCount: num(kpiRow?.purchase_count ?? 0),
+      openCount: num(kpiRow?.open_count ?? 0),
+      openValue: num(kpiRow?.open_value ?? 0),
+      receivedValue: num(kpiRow?.received_value ?? 0),
+    };
+    return { items, total, kpis };
   });
 
 export const getPurchaseFn = createServerFn({ method: "POST" })
