@@ -6542,6 +6542,94 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      de `shared.tsx` (+ o fix do `confirmCancel` em `vendas.tsx`, que é
      específico de lá).
 
+133. **Pedido do usuário: "Designer ainda está muito cru" — tentei auditar o
+     visual em viewport larga, bati no mesmo problema de renderização do
+     item 132 (CSS mede certo, screenshot mostra errado) e pedi pra ele
+     apontar telas específicas. Resultado: KPIs reais em Vendas, Clientes,
+     Produtos, Estoque e Fornecedores (Financeiro já tinha), mais dois bugs
+     reais achados conferindo se batiam com o Dashboard.**
+
+     **As 5 telas, mesmo padrão em cada uma** (`listSalesFn`/
+     `listCustomersFn`/`listProductsFn`/`listStockFn`/`listSuppliersFn`,
+     `src/lib/server/commerce.ts`+`catalog.ts`+`party.ts`): uma segunda
+     query SQL agregando o MESMO filtro da busca principal (loja/vendedor/
+     período/termo, conforme a tela), sem paginação — reaproveitando a
+     própria `extra`/`params` já montada pro filtro principal quando dava
+     (Clientes, Produtos, Estoque, Fornecedores), ou replicando o filtro à
+     parte quando a query principal usava `sql.query` com placeholders fixos
+     (Vendas). `{items, total}` virou `{items, total, kpis}` nas 5 — campo
+     a mais que os consumidores que só leem `items` (customer-picker.tsx,
+     product-picker.tsx, supplier-picker.tsx, pdv/customer-dialog.tsx)
+     ignoram sem risco, confirmado um por um antes de mexer.
+
+     - **Vendas**: Faturamento do período, Vendas, Ticket médio, Canceladas.
+     - **Clientes**: Clientes, Total comprado, Em aberto, Devedores.
+     - **Produtos**: Produtos, Valor em estoque (custo × saldo), Estoque
+       baixo, Inativos.
+     - **Estoque**: Itens em estoque, Valor em estoque, Abaixo do mínimo,
+       Zerados — os 2 últimos reaproveitam a MESMA expressão
+       (`greatest(min_stock da loja, min_stock do produto)`) que o filtro
+       "Abaixo do mínimo"/"Zerados" do dropdown já usava, pra não arriscar
+       os dois discordarem.
+     - **Fornecedores**: Fornecedores, Total comprado, A pagar, **"Com saldo
+       em aberto"** (não "Devedores" — aqui é a empresa que deve ao
+       fornecedor, sentido invertido de Clientes; o mesmo rótulo inverteria
+       o significado).
+
+     **Os dois achados reais, comparando o SQL das KPIs novas com
+     `insight.ts` (o Dashboard) lado a lado** — exatamente o que o pedido
+     seguinte do usuário ("confere se os indicadores batem com as telas")
+     pediu pra verificar:
+
+     1. **KPI de Vendas somava `s.total` filtrando só `status =
+        'finalizada'`** — uma venda com devolução parcial (`status =
+        'devolvida_parcial'`) sumia INTEIRA do faturamento, não só a peça
+        devolvida (venda de R$500 com devolução de R$10 tirava os R$500
+        inteiros, não R$10). `insight.ts` já documentava exatamente esse bug
+        num comentário de `RETURN_BY_SALE`, usado em TODO lugar que soma
+        venda (insight.ts, party.ts, commission.ts) — só o KPI novo de
+        Vendas não tinha herdado o padrão. Corrigido exportando o
+        `RETURN_BY_SALE` de `insight.ts` (aliasado pra `s`, igual
+        `listSalesFn` já usa) e importando em `commerce.ts`, trocando o
+        filtro pra `status in ('finalizada','devolvida_parcial')` líquido
+        de devolução.
+
+     2. **"Estoque baixo" do painel fazia `from inventories` com INNER
+        JOIN** — uma variante que nunca teve NENHUM movimento de estoque
+        (produto novo, nunca recebeu compra) não tem linha em `inventories`
+        e sumia do alerta por completo. Mesma classe de bug que
+        `listStockFn` (a tela de Estoque) já tinha corrigido antes (comentário
+        de origem ainda no arquivo, explicando o mesmo caso), só que o
+        painel nunca tinha herdado o fix — ou seja, o alerta "Estoque baixo"
+        do Dashboard podia discordar silenciosamente do filtro "Abaixo do
+        mínimo" da tela de Estoque pro mesmo produto. Reescrito pra partir
+        de `product_variants` com LEFT JOIN, igual `listStockFn`.
+
+     **Verificação**: `typecheck`/`lint` limpos em cada commit (6 ao todo:
+     5 telas + 1 pro cross-check), cada deploy conferido "Ready" no Vercel
+     antes do próximo. Todos os 5 KPIs testados ao vivo em produção contra
+     a Victor Comércio (zerada — confirma a lógica sem ruído, já que
+     qualquer erro de JOIN apareceria como valor != 0 inesperado, não
+     como "parece certo"). Os dois fixes do cross-check também: Dashboard e
+     Vendas recarregados depois do deploy, nenhum erro, números continuam
+     batendo (R$0,00/0/1 cancelada em Vendas, "Nenhum alerta" no Estoque
+     baixo — esperado, o produto de teste tem `min_stock = 0`). **Não
+     verificado ao vivo**: o caminho `devolvida_parcial` em si (exigiria
+     criar uma devolução parcial de teste só pra isso) — a correção foi
+     validada por leitura, reaproveitando literalmente o mesmo
+     `RETURN_BY_SALE` já em produção noutras 6 queries de `insight.ts`, não
+     por um SQL novo e não testado.
+
+     **Achado à parte, registrado de novo (já estava no item 132)**: o
+     navegador embutido do Claude nesta sessão não renderiza fielmente
+     telas em viewport emulada larga (CSS mede full-width, screenshot
+     mostra só um canto). Pra decisão de UX concreta sobre a tela de
+     Vendas, usei a largura nativa do pane (~458-728px, variou ao longo da
+     sessão) — abaixo do breakpoint de 768px do sistema, cai no layout
+     mobile/compacto. Qualquer sessão futura que precise JULGAR visual em
+     desktop de verdade deve esperar a confirmação visual (screenshot
+     bate com `getBoundingClientRect`) antes de confiar no que aparece.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
