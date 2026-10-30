@@ -43,6 +43,16 @@ function ClientesPage() {
   const [salvando, setSalvando] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [form, setForm] = useState({ kind: "pf", name: "", document: "", phone: "", email: "", city: "", creditLimit: 0, notes: "" });
+  // Validação de campo: antes o nome vazio só rejeitava no servidor (toast
+  // depois do clique em Salvar, sem indicação de QUAL campo). Erro some
+  // assim que o campo deixa de estar vazio, não só no próximo Salvar --
+  // feedback imediato de que corrigiu.
+  const [nameError, setNameError] = useState<string | null>(null);
+  function validateName(value: string) {
+    const ok = value.trim().length > 0;
+    setNameError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
 
   // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
   // para o esqueleto e o campo de busca perdia o foco.
@@ -206,8 +216,16 @@ function ClientesPage() {
               <option value="pf">Pessoa física</option>
               <option value="pj">Pessoa jurídica</option>
             </Select>
-            <Field label="Nome / Razão social">
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Field label="Nome / Razão social" error={nameError ?? undefined}>
+              <Input
+                value={form.name}
+                aria-invalid={nameError != null}
+                onChange={(e) => {
+                  setForm({ ...form, name: e.target.value });
+                  if (nameError && e.target.value.trim()) setNameError(null);
+                }}
+                onBlur={(e) => validateName(e.target.value)}
+              />
             </Field>
             <Field label={form.kind === "pj" ? "CNPJ" : "CPF"}>
               <Input
@@ -239,6 +257,7 @@ function ClientesPage() {
               disabled={salvando}
               onClick={async () => {
                 if (salvando) return;
+                if (!validateName(form.name)) return;
                 setSalvando(true);
                 try {
                   parseBrDocument(form.document, form.kind === "pj" ? "cnpj" : "cpf");

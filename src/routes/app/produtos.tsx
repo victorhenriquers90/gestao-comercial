@@ -71,6 +71,14 @@ function ProdutosPage() {
   const [open, setOpen] = useState(false);
   const [ncmOpen, setNcmOpen] = useState(false);
   const [form, setForm] = useState(empty);
+  // Mesmo padrão de clientes.tsx/fornecedores.tsx: nome vazio só rejeitava
+  // no servidor (toast depois do Salvar, sem indicação de qual campo).
+  const [nameError, setNameError] = useState<string | null>(null);
+  function validateName(value: string) {
+    const ok = value.trim().length > 0;
+    setNameError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
   const [editId, setEditId] = useState<number | undefined>();
   const openedFor = useRef<number | null>(null);
   /** Trava o Salvar: sem isto, duplo clique num produto sem codigo de barras
@@ -170,6 +178,7 @@ function ProdutosPage() {
       const d = await getProductFn({ data: { id, storeId: storeId ?? undefined } });
       const pr = d.product as Record<string, unknown>;
       setEditId(id);
+      setNameError(null);
       setForm({
         ...empty,
         name: String(pr.name ?? ""),
@@ -210,6 +219,7 @@ function ProdutosPage() {
 
   async function save() {
     if (salvando) return;
+    if (!validateName(form.name)) return;
     setSalvando(true);
     try {
       const variants = form.variantsText
@@ -291,6 +301,7 @@ function ProdutosPage() {
               onClick={() => {
                 setEditId(undefined);
                 setForm(empty);
+                setNameError(null);
                 setOpen(true);
               }}
             >
@@ -447,8 +458,16 @@ function ProdutosPage() {
                 kind="product"
               />
             </div>
-            <Field label="Nome" className="sm:col-span-2">
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Field label="Nome" className="sm:col-span-2" error={nameError ?? undefined}>
+              <Input
+                value={form.name}
+                aria-invalid={nameError != null}
+                onChange={(e) => {
+                  setForm({ ...form, name: e.target.value });
+                  if (nameError && e.target.value.trim()) setNameError(null);
+                }}
+                onBlur={(e) => validateName(e.target.value)}
+              />
             </Field>
             <Field label="SKU">
               <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />

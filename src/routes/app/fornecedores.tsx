@@ -42,6 +42,14 @@ function FornecedoresPage() {
     representative: "",
     notes: "",
   });
+  // Mesmo padrão de clientes.tsx: razão social vazia só rejeitava no
+  // servidor (toast depois do Salvar, sem indicação de qual campo).
+  const [legalNameError, setLegalNameError] = useState<string | null>(null);
+  function validateLegalName(value: string) {
+    const ok = value.trim().length > 0;
+    setLegalNameError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
 
   // keepPreviousData: igual Clientes -- sem ele cada letra digitada trocava a
   // chave da consulta, a pagina virava PageSkeleton e o campo de busca
@@ -159,8 +167,16 @@ function FornecedoresPage() {
             <DialogTitle>Novo fornecedor</DialogTitle>
           </DialogHeader>
           <div className="grid gap-block">
-            <Field label="Razão social">
-              <Input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} />
+            <Field label="Razão social" error={legalNameError ?? undefined}>
+              <Input
+                value={form.legalName}
+                aria-invalid={legalNameError != null}
+                onChange={(e) => {
+                  setForm({ ...form, legalName: e.target.value });
+                  if (legalNameError && e.target.value.trim()) setLegalNameError(null);
+                }}
+                onBlur={(e) => validateLegalName(e.target.value)}
+              />
             </Field>
             <Field label="Nome fantasia">
               <Input value={form.tradeName} onChange={(e) => setForm({ ...form, tradeName: e.target.value })} />
@@ -194,6 +210,7 @@ function FornecedoresPage() {
               disabled={salvando}
               onClick={async () => {
                 if (salvando) return;
+                if (!validateLegalName(form.legalName)) return;
                 setSalvando(true);
                 try {
                   parseCnpj(form.document);
