@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { StockCountPanel } from "@/components/stock-count-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
@@ -56,6 +56,7 @@ function EstoquePage() {
   });
   const items = stock.data?.items ?? [];
   const total = stock.data?.total ?? 0;
+  const kpis = stock.data?.kpis;
   const paginaVazia = !stock.isPlaceholderData && stock.data != null && items.length === 0 && page > 0;
   useEffect(() => {
     if (paginaVazia) setPage(0);
@@ -81,6 +82,22 @@ function EstoquePage() {
   return (
     <div>
       <PageHeader title="Estoque" description="Saldos, movimentações e transferência entre lojas." />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Itens em estoque" value={String(kpis.itemsCount)} />
+          <KpiCard label="Valor em estoque" value={formatBRL(kpis.stockValue)} />
+          <KpiCard
+            label="Abaixo do mínimo"
+            value={String(kpis.lowCount)}
+            tone={kpis.lowCount ? "warning" : "default"}
+          />
+          <KpiCard
+            label="Zerados"
+            value={String(kpis.zeroCount)}
+            tone={kpis.zeroCount ? "danger" : "default"}
+          />
+        </div>
+      ) : null}
       <Tabs defaultValue="saldo">
         <TabsList>
           <TabsTrigger value="saldo">Saldos</TabsTrigger>

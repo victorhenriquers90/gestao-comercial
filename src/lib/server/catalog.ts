@@ -595,6 +595,30 @@ export const listStockFn = createServerFn({ method: "POST" })
     if (data.filter === "low") filterSql = ` and ${minSql} > 0 and coalesce(i.quantity, 0) <= ${minSql}`;
     else if (data.filter === "zero") filterSql = " and coalesce(i.quantity, 0) <= 0";
     else if (data.filter === "stale") filterSql = " and (lm.last_move is null or lm.last_move < now() - interval '45 days')";
+    // KPIs do filtro atual (busca/loja, mas NAO o `filter` do dropdown --
+    // os 3 numeros abaixo ja cobrem o que cada opcao dele mostraria, de
+    // uma vez, sem precisar trocar de filtro pra ver). Mesma lacuna de
+    // Vendas/Clientes/Produtos: so tabela crua, achada revisando com o
+    // usuario. `minSql` repete a MESMA definicao de "abaixo do minimo" do
+    // filtro `low` logo acima, pra nao arriscar os dois numeros discordarem.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as items_count,
+              coalesce(sum(coalesce(v.cost, p.cost) * coalesce(i.quantity, 0)), 0) as stock_value,
+              count(*) filter (where ${minSql} > 0 and coalesce(i.quantity, 0) <= ${minSql})::int as low_count,
+              count(*) filter (where coalesce(i.quantity, 0) <= 0)::int as zero_count
+         from product_variants v
+         join products p on p.id = v.product_id
+         left join inventories i on i.variant_id = v.id and i.company_id = v.company_id ${storeSql}
+        where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null
+          ${qSql}`,
+      params,
+    );
+    const kpis = {
+      itemsCount: num(kpiRow?.items_count ?? 0),
+      stockValue: num(kpiRow?.stock_value ?? 0),
+      lowCount: num(kpiRow?.low_count ?? 0),
+      zeroCount: num(kpiRow?.zero_count ?? 0),
+    };
     params.push(data.page.limit, data.page.offset);
     const limitAt = params.length - 1;
     const offsetAt = params.length;
@@ -644,7 +668,7 @@ export const listStockFn = createServerFn({ method: "POST" })
       price: num(r.price),
       lastMove: r.last_move ? String(r.last_move) : null,
     }));
-    return { items, total };
+    return { items, total, kpis };
   });
 
 export const listMovementsFn = createServerFn({ method: "POST" })
