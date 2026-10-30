@@ -29,7 +29,7 @@ function andEq(
  * que foi devolvido e desconta na hora de agregar, incluindo
  * `devolvida_parcial` no filtro de status.
  */
-const RETURN_BY_SALE = `
+export const RETURN_BY_SALE = `
   left join lateral (
     select coalesce(sum(ri.amount), 0) as returned_revenue,
            coalesce(sum(ri.quantity * si.cost), 0) as returned_cost
@@ -224,18 +224,27 @@ export const dashboardFn = createServerFn({ method: "POST" })
           order by total desc limit 6`,
         sellerParams,
       ),
-      sql.query<{ name: string; quantity: string | number; min_stock: string | number; store: string }>(
+      // LEFT JOIN a partir de product_variants, não `from inventories` com
+      // INNER JOIN: a mesma classe de bug que listStockFn (catalog.ts) já
+      // tinha corrigido, achada de novo aqui conferindo se os indicadores
+      // batiam entre as telas. Uma variante que nunca teve nenhum
+      // movimento de estoque (produto novo sem compra recebida) não tem
+      // linha em `inventories` -- `from inventories` descartava essa
+      // variante de QUALQUER alerta, inclusive "abaixo do mínimo" e
+      // "zerado", que são exatamente os casos que deveriam pegar isso.
+      sql.query<{ name: string; quantity: string | number; min_stock: string | number; store: string | null }>(
         `select p.name || coalesce(' · ' || v.color, '') || coalesce(' ' || v.size, '') as name,
-                i.quantity, greatest(i.min_stock, p.min_stock) as min_stock, st.name as store
-           from inventories i
-           join product_variants v on v.id = i.variant_id
+                coalesce(i.quantity, 0) as quantity,
+                greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0)) as min_stock,
+                st.name as store
+           from product_variants v
            join products p on p.id = v.product_id
-           join stores st on st.id = i.store_id
-          where i.company_id = $1 and p.deleted_at is null
-            and i.quantity <= greatest(i.min_stock, p.min_stock)
-            and greatest(i.min_stock, p.min_stock) > 0
-            ${lowScope}
-          order by i.quantity asc
+           left join inventories i on i.variant_id = v.id and i.company_id = v.company_id ${lowScope}
+           left join stores st on st.id = i.store_id
+          where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null
+            and coalesce(i.quantity, 0) <= greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0))
+            and greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0)) > 0
+          order by coalesce(i.quantity, 0) asc
           limit 8`,
         lowParams,
       ),
@@ -391,7 +400,7 @@ export const dashboardFn = createServerFn({ method: "POST" })
         name: p.name,
         quantity: num(p.quantity),
         minStock: num(p.min_stock),
-        store: p.store,
+        store: p.store ?? "—",
       })),
       targets: targetRows,
     };

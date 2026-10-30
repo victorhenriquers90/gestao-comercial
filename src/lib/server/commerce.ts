@@ -37,6 +37,7 @@ import {
 } from "./commission";
 import { assertOwned, assertStore, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
+import { RETURN_BY_SALE } from "./insight";
 
 export type CartItemIn = {
   variantId: number;
@@ -1048,12 +1049,20 @@ export const listSalesFn = createServerFn({ method: "POST" })
     // tela com o usuário). Mesmos filtros da busca principal (loja,
     // vendedor, período, termo) só que sem `status` -- aqui já se quer os
     // dois números (finalizada e cancelada) em vez de filtrar por um.
+    //
+    // `status in ('finalizada','devolvida_parcial')` + RETURN_BY_SALE, não
+    // só `status = 'finalizada'` com `s.total` cru: pedido do usuário pra
+    // conferir se os indicadores batiam com o Dashboard revelou que essa
+    // versão ignorava devolução parcial por completo (a venda inteira
+    // sumia do faturamento, não só a peça devolvida) -- exatamente o bug
+    // que o comentário do RETURN_BY_SALE em insight.ts já documentava.
     const [kpiRow] = await sql.query<{ revenue: string; sales_count: number; cancelled_count: number }>(
-      `select coalesce(sum(s.total) filter (where s.status = 'finalizada'), 0) as revenue,
-              count(*) filter (where s.status = 'finalizada')::int as sales_count,
+      `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)) filter (where s.status in ('finalizada','devolvida_parcial')), 0) as revenue,
+              count(*) filter (where s.status in ('finalizada','devolvida_parcial'))::int as sales_count,
               count(*) filter (where s.status = 'cancelada')::int as cancelled_count
          from sales s
          left join customers c on c.id = s.customer_id
+         ${RETURN_BY_SALE}
         where s.company_id = $1 and s.deleted_at is null
           and ($2::int is null or s.store_id = $2)
           and ($3::int is null or s.seller_id = $3)
