@@ -6,7 +6,7 @@ import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { clickableRow, DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { formatBRL, formatDoc } from "@/lib/format";
@@ -46,6 +46,7 @@ function FornecedoresPage() {
   });
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
 
   useEffect(() => {
@@ -67,6 +68,18 @@ function FornecedoresPage() {
         description="Ficha 360, pedidos e contas a pagar vinculadas."
         actions={<Button onClick={() => setOpen(true)}>Novo fornecedor</Button>}
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Fornecedores" value={String(kpis.supplierCount)} />
+          <KpiCard label="Total comprado" value={formatBRL(kpis.totalBought)} />
+          <KpiCard
+            label="A pagar"
+            value={formatBRL(kpis.openBalance)}
+            tone={kpis.openBalance ? "warning" : "default"}
+          />
+          <KpiCard label="Com saldo em aberto" value={String(kpis.debtorCount)} />
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <Input
           className="max-w-sm"

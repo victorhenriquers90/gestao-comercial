@@ -703,6 +703,37 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
         limit $5 offset $6`,
       [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*", data.page.limit, data.page.offset],
     );
+    // KPIs do filtro atual (mesma busca, sem paginacao) -- mesma lacuna de
+    // Vendas/Clientes/Produtos/Estoque, achada revisando com o usuario.
+    // "A pagar" e o numero que mais importa aqui: quanto a empresa deve no
+    // total pros fornecedores que bateram o filtro, nao so o que coube na
+    // pagina atual.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as supplier_count,
+              coalesce(sum((select sum(p.total) from purchases p where p.supplier_id = s.id and p.status = 'recebido')), 0) as total_bought,
+              coalesce(sum((select sum(ap.amount - ap.paid_amount) from accounts_payable ap
+                             where ap.supplier_id = s.id and ap.status in ('pendente','parcial','vencido'))), 0) as open_balance,
+              count(*) filter (
+                where coalesce((select sum(ap.amount - ap.paid_amount) from accounts_payable ap
+                                 where ap.supplier_id = s.id and ap.status in ('pendente','parcial','vencido')), 0) > 0.009
+              )::int as debtor_count
+         from suppliers s
+        where s.company_id = $1 and s.deleted_at is null
+          and (
+            $2::text is null
+            or s.document = $2
+            or lower(s.legal_name) like $3 or lower(coalesce(s.trade_name,'')) like $3
+            or to_tsvector('simple', coalesce(s.legal_name,'') || ' ' || coalesce(s.trade_name,'')) @@ to_tsquery('simple', $4)
+            or s.legal_name ilike ('%' || $2 || '%') or s.trade_name ilike ('%' || $2 || '%')
+          )`,
+      [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*"],
+    );
+    const kpis = {
+      supplierCount: num(kpiRow?.supplier_count ?? 0),
+      totalBought: num(kpiRow?.total_bought ?? 0),
+      openBalance: num(kpiRow?.open_balance ?? 0),
+      debtorCount: num(kpiRow?.debtor_count ?? 0),
+    };
     const total = rows.length ? num(rows[0]!.total) : 0;
     const items = rows.map((r) => ({
       id: num(r.id),
@@ -721,7 +752,7 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
       orders: num(r.orders),
       openBalance: num(r.open_balance),
     }));
-    return { items, total };
+    return { items, total, kpis };
   });
 
 export const getSupplierFn = createServerFn({ method: "POST" })
