@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
@@ -68,6 +68,7 @@ function PromocoesPage() {
   });
   const promos = list.data?.items ?? [];
   const promosTotal = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
   const paginaVazia = !list.isPlaceholderData && list.data != null && promos.length === 0 && page > 0;
   useEffect(() => {
@@ -100,6 +101,15 @@ function PromocoesPage() {
         description="Percentual, valor, preço promocional, leve X pague Y e desconto por quantidade."
         actions={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Promoções" value={String(kpis.promoCount)} />
+          <KpiCard label="Ativas agora" value={String(kpis.liveCount)} tone="success" />
+          <KpiCard label="Agendadas" value={String(kpis.scheduledCount)} />
+          <KpiCard label="Expiradas" value={String(kpis.expiredCount)} />
+          <KpiCard label="Inativas" value={String(kpis.inactiveCount)} />
+        </div>
+      ) : null}
       <Input
         className="mb-block max-w-sm"
         placeholder="Nome da promoção"

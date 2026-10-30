@@ -38,6 +38,7 @@ import {
 import { assertOwned, assertStore, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { RETURN_BY_SALE } from "./insight";
+import { ymdLocal } from "@/lib/local-date";
 
 export type CartItemIn = {
   variantId: number;
@@ -1914,7 +1915,14 @@ export const listPromotionsFn = createServerFn({ method: "GET" })
 export const listPromotionsAdminFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
-  .handler(async ({ context, data }): Promise<{ items: PromoRow[]; total: number }> => {
+  .handler(async ({
+    context,
+    data,
+  }): Promise<{
+    items: PromoRow[];
+    total: number;
+    kpis: { promoCount: number; liveCount: number; scheduledCount: number; expiredCount: number; inactiveCount: number };
+  }> => {
     const { sql, tenant } = await requireTenant(context.userId);
     const termo = data.q?.trim();
     const rows = await sql.query<Row>(
@@ -1934,7 +1942,32 @@ export const listPromotionsAdminFn = createServerFn({ method: "POST" })
       productName: r.product_name == null ? null : String(r.product_name),
       categoryName: r.category_name == null ? null : String(r.category_name),
     }));
-    return { items: dump(items) as PromoRow[], total };
+    // KPIs do filtro atual (mesma busca, sem paginação) -- a tela só tinha
+    // tabela crua, achado revisando com o usuário. Mesma definição de
+    // "ativa agora" que `isPromoLive` (promo.ts) usa pro PDV de verdade
+    // (is_active + dentro do período), pra não arriscar o card discordar
+    // do badge de cada linha, que já usa a mesma função.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as promo_count,
+              count(*) filter (where pr.is_active and pr.starts_at <= $3::date and pr.ends_at >= $3::date)::int as live_count,
+              count(*) filter (where pr.is_active and pr.starts_at > $3::date)::int as scheduled_count,
+              count(*) filter (where pr.is_active and pr.ends_at < $3::date)::int as expired_count,
+              count(*) filter (where not pr.is_active)::int as inactive_count
+         from promotions pr
+         left join products p on p.id = pr.product_id
+         left join categories c on c.id = pr.category_id
+        where pr.company_id = $1
+          and ($2::text is null or pr.name ilike $2 or p.name ilike $2 or c.name ilike $2)`,
+      [tenant.companyId, termo ? `%${termo}%` : null, ymdLocal()],
+    );
+    const kpis = {
+      promoCount: num(kpiRow?.promo_count ?? 0),
+      liveCount: num(kpiRow?.live_count ?? 0),
+      scheduledCount: num(kpiRow?.scheduled_count ?? 0),
+      expiredCount: num(kpiRow?.expired_count ?? 0),
+      inactiveCount: num(kpiRow?.inactive_count ?? 0),
+    };
+    return { items: dump(items) as PromoRow[], total, kpis };
   });
 
 function promoSnapshot(p: Promo) {
