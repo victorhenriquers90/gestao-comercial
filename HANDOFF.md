@@ -6807,6 +6807,71 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
         ainda não usam `PageSkeleton`/`EmptyState` (compras.tsx:316,
         produtos.tsx:559-560, configuracoes.tsx:693-700).
 
+137. **Pedido do usuário: "ataca a ordenação de coluna" — a maior pendência
+     do item 128/131 (nenhuma tela tinha). Infra reutilizável + ordenação
+     real em 10 telas/tabelas, mais um bug de estilo achado e corrigido
+     no caminho.**
+
+     **Infra nova** (`src/lib/paging.ts` + `src/components/shared.tsx`):
+     - `parseSort(input, allowed, defaultSort, defaultDir)`: valida
+       `sort`/`dir` do cliente contra uma lista FIXA de chaves permitidas
+       por tela — nunca o nome de coluna cru do cliente interpolado no
+       SQL. Cada server fn mapeia a chave validada pra uma expressão SQL
+       própria (`SALE_SORT_COLUMNS`, `CUSTOMER_SORT_COLUMNS`, etc.), então
+       uma chave tipo `"total"` pode virar `s.total` numa tela e
+       `coalesce(sv.total_bought, 0)` noutra.
+     - `Th` (`shared.tsx`) ganha `sortKey`/`sort`/`onSort` opcionais: sem
+       eles continua cabeçalho simples; com eles vira botão clicável com
+       seta (`ArrowUp`/`ArrowDown`/`ArrowUpDown` conforme o estado).
+       `toggleSort()` centraliza clique-na-mesma-coluna-alterna/
+       clique-em-outra-comeca-em-asc.
+
+     **10 telas/tabelas ordenáveis** (commits `4e3739b`, `7d6d13b`,
+     `d637c5e`, `0e6a34f`): Vendas (Nº/Data/Cliente/Total/Status),
+     Clientes (Nome/CRM/Comprado/Em aberto), Fornecedores (Nome/Comprado/
+     Pedidos/A pagar), Produtos (Nome/SKU/Custo/Preço/Estoque/Status),
+     Estoque-Saldos (Nome/Qtd/Mínimo/Custo — Movimentações fica de fora,
+     é um log cronológico), Compras (Nº/Fornecedor/Status/Total/
+     Previsão), Promoções (Nome/Tipo/Período — só `listPromotionsAdminFn`,
+     a `listPromotionsFn` que o PDV usa pra precificar NÃO foi tocada,
+     mesma cautela já documentada quando a paginação foi adicionada a
+     ela), Devoluções (Data/Venda/Tipo/Valor), Financeiro Pagar e Receber
+     (Descrição/Fornecedor-Cliente/Vencimento/Valor), e Vendedores →
+     Equipe (client-side, a aba já paginava só no cliente — o `ranked`
+     que alimenta o ranking top-3 do KPI ficou intocado de propósito,
+     só a tabela ganhou um array novo `rankedSorted`).
+
+     **Colunas derivadas ficaram de fora, de propósito**: Margem
+     (Produtos, calculada no JS a partir de custo/preço), Status
+     (Promoções, `isPromoLive` — já tinha virado bug uma vez por isso,
+     ver item 135), Status (Financeiro, `accountStatus()` calcula
+     "vencido" em JS, o próprio código já documentava o risco de
+     descasar se repetisse a lógica em SQL). Sortear por um valor que só
+     existe depois de calculado no cliente arriscaria o resultado não
+     bater com o que a coluna mostra.
+
+     **Bug achado e corrigido no caminho, visto ao vivo em produção**: o
+     `<button>` novo dentro do `Th` ordenável não herdava
+     `text-transform`/`letter-spacing` do `.ed-label` (o reset do
+     Tailwind cobre `font`/`color`/`line-height`, não esses dois) —
+     "Nº/Data/Cliente" apareciam em minúsculo normal, destoando de
+     "DOCUMENTO/VENDEDOR/LOJA" ao lado, ainda em caixa alta. Corrigido
+     (`a68dfbf`) com `uppercase tracking-[0.14em]` direto no botão.
+
+     **Verificação**: `typecheck`/`lint` limpos em cada commit, cada
+     deploy "Ready" confirmado no Vercel. Testado ao vivo: Vendas com um
+     clique real na coluna Nº (POST 200, sem erro — só 1 linha no
+     piloto, não dá pra ver reordenação visual, mas a troca de sort/dir
+     chegou ao servidor e voltou sem quebrar nada); as outras 9 telas
+     conferidas carregando sem erro de console/rede depois do deploy
+     (a maioria sem dado real suficiente pra exercitar visualmente a
+     troca de ordem).
+
+     **Pendente, não deste bloco**: Vendedores → Pagamentos
+     (`listCommissionsFn`, paginada no servidor) e Caixa → Fechamentos
+     recentes não entraram nesta rodada — mesma oportunidade, ainda sem
+     ordenação.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
