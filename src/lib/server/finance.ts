@@ -15,7 +15,7 @@ import { optionalLine, requireIsoDate, requireLine, requireMoney, requireMultili
 import { planReversal, planSettlement } from "@/lib/settlement";
 import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
-import { parsePaging } from "@/lib/paging";
+import { parsePaging, parseSort } from "@/lib/paging";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
 import { assertOwned, assertStore, assertStoreOptional, audit, auditUpdate, requireTenant, type Tenant } from "./context";
@@ -31,11 +31,20 @@ function accountStatus(row: { status: string; due_date: string; amount: unknown;
   return row.status;
 }
 
+const PAYABLE_SORT_COLUMNS = {
+  description: "ap.description",
+  supplier: "s.legal_name",
+  due: "ap.due_date",
+  amount: "ap.amount",
+} as const;
+const PAYABLE_SORT_KEYS = Object.keys(PAYABLE_SORT_COLUMNS) as (keyof typeof PAYABLE_SORT_COLUMNS)[];
+
 export const listPayablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
+  .validator((d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
     ...d,
     page: parsePaging(d),
+    order: parseSort(d, PAYABLE_SORT_KEYS, "due", "asc"),
   }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -63,7 +72,7 @@ export const listPayablesFn = createServerFn({ method: "POST" })
         where ap.company_id = $1 and ap.deleted_at is null
           and ($2::int is null or ap.store_id = $2)
           and ($3::text is null or ap.description ilike $3 or s.legal_name ilike $3)
-        order by ap.due_date asc
+        order by ${PAYABLE_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, ap.id ${data.order.dir}
         limit $4 offset $5`,
       [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );
@@ -316,11 +325,20 @@ export const settlePayableFn = createServerFn({ method: "POST" })
     return { status };
   });
 
+const RECEIVABLE_SORT_COLUMNS = {
+  description: "ar.description",
+  customer: "c.name",
+  due: "ar.due_date",
+  amount: "ar.amount",
+} as const;
+const RECEIVABLE_SORT_KEYS = Object.keys(RECEIVABLE_SORT_COLUMNS) as (keyof typeof RECEIVABLE_SORT_COLUMNS)[];
+
 export const listReceivablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
+  .validator((d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
     ...d,
     page: parsePaging(d),
+    order: parseSort(d, RECEIVABLE_SORT_KEYS, "due", "asc"),
   }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -340,7 +358,7 @@ export const listReceivablesFn = createServerFn({ method: "POST" })
         where ar.company_id = $1 and ar.deleted_at is null
           and ($2::int is null or ar.store_id = $2)
           and ($3::text is null or ar.description ilike $3 or c.name ilike $3)
-        order by ar.due_date asc
+        order by ${RECEIVABLE_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, ar.id ${data.order.dir}
         limit $4 offset $5`,
       [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );

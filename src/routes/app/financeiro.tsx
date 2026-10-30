@@ -9,7 +9,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
-import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
@@ -117,13 +117,23 @@ function FinanceiroPage() {
   const [payQ, setPayQ] = useState("");
   const [payPage, setPayPage] = useState(0);
   const payTermo = useDebounced(payQ.trim(), 250);
+  const [paySort, setPaySort] = useState<SortState<"description" | "supplier" | "due" | "amount">>({
+    key: "due",
+    dir: "asc",
+  });
+  function onPaySort(key: typeof paySort.key) {
+    setPaySort((s) => toggleSort(s, key));
+    setPayPage(0);
+  }
   const pay = useQuery({
-    queryKey: ["ap", storeId, payTermo, payPage],
+    queryKey: ["ap", storeId, payTermo, payPage, paySort],
     queryFn: () =>
       listPayablesFn({
         data: {
           storeId: storeId ?? undefined,
           q: payTermo || undefined,
+          sort: paySort.key,
+          dir: paySort.dir,
           limit: PAY_PAGE_SIZE,
           offset: payPage * PAY_PAGE_SIZE,
         },
@@ -141,13 +151,23 @@ function FinanceiroPage() {
   const [recQ, setRecQ] = useState("");
   const [recPage, setRecPage] = useState(0);
   const recTermo = useDebounced(recQ.trim(), 250);
+  const [recSort, setRecSort] = useState<SortState<"description" | "customer" | "due" | "amount">>({
+    key: "due",
+    dir: "asc",
+  });
+  function onRecSort(key: typeof recSort.key) {
+    setRecSort((s) => toggleSort(s, key));
+    setRecPage(0);
+  }
   const rec = useQuery({
-    queryKey: ["ar", storeId, recTermo, recPage],
+    queryKey: ["ar", storeId, recTermo, recPage, recSort],
     queryFn: () =>
       listReceivablesFn({
         data: {
           storeId: storeId ?? undefined,
           q: recTermo || undefined,
+          sort: recSort.key,
+          dir: recSort.dir,
           limit: REC_PAGE_SIZE,
           offset: recPage * REC_PAGE_SIZE,
         },
@@ -323,10 +343,10 @@ function FinanceiroPage() {
           <DataTable
             headers={
               <tr>
-                <Th>Descrição</Th>
-                <Th>Fornecedor</Th>
-                <Th>Vencimento</Th>
-                <Th className="col-num">Valor</Th>
+                <Th sortKey="description" sort={paySort} onSort={onPaySort}>Descrição</Th>
+                <Th sortKey="supplier" sort={paySort} onSort={onPaySort}>Fornecedor</Th>
+                <Th sortKey="due" sort={paySort} onSort={onPaySort}>Vencimento</Th>
+                <Th className="col-num" sortKey="amount" sort={paySort} onSort={onPaySort}>Valor</Th>
                 <Th>Status</Th>
                 <Th></Th>
               </tr>
@@ -506,10 +526,10 @@ function FinanceiroPage() {
           <DataTable
             headers={
               <tr>
-                <Th>Descrição</Th>
-                <Th>Cliente</Th>
-                <Th>Vencimento</Th>
-                <Th className="col-num">Valor</Th>
+                <Th sortKey="description" sort={recSort} onSort={onRecSort}>Descrição</Th>
+                <Th sortKey="customer" sort={recSort} onSort={onRecSort}>Cliente</Th>
+                <Th sortKey="due" sort={recSort} onSort={onRecSort}>Vencimento</Th>
+                <Th className="col-num" sortKey="amount" sort={recSort} onSort={onRecSort}>Valor</Th>
                 <Th>Status</Th>
                 <Th></Th>
               </tr>
