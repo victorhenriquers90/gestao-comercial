@@ -254,7 +254,12 @@ export function Th<K extends string>({
     <th className={cn("ed-label px-4 py-3", className)}>
       <button
         type="button"
-        className="inline-flex items-center gap-1 hover:text-foreground"
+        // uppercase + tracking: um <button> nao herda text-transform nem
+        // letter-spacing do .ed-label no <th> por padrao (o reset do
+        // Tailwind cobre font/color/line-height, nao esses dois) -- sem
+        // isto o cabecalho ordenavel ficava em minusculo, destoando dos
+        // outros cabecalhos da mesma tabela. Visto ao vivo em producao.
+        className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-foreground"
         onClick={() => onSort(sortKey)}
         aria-label={`Ordenar por ${typeof children === "string" ? children : "esta coluna"}`}
       >
