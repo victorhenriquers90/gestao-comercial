@@ -6872,6 +6872,39 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      recentes não entraram nesta rodada — mesma oportunidade, ainda sem
      ordenação.
 
+138. **Fecha o item 137: Vendedores → Pagamentos ganhou ordenação
+     (`fcad73e`); Caixa → Fechamentos recentes não — não é uma tabela.**
+
+     **Vendedores → Pagamentos**: Vendedor/Venda/Bruto/Líquido/Data
+     ordenáveis em `listCommissionsFn`, mesmo padrão das outras 10
+     telas. "Pendente primeiro" (`case when c.status = 'pendente' then 0
+     else 1 end`) continua como primeiro critério do `ORDER BY` sempre —
+     a ordenação escolhida pelo usuário decide a ordem DENTRO de cada
+     grupo (pendente vs. o resto), não substitui o agrupamento. Mesma
+     ideia do match exato de número em Vendas (item 137), só que aqui
+     priorizando o que precisa de ação (comissão pendente de pagar) em
+     vez de relevância de busca.
+
+     **Caixa → Fechamentos recentes, achado olhando o componente**: não
+     é `<table>`/`<Th>` nenhum — `CashClosuresPanel` é uma lista de
+     cartões, um por fechamento, cada um com várias linhas de detalhe
+     (esperado/contado/diferença, handover entre turnos, quebra de
+     cédulas, explicação da diferença) que não cabem numa linha de
+     tabela. "Ordenação de coluna" não se aplica a esse formato — não é
+     um bug nem uma lacuna, é um tipo de lista diferente, por desenho. A
+     ordem já era fixa e correta (`order by r.closed_at desc nulls
+     last`, mais recente primeiro) e continua assim.
+
+     **Verificação**: `typecheck`/`lint` limpos, deploy `fcad73e`
+     confirmado "Ready", aba Pagamentos testada ao vivo (sem erro —
+     piloto sem comissão registrada, não dá pra ver a troca de ordem).
+
+     Com isso, a pendência de ordenação de coluna do item 128/131 está
+     fechada: todas as tabelas paginadas do sistema (servidor ou
+     cliente) têm ordenação; o que ficou de fora (Movimentações do
+     Estoque, Fechamentos do Caixa) é porque o formato não é tabular, não
+     por falta de tempo.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
