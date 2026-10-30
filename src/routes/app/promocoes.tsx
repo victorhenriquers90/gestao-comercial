@@ -14,8 +14,25 @@ import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { listCategoriesFn } from "@/lib/server/catalog";
 import { listPromotionsAdminFn, savePromotionFn, setPromotionActiveFn } from "@/lib/server/commerce";
+import { isPromoLive, type Promo } from "@/lib/promo";
+import { ymdLocal } from "@/lib/local-date";
 
 export const Route = createFileRoute("/app/promocoes")({ component: PromocoesPage });
+
+/**
+ * "Ativa" aqui mostrava só `isActive` (a flag), nunca o período -- uma
+ * promoção com `isActive = true` mas `endsAt` já no passado aparecia
+ * "Ativa" (verde) na tela, quando o PDV (`bestPromo`/`isPromoLive`, em
+ * promo.ts) já nem considera mais ela. Reaproveita a MESMA `isPromoLive`
+ * que decide o preço de verdade, pra não arriscar os dois discordarem.
+ */
+function promoStatusBadge(p: Promo) {
+  if (isPromoLive(p)) return <Badge variant="success">Ativa</Badge>;
+  if (!p.isActive) return <Badge variant="muted">Inativa</Badge>;
+  const today = ymdLocal();
+  if (p.startsAt.slice(0, 10) > today) return <Badge variant="info">Agendada</Badge>;
+  return <Badge variant="muted">Expirada</Badge>;
+}
 
 const emptyForm = {
   name: "",
@@ -122,9 +139,7 @@ function PromocoesPage() {
               <Td>
                 {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
               </Td>
-              <Td>
-                <Badge variant={p.isActive ? "success" : "muted"}>{p.isActive ? "Ativa" : "Inativa"}</Badge>
-              </Td>
+              <Td>{promoStatusBadge(p)}</Td>
               <Td className="text-right">
                 <Button
                   variant="outline"
