@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
-import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
@@ -60,10 +60,17 @@ function PromocoesPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
   const termo = useDebounced(q.trim(), 250);
+  const [sort, setSort] = useState<SortState<"name" | "kind" | "starts" | "ends">>({ key: "name", dir: "asc" });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const list = useQuery({
-    queryKey: ["promos", "admin", termo, page],
+    queryKey: ["promos", "admin", termo, page, sort],
     queryFn: () =>
-      listPromotionsAdminFn({ data: { q: termo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+      listPromotionsAdminFn({
+        data: { q: termo || undefined, sort: sort.key, dir: sort.dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      }),
     placeholderData: keepPreviousData,
   });
   const promos = list.data?.items ?? [];
@@ -130,10 +137,10 @@ function PromocoesPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Nome</Th>
-              <Th>Tipo</Th>
+              <Th sortKey="name" sort={sort} onSort={onSort}>Nome</Th>
+              <Th sortKey="kind" sort={sort} onSort={onSort}>Tipo</Th>
               <Th>Aplica a</Th>
-              <Th>Período</Th>
+              <Th sortKey="starts" sort={sort} onSort={onSort}>Período</Th>
               <Th>Status</Th>
               <Th className="text-right">Ações</Th>
             </tr>

@@ -6,7 +6,7 @@ import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { formatBRL, formatDoc } from "@/lib/format";
@@ -22,6 +22,14 @@ function FornecedoresPage() {
   const searchId = useSearchId();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortState<"name" | "total_bought" | "orders" | "open_balance">>({
+    key: "name",
+    dir: "asc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const [open, setOpen] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -40,8 +48,11 @@ function FornecedoresPage() {
   // perdia o foco.
   const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["suppliers", "list", termo, page],
-    queryFn: () => listSuppliersFn({ data: { q: termo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE } }),
+    queryKey: ["suppliers", "list", termo, page, sort],
+    queryFn: () =>
+      listSuppliersFn({
+        data: { q: termo || undefined, sort: sort.key, dir: sort.dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      }),
     placeholderData: keepPreviousData,
   });
   const items = list.data?.items ?? [];
@@ -112,12 +123,12 @@ function FornecedoresPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Fornecedor</Th>
+              <Th sortKey="name" sort={sort} onSort={onSort}>Fornecedor</Th>
               <Th>CNPJ</Th>
               <Th>Contato</Th>
-              <Th className="col-num">Comprado</Th>
-              <Th>Pedidos</Th>
-              <Th className="col-num">A pagar</Th>
+              <Th className="col-num" sortKey="total_bought" sort={sort} onSort={onSort}>Comprado</Th>
+              <Th sortKey="orders" sort={sort} onSort={onSort}>Pedidos</Th>
+              <Th className="col-num" sortKey="open_balance" sort={sort} onSort={onSort}>A pagar</Th>
             </tr>
           }
         >

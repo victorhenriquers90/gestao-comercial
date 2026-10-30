@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
@@ -44,11 +44,22 @@ function DevolucoesPage() {
   const [listPage, setListPage] = useState(0);
   const LIST_PAGE_SIZE = 100;
   const listTermo = useDebounced(listQ.trim(), 250);
+  const [sort, setSort] = useState<SortState<"date" | "sale" | "kind" | "total">>({ key: "date", dir: "desc" });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setListPage(0);
+  }
   const list = useQuery({
-    queryKey: ["returns", listTermo, listPage],
+    queryKey: ["returns", listTermo, listPage, sort],
     queryFn: () =>
       listReturnsFn({
-        data: { q: listTermo || undefined, limit: LIST_PAGE_SIZE, offset: listPage * LIST_PAGE_SIZE },
+        data: {
+          q: listTermo || undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          limit: LIST_PAGE_SIZE,
+          offset: listPage * LIST_PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
@@ -148,10 +159,10 @@ function DevolucoesPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Data</Th>
-              <Th>Venda</Th>
-              <Th>Tipo</Th>
-              <Th className="col-num">Valor</Th>
+              <Th sortKey="date" sort={sort} onSort={onSort}>Data</Th>
+              <Th sortKey="sale" sort={sort} onSort={onSort}>Venda</Th>
+              <Th sortKey="kind" sort={sort} onSort={onSort}>Tipo</Th>
+              <Th className="col-num" sortKey="total" sort={sort} onSort={onSort}>Valor</Th>
               <Th>Motivo</Th>
             </tr>
           }

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { CustomerPanel } from "@/components/customer-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId, useSearchParam } from "@/hooks/use-search-id";
@@ -28,6 +28,14 @@ function ClientesPage() {
   const [q, setQ] = useState("");
   const [etapa, setEtapa] = useState<CrmStage | "">(etapaDaUrl && isCrmStage(etapaDaUrl) ? etapaDaUrl : "");
   const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortState<"name" | "stage" | "total_bought" | "open_balance">>({
+    key: "name",
+    dir: "asc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const [open, setOpen] = useState(false);
   // Risco menor que em compras/devolucoes (o documento e unico por empresa,
   // migration 0020, entao a duplicata esbarra na restricao) -- mas documento
@@ -40,10 +48,17 @@ function ClientesPage() {
   // para o esqueleto e o campo de busca perdia o foco.
   const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["customers", "list", termo, etapa, page],
+    queryKey: ["customers", "list", termo, etapa, page, sort],
     queryFn: () =>
       listCustomersFn({
-        data: { q: termo || undefined, stage: etapa || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        data: {
+          q: termo || undefined,
+          stage: etapa || undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
@@ -149,12 +164,12 @@ function ClientesPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Nome</Th>
+              <Th sortKey="name" sort={sort} onSort={onSort}>Nome</Th>
               <Th>Documento</Th>
               <Th>Telefone</Th>
-              <Th>CRM</Th>
-              <Th className="col-num">Total comprado</Th>
-              <Th className="col-num">Em aberto</Th>
+              <Th sortKey="stage" sort={sort} onSort={onSort}>CRM</Th>
+              <Th className="col-num" sortKey="total_bought" sort={sort} onSort={onSort}>Total comprado</Th>
+              <Th className="col-num" sortKey="open_balance" sort={sort} onSort={onSort}>Em aberto</Th>
             </tr>
           }
         >

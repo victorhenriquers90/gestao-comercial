@@ -17,7 +17,7 @@ import {
   sanitizeMultiline,
 } from "@/lib/sanitize";
 import { CRM_STAGES, isCrmStage, type CrmStage } from "@/lib/constants";
-import { parsePaging } from "@/lib/paging";
+import { parsePaging, parseSort } from "@/lib/paging";
 
 /**
  * Liquido de devolucao, por venda (usa `sales.id` sem alias -- so serve
@@ -94,6 +94,14 @@ const CUSTOMER_AGGREGATES = `
      group by customer_id
   ) tk on tk.customer_id = c.id`;
 
+const CUSTOMER_SORT_COLUMNS = {
+  name: "c.name",
+  stage: "c.crm_stage",
+  total_bought: "coalesce(sv.total_bought, 0)",
+  open_balance: "coalesce(ar.open_balance, 0)",
+} as const;
+const CUSTOMER_SORT_KEYS = Object.keys(CUSTOMER_SORT_COLUMNS) as (keyof typeof CUSTOMER_SORT_COLUMNS)[];
+
 export const listCustomersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -103,6 +111,8 @@ export const listCustomersFn = createServerFn({ method: "POST" })
       stage?: string;
       kind?: "pf" | "pj";
       debit?: boolean;
+      sort?: string;
+      dir?: string;
       /** Padrão 100, máximo 200. */
       limit?: number;
       offset?: number;
@@ -111,7 +121,7 @@ export const listCustomersFn = createServerFn({ method: "POST" })
       // em silencio. Agora filtra de verdade, e um valor fora do funil e
       // recusado em vez de devolver "nenhum cliente".
       if (d.stage && !isCrmStage(d.stage)) throw new Error("Estágio inválido.");
-      return { ...d, page: parsePaging(d) };
+      return { ...d, page: parsePaging(d), order: parseSort(d, CUSTOMER_SORT_KEYS, "name", "asc") };
     },
   )
   .handler(async ({ context, data }) => {
@@ -191,7 +201,7 @@ export const listCustomersFn = createServerFn({ method: "POST" })
          ${CUSTOMER_AGGREGATES}
         where c.company_id = $1 and c.deleted_at is null
           ${extra}
-        order by c.name, c.id
+        order by ${CUSTOMER_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, c.id ${data.order.dir}
         limit $${limitAt} offset $${offsetAt}`,
       params,
     );
@@ -665,9 +675,22 @@ export const moveCrmFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+const SUPPLIER_SORT_COLUMNS = {
+  name: "s.legal_name",
+  total_bought: "(select sum(p.total) from purchases p where p.supplier_id = s.id and p.status = 'recebido')",
+  orders: "(select count(*) from purchases p where p.supplier_id = s.id and p.status not in ('orcamento','cancelado'))",
+  open_balance:
+    "(select sum(ap.amount - ap.paid_amount) from accounts_payable ap where ap.supplier_id = s.id and ap.status in ('pendente','parcial','vencido'))",
+} as const;
+const SUPPLIER_SORT_KEYS = Object.keys(SUPPLIER_SORT_COLUMNS) as (keyof typeof SUPPLIER_SORT_COLUMNS)[];
+
 export const listSuppliersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
+  .validator((d: { q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+    order: parseSort(d, SUPPLIER_SORT_KEYS, "name", "asc"),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.read");
@@ -699,7 +722,7 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
             or to_tsvector('simple', coalesce(s.legal_name,'') || ' ' || coalesce(s.trade_name,'')) @@ to_tsquery('simple', $4)
             or s.legal_name ilike ('%' || $2 || '%') or s.trade_name ilike ('%' || $2 || '%')
           )
-        order by s.legal_name, s.id
+        order by ${SUPPLIER_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, s.id ${data.order.dir}
         limit $5 offset $6`,
       [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*", data.page.limit, data.page.offset],
     );

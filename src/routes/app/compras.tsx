@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { PurchaseSuggestionPanel } from "@/components/purchase-suggestion-panel";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,12 +56,27 @@ function ComprasPage() {
   const PAGE_SIZE = 100;
   const [listQ, setListQ] = useState("");
   const listTermo = useDebounced(listQ.trim(), 250);
+  const [sort, setSort] = useState<SortState<"number" | "supplier" | "status" | "total" | "expected">>({
+    key: "number",
+    dir: "desc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
 
   const list = useQuery({
-    queryKey: ["purchases", storeId, listTermo, page],
+    queryKey: ["purchases", storeId, listTermo, page, sort],
     queryFn: () =>
       listPurchasesFn({
-        data: { storeId: storeId ?? undefined, q: listTermo || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        data: {
+          storeId: storeId ?? undefined,
+          q: listTermo || undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
@@ -168,11 +183,11 @@ function ComprasPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Nº</Th>
-              <Th>Fornecedor</Th>
-              <Th>Status</Th>
-              <Th className="col-num">Total</Th>
-              <Th>Previsão</Th>
+              <Th sortKey="number" sort={sort} onSort={onSort}>Nº</Th>
+              <Th sortKey="supplier" sort={sort} onSort={onSort}>Fornecedor</Th>
+              <Th sortKey="status" sort={sort} onSort={onSort}>Status</Th>
+              <Th className="col-num" sortKey="total" sort={sort} onSort={onSort}>Total</Th>
+              <Th sortKey="expected" sort={sort} onSort={onSort}>Previsão</Th>
               <Th></Th>
             </tr>
           }

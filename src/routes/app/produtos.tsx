@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
@@ -60,6 +60,14 @@ function ProdutosPage() {
   const searchId = useSearchId();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortState<"name" | "sku" | "cost" | "price" | "stock" | "active">>({
+    key: "name",
+    dir: "asc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const [open, setOpen] = useState(false);
   const [ncmOpen, setNcmOpen] = useState(false);
   const [form, setForm] = useState(empty);
@@ -89,10 +97,17 @@ function ProdutosPage() {
   // campo) continua montada e a lista antiga fica na tela ate a nova chegar.
   const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["products", termo, storeId, page],
+    queryKey: ["products", termo, storeId, page, sort],
     queryFn: () =>
       listProductsFn({
-        data: { q: termo || undefined, storeId: storeId ?? undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        data: {
+          q: termo || undefined,
+          storeId: storeId ?? undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
@@ -328,14 +343,14 @@ function ProdutosPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Produto</Th>
-              <Th>SKU</Th>
+              <Th sortKey="name" sort={sort} onSort={onSort}>Produto</Th>
+              <Th sortKey="sku" sort={sort} onSort={onSort}>SKU</Th>
               <Th>Categoria</Th>
-              <Th className="col-num">Custo</Th>
-              <Th className="col-num">Preço</Th>
+              <Th className="col-num" sortKey="cost" sort={sort} onSort={onSort}>Custo</Th>
+              <Th className="col-num" sortKey="price" sort={sort} onSort={onSort}>Preço</Th>
               <Th className="col-num">Margem</Th>
-              <Th className="col-num">Estoque</Th>
-              <Th>Status</Th>
+              <Th className="col-num" sortKey="stock" sort={sort} onSort={onSort}>Estoque</Th>
+              <Th sortKey="active" sort={sort} onSort={onSort}>Status</Th>
               <Th />
             </tr>
           }

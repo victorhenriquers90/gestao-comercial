@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { StockCountPanel } from "@/components/stock-count-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
@@ -29,6 +29,14 @@ function EstoquePage() {
   const [page, setPage] = useState(0);
   const [movPage, setMovPage] = useState(0);
   const [filter, setFilter] = useState<"all" | "low" | "zero" | "stale">("all");
+  const [sort, setSort] = useState<SortState<"name" | "quantity" | "min_stock" | "cost">>({
+    key: "name",
+    dir: "asc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const [adj, setAdj] = useState<{ variantId: number; name: string } | null>(null);
   const [type, setType] = useState<"entrada" | "saida" | "ajuste" | "perda">("entrada");
   const [qty, setQty] = useState("1");
@@ -41,13 +49,15 @@ function EstoquePage() {
   // para o esqueleto e o campo de busca perdia o foco.
   const termo = useDebounced(q.trim(), 250);
   const stock = useQuery({
-    queryKey: ["stock", storeId, termo, filter, page],
+    queryKey: ["stock", storeId, termo, filter, page, sort],
     queryFn: () =>
       listStockFn({
         data: {
           storeId: storeId ?? undefined,
           q: termo || undefined,
           filter,
+          sort: sort.key,
+          dir: sort.dir,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         },
@@ -162,11 +172,11 @@ function EstoquePage() {
             <DataTable
               headers={
                 <tr>
-                  <Th>Produto</Th>
+                  <Th sortKey="name" sort={sort} onSort={onSort}>Produto</Th>
                   <Th>Loja</Th>
-                  <Th className="col-num">Qtd</Th>
-                  <Th className="col-num">Mínimo</Th>
-                  <Th className="col-num">Custo</Th>
+                  <Th className="col-num" sortKey="quantity" sort={sort} onSort={onSort}>Qtd</Th>
+                  <Th className="col-num" sortKey="min_stock" sort={sort} onSort={onSort}>Mínimo</Th>
+                  <Th className="col-num" sortKey="cost" sort={sort} onSort={onSort}>Custo</Th>
                   <Th></Th>
                 </tr>
               }

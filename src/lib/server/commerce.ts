@@ -1671,9 +1671,21 @@ export const createReturnFn = createServerFn({ method: "POST" })
     return { id: ret.id, kind: ret.kind, total: ret.total, pendenciaFiscal: pendencia };
   });
 
+const RETURN_SORT_COLUMNS = {
+  date: "r.created_at",
+  sale: "s.number",
+  kind: "r.kind",
+  total: "r.total",
+} as const;
+const RETURN_SORT_KEYS = Object.keys(RETURN_SORT_COLUMNS) as (keyof typeof RETURN_SORT_COLUMNS)[];
+
 export const listReturnsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
+  .validator((d: { q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+    order: parseSort(d, RETURN_SORT_KEYS, "date", "desc"),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "returns.write");
@@ -1687,7 +1699,7 @@ export const listReturnsFn = createServerFn({ method: "POST" })
          join sales s on s.id = r.sale_id
         where r.company_id = $1
           and ($2::text is null or s.number::text ilike $2 or r.reason ilike $2)
-        order by r.created_at desc
+        order by ${RETURN_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, r.id ${data.order.dir}
         limit $3 offset $4`,
       [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );
@@ -1949,9 +1961,21 @@ export const listPromotionsFn = createServerFn({ method: "GET" })
  * os parâmetros arriscava esse descasamento silencioso; mais seguro ter
  * duas funções com responsabilidades diferentes do que uma só emendada.
  */
+const PROMO_SORT_COLUMNS = {
+  name: "pr.name",
+  kind: "pr.kind",
+  starts: "pr.starts_at",
+  ends: "pr.ends_at",
+} as const;
+const PROMO_SORT_KEYS = Object.keys(PROMO_SORT_COLUMNS) as (keyof typeof PROMO_SORT_COLUMNS)[];
+
 export const listPromotionsAdminFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { q?: string; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }))
+  .validator((d: { q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+    order: parseSort(d, PROMO_SORT_KEYS, "name", "asc"),
+  }))
   .handler(async ({
     context,
     data,
@@ -1969,7 +1993,7 @@ export const listPromotionsAdminFn = createServerFn({ method: "POST" })
          left join categories c on c.id = pr.category_id
         where pr.company_id = $1
           and ($2::text is null or pr.name ilike $2 or p.name ilike $2 or c.name ilike $2)
-        order by pr.created_at desc, pr.id desc
+        order by ${PROMO_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, pr.created_at desc, pr.id desc
         limit $3 offset $4`,
       [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
     );

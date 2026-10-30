@@ -11,7 +11,7 @@ import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
 import { effectivePrice } from "@/lib/promo";
-import { parsePaging } from "@/lib/paging";
+import { parsePaging, parseSort } from "@/lib/paging";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import {
   optionalLine,
@@ -55,6 +55,16 @@ export const listBrandsFn = createServerFn({ method: "GET" })
     `;
   });
 
+const PRODUCT_SORT_COLUMNS = {
+  name: "p.name",
+  sku: "p.sku",
+  cost: "p.cost",
+  price: "p.price",
+  stock: "coalesce(st.stock, 0)",
+  active: "p.is_active",
+} as const;
+const PRODUCT_SORT_KEYS = Object.keys(PRODUCT_SORT_COLUMNS) as (keyof typeof PRODUCT_SORT_COLUMNS)[];
+
 export const listProductsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -63,10 +73,12 @@ export const listProductsFn = createServerFn({ method: "POST" })
       categoryId?: number;
       active?: boolean;
       storeId?: number;
+      sort?: string;
+      dir?: string;
       /** Padrão 100, máximo 200. */
       limit?: number;
       offset?: number;
-    }) => ({ ...d, page: parsePaging(d) }),
+    }) => ({ ...d, page: parsePaging(d), order: parseSort(d, PRODUCT_SORT_KEYS, "name", "asc") }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -146,7 +158,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
          ${stockJoin}
         where p.company_id = $1 and p.deleted_at is null
           ${extra}
-        order by p.name, p.id
+        order by ${PRODUCT_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, p.id ${data.order.dir}
         limit $${limitAt} offset $${offsetAt}`,
       params,
     );
@@ -547,6 +559,14 @@ export const searchPosFn = createServerFn({ method: "POST" })
     }));
   });
 
+const STOCK_SORT_COLUMNS = {
+  name: "p.name",
+  quantity: "coalesce(i.quantity, 0)",
+  min_stock: "greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0))",
+  cost: "coalesce(v.cost, p.cost)",
+} as const;
+const STOCK_SORT_KEYS = Object.keys(STOCK_SORT_COLUMNS) as (keyof typeof STOCK_SORT_COLUMNS)[];
+
 export const listStockFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -554,9 +574,11 @@ export const listStockFn = createServerFn({ method: "POST" })
       storeId?: number;
       q?: string;
       filter?: "all" | "low" | "zero" | "stale";
+      sort?: string;
+      dir?: string;
       limit?: number;
       offset?: number;
-    }) => ({ ...d, page: parsePaging(d) }),
+    }) => ({ ...d, page: parsePaging(d), order: parseSort(d, STOCK_SORT_KEYS, "name", "asc") }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -647,7 +669,7 @@ export const listStockFn = createServerFn({ method: "POST" })
         where v.company_id = $1 and p.deleted_at is null and v.deleted_at is null
           ${qSql}
           ${filterSql}
-        order by p.name, v.id, i.store_id
+        order by ${STOCK_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, v.id ${data.order.dir}, i.store_id
         limit $${limitAt} offset $${offsetAt}`,
       params,
     );
@@ -792,12 +814,22 @@ export const transferStockFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+const PURCHASE_SORT_COLUMNS = {
+  number: "p.number",
+  supplier: "s.legal_name",
+  status: "p.status",
+  total: "p.total",
+  expected: "p.expected_at",
+} as const;
+const PURCHASE_SORT_KEYS = Object.keys(PURCHASE_SORT_COLUMNS) as (keyof typeof PURCHASE_SORT_COLUMNS)[];
+
 export const listPurchasesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { storeId?: number; status?: string; q?: string; limit?: number; offset?: number }) => ({
+    (d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
       ...d,
       page: parsePaging(d),
+      order: parseSort(d, PURCHASE_SORT_KEYS, "number", "desc"),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -824,7 +856,7 @@ export const listPurchasesFn = createServerFn({ method: "POST" })
           and ($2::int is null or p.store_id = $2)
           and ($3::text is null or p.status = $3)
           and ($4::text is null or p.number::text ilike $4 or s.legal_name ilike $4)
-        order by p.created_at desc
+        order by ${PURCHASE_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, p.id ${data.order.dir}
         limit $5 offset $6`,
       [
         tenant.companyId,
