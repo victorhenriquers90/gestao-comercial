@@ -6630,6 +6630,51 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      desktop de verdade deve esperar a confirmação visual (screenshot
      bate com `getBoundingClientRect`) antes de confiar no que aparece.
 
+134. **Continuação do pedido "confere se os indicadores batem com as
+     telas": Financeiro não achou nada (métricas de desenho diferente,
+     não comparáveis — ver abaixo), Caixa achou um bug real de verdade,
+     visto ao vivo na própria tela.**
+
+     **Financeiro, sem achado**: "Entradas/Saídas/Saldo do período"
+     (`cashflowFn`) é fluxo de caixa (dinheiro que entrou de verdade —
+     cartão parcelado só conta na liquidação, não na venda), enquanto o
+     "Faturamento" do Dashboard é por competência (reconhece a venda
+     inteira na hora). O próprio código já evita a dupla-contagem com
+     comentário explícito. Não é um descasamento pra corrigir — são
+     perguntas diferentes de propósito. "Títulos vencidos" (já adicionado
+     numa etapa anterior) não tem card equivalente no Dashboard pra
+     comparar. Revisão feita, nada corrigido porque nada estava errado.
+
+     **Caixa, achado ao vivo**: a tela mostrava "Vendas no turno: 1" com a
+     única venda do turno (nº 29) CANCELADA. Causa: `cancelSaleFn` só
+     INSERE um `cash_movements` novo tipo `'cancelamento'`, nunca apaga o
+     `'venda'` original — o resumo (`loadOpenRegister`, `finance.ts`)
+     contava os dois eventos como independentes. O dinheiro FÍSICO
+     esperado (`expectedCash`) já ficava certo por acidente de desenho:
+     soma a venda E subtrai o cancelamento do mesmo agregado sem filtro,
+     os dois se cancelam matematicamente — mas "Vendas no turno", "PIX" e
+     "Cartões" (números de EXIBIÇÃO, não entram nessa fórmula) não tinham
+     esse cancelamento embutido, e contavam a venda cancelada como se
+     fosse receita real do turno. Se a venda cancelada tivesse sido em
+     PIX/cartão (não dinheiro), o card correspondente ficaria inflado.
+
+     Fix cirúrgico: segunda consulta SQL (`salesByMethod`), com join em
+     `sales` filtrando `status <> 'cancelada'`, usada só pros números de
+     exibição (`sales`/`pix`/`cards`/contagem de vendas). `byMethod`
+     (sem filtro) e tudo que dele deriva — `cashSales`, `sangria`,
+     `suprimento`, `refunds`, `recebimentos`, `expectedCash` — ficou
+     intocado de propósito, porque já estava matematicamente certo e
+     mexer ali quebraria esse cancelamento intencional (testei o raciocínio
+     antes de escrever: excluir a venda cancelada de `cashSales` sem
+     também excluir da fórmula de `refunds` deixaria o esperado negativo
+     por R$50 sem motivo nenhum).
+
+     **Verificação**: `typecheck`/`lint` limpos, commit `10b3ef2`
+     confirmado "Ready" no Vercel, testado ao vivo na Victor Comércio —
+     "Vendas no turno" caiu de 1 pra 0 depois do deploy, PIX/Cartões
+     continuam R$0,00, e o lançamento de cancelamento continua aparecendo
+     normal em "Movimentações" (só os cards de resumo mudaram).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
