@@ -1,7 +1,7 @@
-import { ArrowDownRight, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { pageRangeLabel } from "@/lib/paging";
+import { pageRangeLabel, type SortDir } from "@/lib/paging";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -205,8 +205,72 @@ export function DataTable({
  * especificidade menor. Tirando a utilitaria daqui, as duas regras passam a
  * conviver na mesma camada e a mais especifica decide.
  */
-export function Th({ children, className }: { children?: ReactNode; className?: string }) {
-  return <th className={cn("ed-label px-4 py-3", className)}>{children}</th>;
+export type SortState<K extends string> = { key: K; dir: SortDir };
+
+/**
+ * Clique na MESMA coluna alterna asc/desc; clique numa coluna DIFERENTE
+ * troca de coluna e começa em "asc" -- convenção comum de planilha, só
+ * precisa de um lugar pra não repetir essa regra em cada tela que ordena.
+ */
+export function toggleSort<K extends string>(current: SortState<K>, key: K): SortState<K> {
+  if (current.key !== key) return { key, dir: "asc" };
+  return { key, dir: current.dir === "asc" ? "desc" : "asc" };
+}
+
+/**
+ * Cabeçalho de coluna. Sem `sortKey`/`sort`/`onSort` continua uma `<th>`
+ * simples (maioria das colunas, ex. "Ações"); com os três, vira botão
+ * clicável com seta indicando a direção -- mesmo cabeçalho, affordance a
+ * mais só onde faz sentido ordenar.
+ *
+ * O alinhamento padrao do cabecalho vive no CSS (`.data-table thead th`), nao
+ * numa utilitaria aqui.
+ *
+ * Com `text-left` fixo neste componente, uma coluna marcada `col-num` ficava
+ * com a celula a direita e o TITULO a esquerda -- pior que nao alinhar nada.
+ * No Tailwind v4 a camada `utilities` vem depois de `components`, entao a
+ * utilitaria vence a regra do `.data-table` por ordem de camada, mesmo tendo
+ * especificidade menor. Tirando a utilitaria daqui, as duas regras passam a
+ * conviver na mesma camada e a mais especifica decide.
+ */
+export function Th<K extends string>({
+  children,
+  className,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  children?: ReactNode;
+  className?: string;
+  sortKey?: K;
+  sort?: SortState<K>;
+  onSort?: (key: K) => void;
+}) {
+  if (sortKey == null || onSort == null) {
+    return <th className={cn("ed-label px-4 py-3", className)}>{children}</th>;
+  }
+  const active = sort?.key === sortKey;
+  return (
+    <th className={cn("ed-label px-4 py-3", className)}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 hover:text-foreground"
+        onClick={() => onSort(sortKey)}
+        aria-label={`Ordenar por ${typeof children === "string" ? children : "esta coluna"}`}
+      >
+        {children}
+        {active ? (
+          sort!.dir === "asc" ? (
+            <ArrowUp className="size-3" />
+          ) : (
+            <ArrowDown className="size-3" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 opacity-30" />
+        )}
+      </button>
+    </th>
+  );
 }
 
 export function Td({ children, className }: { children?: ReactNode; className?: string }) {

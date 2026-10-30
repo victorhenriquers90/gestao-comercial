@@ -19,7 +19,7 @@ import { checkCreditLimit, parseCrediarioInstallments, splitCrediario } from "@/
 import { dump, type Row } from "@/lib/json";
 import type { Sql } from "@/lib/db";
 import { assertCan, can } from "@/lib/permissions";
-import { parsePaging } from "@/lib/paging";
+import { parsePaging, parseSort } from "@/lib/paging";
 import { bestPromo, effectivePrice, parsePromoInput, type Promo } from "@/lib/promo";
 import { cancelWindow, pendenciaForReturn, pendenciaText } from "@/lib/nfce-cancel";
 import { marcarPendenciaFiscal, nfceAutomatica } from "./nfce";
@@ -979,6 +979,15 @@ export const checkoutFn = createServerFn({ method: "POST" })
     }
   });
 
+const SALE_SORT_COLUMNS = {
+  number: "s.number",
+  date: "s.sold_at",
+  customer: "c.name",
+  total: "s.total",
+  status: "s.status",
+} as const;
+const SALE_SORT_KEYS = Object.keys(SALE_SORT_COLUMNS) as (keyof typeof SALE_SORT_COLUMNS)[];
+
 export const listSalesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -989,10 +998,12 @@ export const listSalesFn = createServerFn({ method: "POST" })
       to?: string;
       q?: string;
       status?: string;
+      sort?: string;
+      dir?: string;
       /** Padrão 100, máximo 200. */
       limit?: number;
       offset?: number;
-    }) => ({ ...d, page: parsePaging(d) }),
+    }) => ({ ...d, page: parsePaging(d), order: parseSort(d, SALE_SORT_KEYS, "date", "desc") }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -1024,10 +1035,15 @@ export const listSalesFn = createServerFn({ method: "POST" })
           and ($7::text is null or cast(s.number as text) = $7 or lower(c.name) like $8
                or to_tsvector('simple', coalesce(c.name,'')) @@ to_tsquery('simple', $9)
                or c.name ilike ('%' || $7 || '%'))
-        -- Numero digitado exato vem primeiro: a devolucao localiza a venda por
-        -- numero e so aceita o match exato, entao ele nao pode ficar atras de
-        -- vendas de clientes cujo nome casa com o mesmo texto.
-        order by coalesce(cast(s.number as text) = $7, false) desc, s.sold_at desc, s.id desc
+        -- Numero digitado exato vem primeiro, sempre: a devolucao localiza a
+        -- venda por numero e so aceita o match exato, entao ele nao pode
+        -- ficar atras de vendas de clientes cujo nome casa com o mesmo
+        -- texto -- nem atras da ordenacao escolhida pelo usuario (so afeta
+        -- QUAL linha sobe ao topo numa busca, nunca a ordem das demais).
+        -- s.id no fim desempata ordenacao com valor repetido (duas vendas
+        -- no mesmo dia/total), mesma direcao da coluna escolhida.
+        order by coalesce(cast(s.number as text) = $7, false) desc,
+                 ${SALE_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, s.id ${data.order.dir}
         limit $10 offset $11`,
         [
           tenant.companyId,

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input, Textarea } from "@/components/ui/input";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
-import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
@@ -39,6 +39,14 @@ function VendasPage() {
   const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sort, setSort] = useState<SortState<"number" | "date" | "customer" | "total" | "status">>({
+    key: "date",
+    dir: "desc",
+  });
+  function onSort(key: typeof sort.key) {
+    setSort((s) => toggleSort(s, key));
+    setPage(0);
+  }
   const [openId, setOpenId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
   // Guarda o id da venda, não só um boolean (mesmo padrão de confirmReceive
@@ -51,7 +59,7 @@ function VendasPage() {
   // para o esqueleto e o campo de busca perdia o foco.
   const termo = useDebounced(q.trim(), 250);
   const list = useQuery({
-    queryKey: ["sales", storeId, termo, from, to, page],
+    queryKey: ["sales", storeId, termo, from, to, page, sort],
     queryFn: () =>
       listSalesFn({
         data: {
@@ -59,6 +67,8 @@ function VendasPage() {
           q: termo || undefined,
           from: from || undefined,
           to: to || undefined,
+          sort: sort.key,
+          dir: sort.dir,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         },
@@ -200,14 +210,14 @@ function VendasPage() {
         <DataTable
           headers={
             <tr>
-              <Th>Nº</Th>
-              <Th>Data</Th>
-              <Th>Cliente</Th>
+              <Th sortKey="number" sort={sort} onSort={onSort}>Nº</Th>
+              <Th sortKey="date" sort={sort} onSort={onSort}>Data</Th>
+              <Th sortKey="customer" sort={sort} onSort={onSort}>Cliente</Th>
               <Th>Documento</Th>
               <Th>Vendedor</Th>
               <Th>Loja</Th>
-              <Th className="col-num">Total</Th>
-              <Th>Status</Th>
+              <Th className="col-num" sortKey="total" sort={sort} onSort={onSort}>Total</Th>
+              <Th sortKey="status" sort={sort} onSort={onSort}>Status</Th>
             </tr>
           }
         >

@@ -28,3 +28,24 @@ export function pageRangeLabel(offset: number, shown: number, total: number): st
   if (total <= 0 || shown <= 0) return "";
   return `${offset + 1}–${offset + shown} de ${total}`;
 }
+
+export type SortDir = "asc" | "desc";
+
+/**
+ * Coluna e direção de ordenação, validadas contra uma lista fixa de chaves
+ * permitidas -- nunca o nome de coluna cru do cliente direto no SQL (cada
+ * server fn mapeia a chave validada pra uma expressão SQL própria, ver
+ * exemplo em `listSalesFn`). Entrada ausente ou fora da lista cai no
+ * padrão da tela, em vez de erro -- uma URL/estado antigo apontando pra
+ * uma coluna que não existe mais não pode quebrar a listagem.
+ */
+export function parseSort<K extends string>(
+  input: { sort?: unknown; dir?: unknown },
+  allowed: readonly K[],
+  defaultSort: K,
+  defaultDir: SortDir = "desc",
+): { sort: K; dir: SortDir } {
+  const sort = typeof input.sort === "string" && (allowed as readonly string[]).includes(input.sort) ? (input.sort as K) : defaultSort;
+  const dir: SortDir = input.dir === "asc" ? "asc" : input.dir === "desc" ? "desc" : defaultDir;
+  return { sort, dir };
+}
