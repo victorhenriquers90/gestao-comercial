@@ -77,13 +77,23 @@ function VendedoresPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const [commissionsPage, setCommissionsPage] = useState(0);
   const COMMISSIONS_PAGE_SIZE = 100;
+  const [commissionSort, setCommissionSort] = useState<SortState<"seller" | "sale" | "amount" | "net" | "date">>({
+    key: "date",
+    dir: "desc",
+  });
+  function onCommissionSort(key: typeof commissionSort.key) {
+    setCommissionSort((s) => toggleSort(s, key));
+    setCommissionsPage(0);
+  }
   const commissions = useQuery({
-    queryKey: ["commissions", sellerFilter, statusFilter, commissionsPage],
+    queryKey: ["commissions", sellerFilter, statusFilter, commissionsPage, commissionSort],
     queryFn: () =>
       listCommissionsFn({
         data: {
           sellerId: sellerFilter ? Number(sellerFilter) : undefined,
           status: statusFilter || undefined,
+          sort: commissionSort.key,
+          dir: commissionSort.dir,
           limit: COMMISSIONS_PAGE_SIZE,
           offset: commissionsPage * COMMISSIONS_PAGE_SIZE,
         },
@@ -417,13 +427,13 @@ function VendedoresPage() {
           <DataTable
             headers={
               <tr>
-                <Th>Vendedor</Th>
-                <Th>Venda</Th>
+                <Th sortKey="seller" sort={commissionSort} onSort={onCommissionSort}>Vendedor</Th>
+                <Th sortKey="sale" sort={commissionSort} onSort={onCommissionSort}>Venda</Th>
                 <Th>Regra</Th>
-                <Th className="col-num">Bruto</Th>
-                <Th className="col-num">Líquido</Th>
+                <Th className="col-num" sortKey="amount" sort={commissionSort} onSort={onCommissionSort}>Bruto</Th>
+                <Th className="col-num" sortKey="net" sort={commissionSort} onSort={onCommissionSort}>Líquido</Th>
                 <Th>Status</Th>
-                <Th>Data</Th>
+                <Th sortKey="date" sort={commissionSort} onSort={onCommissionSort}>Data</Th>
                 <Th></Th>
               </tr>
             }

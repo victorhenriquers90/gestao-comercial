@@ -2035,12 +2035,22 @@ export const deleteTargetFn = createServerFn({ method: "POST" })
     });
   });
 
+const COMMISSION_SORT_COLUMNS = {
+  seller: "sl.name",
+  sale: "s.number",
+  amount: "c.amount",
+  net: "c.net_amount",
+  date: "c.created_at",
+} as const;
+const COMMISSION_SORT_KEYS = Object.keys(COMMISSION_SORT_COLUMNS) as (keyof typeof COMMISSION_SORT_COLUMNS)[];
+
 export const listCommissionsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { sellerId?: number; status?: string; limit?: number; offset?: number }) => ({
+    (d: { sellerId?: number; status?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
       ...d,
       page: parsePaging(d),
+      order: parseSort(d, COMMISSION_SORT_KEYS, "date", "desc"),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -2074,7 +2084,8 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
         where c.company_id = $1
           and ($2::int is null or c.seller_id = $2)
           and ($3::text is null or c.status = $3)
-        order by case when c.status = 'pendente' then 0 else 1 end, c.created_at desc
+        order by case when c.status = 'pendente' then 0 else 1 end,
+                 ${COMMISSION_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, c.id ${data.order.dir}
         limit $4 offset $5`,
       [tenant.companyId, data.sellerId ?? null, data.status ?? null, data.page.limit, data.page.offset],
     );
