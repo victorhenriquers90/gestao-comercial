@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
@@ -65,6 +65,14 @@ function VendedoresPage() {
   >(null);
   const [equipeQ, setEquipeQ] = useState("");
   const [equipePage, setEquipePage] = useState(0);
+  const [teamSort, setTeamSort] = useState<SortState<"name" | "month_revenue" | "month_commission" | "pending">>({
+    key: "month_revenue",
+    dir: "desc",
+  });
+  function onTeamSort(key: typeof teamSort.key) {
+    setTeamSort((s) => toggleSort(s, key));
+    setEquipePage(0);
+  }
   const list = useQuery({ queryKey: ["sellers"], queryFn: () => listSellersFn() });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const [commissionsPage, setCommissionsPage] = useState(0);
@@ -119,15 +127,28 @@ function VendedoresPage() {
           (s.phone ?? "").toLowerCase().includes(equipeTermo),
       )
     : ranked;
+  // Ordenacao so da TABELA, separada do `ranked` que alimenta o ranking
+  // top-3 do KPI (esse fica sempre por faturamento do mes, de proposito --
+  // e um ranking, nao uma lista ordenavel). Array novo (nao muta
+  // `rankedFiltered`, que `.sort()` faria in-place e bagunçaria `ranked`
+  // tambem, ja que `rankedFiltered` pode ser a MESMA referencia dele
+  // quando nao ha busca).
+  const rankedSorted = [...rankedFiltered].sort((a, b) => {
+    const dir = teamSort.dir === "asc" ? 1 : -1;
+    if (teamSort.key === "name") return a.name.localeCompare(b.name) * dir;
+    if (teamSort.key === "month_revenue") return (a.month_revenue - b.month_revenue) * dir;
+    if (teamSort.key === "month_commission") return (a.month_commission - b.month_commission) * dir;
+    return ((a.pending_net ?? a.pending_commission) - (b.pending_net ?? b.pending_commission)) * dir;
+  });
   const EQUIPE_PAGE_SIZE = 20;
   // Recorte, nao efeito: busca estreitar a lista pode deixar a pagina atual
   // vazia (ex.: via pagina 3 de 60 vendedores, busca so acha 5) -- travar
   // num maximo calculado toda renderizacao evita a tela em branco sem
   // precisar de useEffect (que teria que vir antes do `return
   // <PageSkeleton />` acima, antes de `rankedFiltered` existir).
-  const equipeMaxPage = Math.max(0, Math.ceil(rankedFiltered.length / EQUIPE_PAGE_SIZE) - 1);
+  const equipeMaxPage = Math.max(0, Math.ceil(rankedSorted.length / EQUIPE_PAGE_SIZE) - 1);
   const equipePageAtual = Math.min(equipePage, equipeMaxPage);
-  const rankedShown = rankedFiltered.slice(
+  const rankedShown = rankedSorted.slice(
     equipePageAtual * EQUIPE_PAGE_SIZE,
     (equipePageAtual + 1) * EQUIPE_PAGE_SIZE,
   );
@@ -305,13 +326,13 @@ function VendedoresPage() {
           <DataTable
             headers={
               <tr>
-                <Th>Vendedor</Th>
+                <Th sortKey="name" sort={teamSort} onSort={onTeamSort}>Vendedor</Th>
                 <Th>Contato</Th>
                 <Th>Regime</Th>
                 <Th className="col-num">% padrão</Th>
-                <Th className="col-num">Faturamento no mês</Th>
-                <Th className="col-num">Bruto</Th>
-                <Th className="col-num">Pendente líq.</Th>
+                <Th className="col-num" sortKey="month_revenue" sort={teamSort} onSort={onTeamSort}>Faturamento no mês</Th>
+                <Th className="col-num" sortKey="month_commission" sort={teamSort} onSort={onTeamSort}>Bruto</Th>
+                <Th className="col-num" sortKey="pending" sort={teamSort} onSort={onTeamSort}>Pendente líq.</Th>
                 <Th></Th>
               </tr>
             }
