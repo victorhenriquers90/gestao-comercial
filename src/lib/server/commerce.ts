@@ -1680,7 +1680,28 @@ export const listReturnsFn = createServerFn({ method: "POST" })
       const { row_count: _rc, ...rest } = r;
       return rest;
     });
-    return { items: dump(items), total };
+    // KPIs do filtro atual (mesma busca, sem paginação) -- mesma lacuna
+    // das outras telas, achada revisando com o usuário.
+    const [kpiRow] = await sql.query<Row>(
+      `select count(*)::int as return_count,
+              coalesce(sum(r.total), 0) as refund_value,
+              count(*) filter (where r.kind = 'total')::int as full_count,
+              count(*) filter (where r.kind = 'parcial')::int as partial_count,
+              count(*) filter (where r.kind = 'troca')::int as exchange_count
+         from returns r
+         join sales s on s.id = r.sale_id
+        where r.company_id = $1
+          and ($2::text is null or s.number::text ilike $2 or r.reason ilike $2)`,
+      [tenant.companyId, termo ? `%${termo}%` : null],
+    );
+    const kpis = {
+      returnCount: num(kpiRow?.return_count ?? 0),
+      refundValue: num(kpiRow?.refund_value ?? 0),
+      fullCount: num(kpiRow?.full_count ?? 0),
+      partialCount: num(kpiRow?.partial_count ?? 0),
+      exchangeCount: num(kpiRow?.exchange_count ?? 0),
+    };
+    return { items: dump(items), total, kpis };
   });
 
 export type HeldPayload = {

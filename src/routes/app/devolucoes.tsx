@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
@@ -54,6 +54,7 @@ function DevolucoesPage() {
   });
   const returnItems = list.data?.items ?? [];
   const returnsTotal = list.data?.total ?? 0;
+  const kpis = list.data?.kpis;
   const returnsPaginaVazia =
     !list.isPlaceholderData && list.data != null && returnItems.length === 0 && listPage > 0;
   useEffect(() => {
@@ -119,6 +120,15 @@ function DevolucoesPage() {
         description="Parcial ou total, com estoque, título e caixa atualizados."
         actions={<Button onClick={() => setOpen(true)}>Nova devolução</Button>}
       />
+      {kpis ? (
+        <div className="mb-5 kpi-grid">
+          <KpiCard label="Devoluções" value={String(kpis.returnCount)} />
+          <KpiCard label="Valor devolvido" value={formatBRL(kpis.refundValue)} tone="warning" />
+          <KpiCard label="Devolução total" value={String(kpis.fullCount)} />
+          <KpiCard label="Parcial" value={String(kpis.partialCount)} />
+          <KpiCard label="Troca" value={String(kpis.exchangeCount)} />
+        </div>
+      ) : null}
       <Input
         className="mb-block max-w-sm"
         placeholder="Nº da venda ou motivo"
