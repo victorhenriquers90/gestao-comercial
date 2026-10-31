@@ -125,8 +125,14 @@ const DATA_IMAGE_URL = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+=
  * foto sumir em silencio: sanitizeHttpUrl devolvia null, o produto salvava
  * "com sucesso" e a imagem nunca chegava no banco -- nenhum produto do
  * piloto tinha foto gravada.
+ *
+ * maxLen=600_000 e ~4x a meta interna do exportCrop (COMPRESS_TARGET_CHARS
+ * em image-edit.ts), que garante esse tamanho mesmo no pior caso (imagem
+ * incompressivel). Mantem margem larga sob o limite de corpo de request
+ * das Vercel Functions (~4,5MB) sem travar nenhuma foto real -- nao
+ * arredondar pra cima sem recalcular essa conta.
  */
-export function sanitizeImageUrl(raw: unknown, maxLen = 3_000_000): string | null {
+export function sanitizeImageUrl(raw: unknown, maxLen = 600_000): string | null {
   const s = String(raw ?? "").trim();
   if (!s) return null;
   if (s.startsWith("data:")) {

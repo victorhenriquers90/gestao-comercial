@@ -44,6 +44,10 @@ describe("sanitize input", () => {
     assert.equal(sanitizeImageUrl("javascript:alert(1)"), null);
     assert.equal(sanitizeImageUrl("data:image/jpeg;base64," + "A".repeat(3_000_000)), null);
     assert.ok(sanitizeImageUrl("https://cdn.example/logo.png")?.startsWith("https://"));
+    const under = "data:image/jpeg;base64," + "A".repeat(599_000);
+    const over = "data:image/jpeg;base64," + "A".repeat(601_000);
+    assert.equal(sanitizeImageUrl(under), under);
+    assert.equal(sanitizeImageUrl(over), null);
   });
 });
 
