@@ -6955,6 +6955,56 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      exato dos outros dois, `typecheck`/`lint` cobrem a parte mecânica)
      — mas vale um clique rápido se alguém passar por lá.
 
+140. **Hardening achado durante a auditoria da migração pro Vercel (item
+     120): garantir que foto de produto/logo nunca passe perto do limite
+     de corpo de ~4,5MB das Vercel Functions. Commit `80a430d`.**
+
+     **Contexto**: o Nitro empacota todas as rotas (inclusive as
+     `createServerFn`, que viajam como POST/JSON) numa única Vercel
+     Function (preset `vercel`, item 120). Foto de produto e logo da
+     empresa viajam como campo base64 dentro desse JSON
+     (`sanitizeImageUrl`, `src/lib/sanitize.ts`) — então o limite de
+     corpo da function vale pra elas.
+
+     **Medido em 2026-10-20** com uma imagem sintética 4000x3000 de
+     ruído puro (pior caso teórico, mais difícil de comprimir que
+     qualquer foto de celular real): o passe único antigo do
+     `exportCrop` (`maxPx=720, quality=0.84`) já ficava bem abaixo
+     (129KB) no caso comum, mas sem NENHUMA garantia matemática pro
+     pior caso (ruído puro exatamente na resolução final, sem o
+     downscale "ajudar" a comprimir — esse caso específico dava 481KB).
+
+     **Fix**: `exportCrop` (`src/lib/image-edit.ts`) agora tenta uma
+     escada de qualidade (`[0.84, 0.70, 0.55, 0.40]`) na resolução
+     pedida e, se nenhuma ficar sob a meta interna de 150.000
+     caracteres, reduz a resolução (`×0.6`, piso 160px) e tenta de
+     novo — até 16 tentativas, nunca devolve `""` (o pior resultado
+     ainda é melhor que nenhum; ver o incidente já documentado em
+     `sanitize.ts` sobre foto que desaparecia em silêncio).
+     `sanitizeImageUrl` baixou o teto de 3.000.000 para 600.000
+     caracteres (~4x a meta interna do `exportCrop`, margem larga sob
+     o limite de ~4,5MB) como segunda linha de defesa.
+
+     **Por que ficou parado 10 dias sem commit**: o fix foi escrito e
+     medido em 2026-10-20, mas deixado no working tree de propósito —
+     decisão de não commitar código sem o usuário confirmar que queria
+     subir, registrada na memória do projeto. Achado de novo ao
+     retomar a sessão (`git status` mostrando as 3 modificações sem
+     relação com o que estava sendo trabalhado), reconferido do zero
+     (`typecheck`/`lint`/`test`, 511 testes) e commitado só depois do
+     usuário confirmar.
+
+     **Verificação**: `typecheck`/`lint` limpos (0 erros, warnings
+     pré-existentes não relacionados), 511 testes passando (inclui o
+     caso novo de fronteira em `sanitize.test.ts`: 599.000 chars passa,
+     601.000 chars rejeita). Deploy `80a430d` confirmado "Ready" (26s).
+     Abri o diálogo "Novo produto" em produção (Victor Comércio) depois
+     do deploy — abre e fecha sem erro de console; não refiz a medição
+     manual com imagem sintética de ruído puro nesta sessão porque a
+     lógica do `exportCrop` não mudou desde a medição de 2026-10-20 (só
+     ficou parada sem commit) — vale medir de novo se o algoritmo for
+     tocado no futuro.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
