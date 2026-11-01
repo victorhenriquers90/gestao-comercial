@@ -3896,21 +3896,10 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
     autopromover via chamada direta ao servidor (`assertCan` presente e
     correto em toda função sensível, não só escondido na UI).
 
-    **Achado maior, NÃO corrigido — registrado como pergunta de produto,
-    não bug**: não existe NENHUM controle de acesso por loja. O campo
-    `memberships.store_id` existe e é usado só como loja padrão do
-    seletor (conveniência de UI) — toda função do servidor que recebe um
-    `storeId` (`PDV`, caixa, estoque, financeiro, compras) só confere se
-    a loja pertence à MESMA EMPRESA (`assertStore`), nunca se é a loja
-    daquele usuário. Ou seja, hoje um papel como `caixa`/`vendedor`/
-    `estoque` com `store_id` cadastrado na Loja Centro consegue, de
-    propósito ou por engano na tela, mexer em venda/estoque/caixa da Loja
-    Shopping — qualquer loja da mesma empresa, sem restrição nenhuma. Não
-    sei se isso é intencional (acesso multi-loja por desenho, já que o
-    seletor de loja no topo deixa qualquer papel trocar livremente) ou
-    uma lacuna — e seria uma mudança ampla, não local desta tela (teria
-    que entrar em `assertStore`/`requireTenant`, usado por praticamente
-    todo módulo já revisado nesta rodada). Fica pra decisão do usuário.
+    **Achado maior, NÃO corrigido nesta rodada — registrado como pergunta
+    de produto, não bug. Resolvido depois no item 93** (quem é restrito a
+    uma loja só opera essa loja; leitura/relatórios ficaram de fora de
+    propósito — ver item 93 e a confirmação no item 142).
 
     `typecheck`/`lint` (0 erros, os mesmos 5 avisos antigos) e `npm test`
     (483, inalterado) limpos.
@@ -7056,6 +7045,37 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (dinheiro físico) nunca esteve errado, mesma razão documentada no
      item 134 (cashSales e refunds vêm do `byMethod` sem filtro, se
      cancelam sozinhos) — só os números de EXIBIÇÃO estavam errados.
+
+142. **Pedido do usuário: "segue pro próximo item do HANDOFF" (2ª rodada) —
+     escolheu "controle de acesso por loja" da lista de decisões pendentes.
+     Sem código novo: era um falso alarme de documentação, não um item em
+     aberto de verdade.**
+
+     Levei ao usuário o achado do item ~85 (linha ~3899, antes do número
+     92) como se estivesse pendente — "não sei se é intencional ou uma
+     lacuna, fica pra decisão do usuário". Usuário respondeu "restringir
+     por loja". Antes de escrever qualquer código, fui ler
+     `src/lib/server/context.ts` pra entender o modelo atual e descobri
+     que **isso já tinha sido implementado e testado ao vivo no item 93**,
+     bem mais adiante no mesmo HANDOFF — `assertStore` já recusa
+     `role !== 'admin' && homeStoreId != null && homeStoreId !== storeId`
+     desde aquela sessão. A nota antiga nunca foi atualizada pra apontar
+     pra frente, então parecia uma pendência real ao ler só até ali.
+
+     Corrigido o texto do item ~85 (ver acima) pra apontar pro item 93 em
+     vez de ficar como pergunta em aberto — fonte de verdade errada era
+     documentação desatualizada, não o código.
+
+     Perguntei o único ponto que o item 93 já tinha deixado como decisão
+     de escopo separada (leitura em Dashboard/Relatórios não é restrita
+     por loja, só escrita): usuário confirmou manter como está. Nenhuma
+     mudança de código nesta etapa.
+
+     **Lição pra quem ler isto depois**: antes de levar um "achado não
+     corrigido" de uma seção antiga do HANDOFF pro usuário como pendência,
+     `grep` o resto do arquivo por palavras-chave do achado — um item
+     pode ter sido resolvido muitas linhas depois, sem a nota original
+     ser atualizada.
 
 ## Como a próxima IA deve trabalhar
 
