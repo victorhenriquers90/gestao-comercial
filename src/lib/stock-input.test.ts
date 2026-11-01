@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "./stock-input.ts";
+import { landedUnitCosts, parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "./stock-input.ts";
 
 describe("parseStockQuantity", () => {
   it("aceita quantidade normal", () => {
@@ -82,5 +82,76 @@ describe("parsePurchaseExtra", () => {
     assert.throws(() => parsePurchaseExtra(-5, "frete"), /frete/);
     assert.throws(() => parsePurchaseExtra(Number.NaN, "imposto"), /imposto/);
     assert.throws(() => parsePurchaseExtra(Number.POSITIVE_INFINITY, "desconto"), /desconto/);
+  });
+});
+
+describe("landedUnitCosts", () => {
+  it("rateia o exemplo do HANDOFF -- item unico, 10 un a R$50 + R$100 de frete", () => {
+    const [custo] = landedUnitCosts([{ quantity: 10, unitCost: 50 }], 100);
+    assert.equal(custo, 60);
+  });
+
+  it("sem frete/imposto/desconto, custo fica igual ao digitado", () => {
+    const custos = landedUnitCosts(
+      [
+        { quantity: 2, unitCost: 30 },
+        { quantity: 5, unitCost: 10 },
+      ],
+      0,
+    );
+    assert.deepEqual(custos, [30, 10]);
+  });
+
+  it("rateia por VALOR, nao por quantidade -- item mais caro absorve mais frete", () => {
+    // subtotal = 2*100 + 8*10 = 280; extra = 28 (10% do subtotal)
+    // item 1: 200/280 do extra = 20, dividido por 2 un = 10 por unidade, + 100 = 110
+    // item 2: 80/280 do extra = 8, dividido por 8 un = 1 por unidade, + 10 = 11
+    const [custo1, custo2] = landedUnitCosts(
+      [
+        { quantity: 2, unitCost: 100 },
+        { quantity: 8, unitCost: 10 },
+      ],
+      28,
+    );
+    assert.ok(Math.abs(custo1! - 110) < 1e-9);
+    assert.ok(Math.abs(custo2! - 11) < 1e-9);
+  });
+
+  it("desconto reduz o custo, nunca abaixo de zero", () => {
+    // subtotal = 100; desconto = 100 (extra = -100) -> total do pedido = 0
+    const [custo] = landedUnitCosts([{ quantity: 10, unitCost: 10 }], -100);
+    assert.equal(custo, 0);
+  });
+
+  it("desconto maior que o subtotal nao gera custo negativo (clamp)", () => {
+    // Caso que so aconteceria se savePurchaseFn nao travasse total < 0 antes
+    // -- a funcao pura tambem nao deve devolver custo negativo por conta
+    // disso, mesma invariante de parseUnitCost.
+    const [custo] = landedUnitCosts([{ quantity: 10, unitCost: 10 }], -500);
+    assert.equal(custo, 0);
+  });
+
+  it("subtotal zero (tudo brinde) cai pra rateio igual por quantidade", () => {
+    const custos = landedUnitCosts(
+      [
+        { quantity: 2, unitCost: 0 },
+        { quantity: 8, unitCost: 0 },
+      ],
+      100,
+    );
+    assert.deepEqual(custos, [10, 10]);
+  });
+
+  it("pedido com varios itens: soma do rateio bate com o extra total", () => {
+    const itens = [
+      { quantity: 3, unitCost: 20 },
+      { quantity: 1, unitCost: 200 },
+      { quantity: 7, unitCost: 5 },
+    ];
+    const extra = 45.5;
+    const custos = landedUnitCosts(itens, extra);
+    const somaRateada = custos.reduce((a, c, i) => a + c * itens[i]!.quantity, 0);
+    const somaOriginal = itens.reduce((a, i) => a + i.quantity * i.unitCost, 0);
+    assert.ok(Math.abs(somaRateada - (somaOriginal + extra)) < 1e-9);
   });
 });

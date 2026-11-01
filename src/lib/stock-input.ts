@@ -70,3 +70,39 @@ export function parsePurchaseExtra(value: unknown, label: string): number {
   }
   return n;
 }
+
+/**
+ * Custo de aterrissagem (landed cost): rateia frete + imposto - desconto do
+ * pedido entre os itens recebidos, proporcional ao valor de cada um
+ * (quantity * unitCost), e devolve o novo custo unitario de cada item.
+ *
+ * Antes disto, `receivePurchaseFn` gravava `cost = unit_cost` direto -- o
+ * frete entrava certo no que a loja deve ao fornecedor (accounts_payable),
+ * mas nunca no custo do produto, entao toda venda futura superestimava a
+ * margem ate a proxima compra atualizar o custo. Decisao de metodologia
+ * confirmada com o usuario (ver HANDOFF).
+ *
+ * Rateio por VALOR, nao por quantidade igual: um item de R$500 deveria
+ * absorver mais frete que um de R$10 no mesmo pedido. Isto tambem garante
+ * matematicamente que nenhum item fica com custo negativo quando ha
+ * desconto, desde que o pedido inteiro tenha `total >= 0` (ja garantido por
+ * quem grava o pedido): landedCost_i = unitCost_i * (total/subtotal), e
+ * total/subtotal nunca e negativo se total nao e.
+ *
+ * Quando subtotal e zero (pedido so de itens com custo zero -- brinde,
+ * bonificacao), nao ha base de valor pra ratear: cai pra rateio igual por
+ * quantidade. `Math.max(0, ...)` no final so pega esse caso extremo (extra
+ * negativo maior que o que a quantidade suporta) -- custo nunca fica
+ * negativo, mesmo invariante que `parseUnitCost` ja cobra na entrada.
+ */
+export function landedUnitCosts(
+  items: readonly { quantity: number; unitCost: number }[],
+  extra: number,
+): number[] {
+  const subtotal = items.reduce((a, i) => a + i.quantity * i.unitCost, 0);
+  const totalQty = items.reduce((a, i) => a + i.quantity, 0);
+  return items.map((i) => {
+    const share = subtotal > 0.009 ? (i.quantity * i.unitCost) / subtotal : totalQty > 0 ? i.quantity / totalQty : 0;
+    return Math.max(0, i.unitCost + (extra * share) / i.quantity);
+  });
+}

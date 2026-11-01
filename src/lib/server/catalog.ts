@@ -6,7 +6,7 @@ import { num } from "@/lib/utils";
 import { assertOwned, assertStore, assertVariants, audit, auditUpdate, nextNumber, requireTenant } from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
-import { parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
+import { landedUnitCosts, parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
@@ -1125,8 +1125,19 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
       os dois: estoque somado em dobro e DUAS contas a pagar pro fornecedor.
     */
     await sql.transaction(async (sql) => {
-      const [p] = await sql<{ id: number; status: string; store_id: number; supplier_id: number | null; total: string | number; number: number }>`
-        select id, status, store_id, supplier_id, total, number from purchases
+      const [p] = await sql<{
+        id: number;
+        status: string;
+        store_id: number;
+        supplier_id: number | null;
+        total: string | number;
+        number: number;
+        subtotal: string | number;
+        discount: string | number;
+        freight: string | number;
+        tax: string | number;
+      }>`
+        select id, status, store_id, supplier_id, total, number, subtotal, discount, freight, tax from purchases
          where id = ${data.id} and company_id = ${tenant.companyId}
          for update
       `;
@@ -1136,7 +1147,17 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
       const items = await sql<{ variant_id: number; product_id: number; quantity: string | number; unit_cost: string | number }>`
         select variant_id, product_id, quantity, unit_cost from purchase_items where purchase_id = ${p.id}
       `;
-      for (const item of items) {
+      // Custo de aterrissagem: frete + imposto - desconto do pedido, rateado
+      // por valor entre os itens (ver landedUnitCosts). `unit_cost` em
+      // purchase_items continua intocado -- e o preco negociado com o
+      // fornecedor, nao o custo de estoque; so o que vai pra products/
+      // product_variants.cost (usado em margem/CMV) passa a ser o rateado.
+      const extra = num(p.freight) + num(p.tax) - num(p.discount);
+      const landed = landedUnitCosts(
+        items.map((i) => ({ quantity: num(i.quantity), unitCost: num(i.unit_cost) })),
+        extra,
+      );
+      for (const [idx, item] of items.entries()) {
         await applyStockChange(sql, {
           companyId: tenant.companyId,
           storeId: p.store_id,
@@ -1148,12 +1169,13 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
           referenceId: p.id,
           allowNegative: true,
         });
+        const custo = landed[idx]!;
         await sql`
-          update products set cost = ${num(item.unit_cost)}, updated_at = now()
+          update products set cost = ${custo}, updated_at = now()
           where id = ${item.product_id} and company_id = ${tenant.companyId}
         `;
         await sql`
-          update product_variants set cost = ${num(item.unit_cost)}
+          update product_variants set cost = ${custo}
           where id = ${item.variant_id} and company_id = ${tenant.companyId}
         `;
       }
