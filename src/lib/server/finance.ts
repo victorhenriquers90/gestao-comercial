@@ -945,13 +945,20 @@ async function loadOpenRegister(
     os dois se cancelam. Por isso esta segunda consulta, so pros numeros de
     EXIBICAO (que nao entram na formula do esperado): join com `sales` pra
     excluir quem ja foi cancelada, sem tocar em `byMethod`/cashSales/refunds.
+
+    Mesma lacuna existia pra devolucao TOTAL (status 'devolvida'): achado ao
+    vivo testando o PDV do Vercel ponta a ponta (venda nº 30, devolvida por
+    completo) ainda contando "1 venda no turno". `devolvida_parcial` continua
+    CONTANDO normal de proposito -- a venda aconteceu de verdade, so uma peca
+    voltou (o estorno entra como lancamento 'devolucao' separado, visivel nas
+    Movimentacoes); so a devolucao TOTAL equivale a cancelar pra este card.
   */
   const salesByMethod = await sql<{ method: string | null; total: string | number }>`
     select cm.method, coalesce(sum(cm.amount),0) as total
       from cash_movements cm
       join sales s on s.id = cm.sale_id
      where cm.register_id = ${num(reg.id)} and cm.company_id = ${companyId}
-       and cm.type = 'venda' and s.status <> 'cancelada'
+       and cm.type = 'venda' and s.status not in ('cancelada', 'devolvida')
      group by cm.method
   `;
   // count(distinct sale_id) e nao count(*): venda paga metade no cartao e
@@ -961,7 +968,7 @@ async function loadOpenRegister(
       from cash_movements cm
       join sales s on s.id = cm.sale_id
      where cm.register_id = ${num(reg.id)} and cm.company_id = ${companyId}
-       and cm.type = 'venda' and s.status <> 'cancelada'
+       and cm.type = 'venda' and s.status not in ('cancelada', 'devolvida')
   `;
 
   const sales = salesByMethod.reduce((a, m) => a + num(m.total), 0);
