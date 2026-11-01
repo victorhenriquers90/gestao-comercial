@@ -5829,17 +5829,13 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      build, Production). Os 4 fixes do PDV tablet (item 114) só foram
      encontrados PORQUE o usuário já estava testando no ambiente novo.
 
-     **Em aberto, não confirmado nesta sessão**: a venda de teste
-     `ZZTESTE` ponta a ponta especificamente no PDV do Vercel (passo 5 do
-     plano original) nunca fechou com sucesso enquanto eu acompanhava —
-     os logs de request mostravam "zero tráfego" repetidas vezes (às
-     vezes porque o usuário estava sem querer num atalho antigo apontando
-     pro ambiente errado). Não é um bug conhecido, só uma verificação que
-     ficou pra trás quando o foco mudou pra revisão de código/QA/DBA. Se
-     "continuar" cair numa sessão livre, vale fechar isso: produto
-     `ZZTESTE` descartável, venda completa pelo PDV publicado no domínio
-     da Vercel, conferir no Postgres da Vercel (não no local), limpar
-     depois.
+     **Fechado no item 141**: a venda de teste `ZZTESTE` ponta a ponta no
+     PDV do Vercel (passo 5 do plano original) nunca tinha fechado com
+     sucesso até então — os logs de request mostravam "zero tráfego"
+     repetidas vezes. Fechou de verdade numa sessão livre (venda nº 30) e,
+     no caminho, revelou um bug real no card "Vendas no turno" do Caixa
+     (mesma classe do achado acima, agora pra devolução total). Ver item
+     141 pros detalhes.
 
 121. **Pedido do usuário: atuar como analista de testes sênior "pra colocar o
      sistema em produção para comercialização" — achado de arquitetura
@@ -7004,6 +7000,62 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      lógica do `exportCrop` não mudou desde a medição de 2026-10-20 (só
      ficou parada sem commit) — vale medir de novo se o algoritmo for
      tocado no futuro.
+
+141. **Pedido do usuário: "segue pro próximo item do HANDOFF" — duas pendências
+     do item 136 revisitadas. Uma era falso alarme; a outra revelou um bug
+     real, achado fechando o item 120. Commit `103a14a`.**
+
+     **Pendência #5 do item 136 (loading ad-hoc fora do padrão), investigada
+     e descartada**: os três locais citados (`compras.tsx:364`,
+     `produtos.tsx:607`, `configuracoes.tsx:694`) usam
+     `<p>Carregando…</p>` dentro de diálogo/sub-painel — mas essa é a
+     convenção JÁ estabelecida em outros 8+ componentes (`customer-panel`,
+     `supplier-panel`, `card-settlement-panel`, `cash-closures-panel`,
+     `crediario-panel`, `ncm-bulk-panel`, `iss-rate`), não uma
+     inconsistência. `PageSkeleton` é pra página inteira, `EmptyState` é
+     pra "sem dados" com CTA — nenhum dos dois cabe num carregamento
+     pequeno dentro de um diálogo já aberto. Não mexi; a nota original no
+     item 136 estava incompleta (só viu 3 dos ~11 casos antes de concluir
+     que era inconsistência).
+
+     **Pendência do item 120, fechada: venda `ZZTESTE` ponta a ponta no PDV
+     do Vercel.** Nunca tinha fechado com sucesso antes (item 120 registrava
+     "zero tráfego" repetidas vezes). Desta vez: reaproveitei o produto
+     `ZZTESTE Produto Vercel Pilot` que já existia inativo/zerado (resquício
+     de tentativa anterior) — reativei, dei entrada de 5 unidades em
+     Estoque, vendi 1 peça pelo PDV publicado (Loja Centro, caixa já
+     aberto), pagamento em dinheiro, **venda nº 30 fechada com sucesso**,
+     comprovante gerado. Sem acesso a `psql` contra o Postgres do Vercel
+     deste ambiente (só `.env.example` local, sem connection string real) —
+     por isso a limpeza usou o próprio fluxo da aplicação em vez de SQL
+     direto: devolução total pela tela de Devoluções (mais correto que
+     mexer no banco: exercita o caminho de devolução de verdade, já
+     validado nos itens 12/13), depois Estoque → Saída de 5 (volta a 0) e
+     Produtos → Inativo de novo — produto restaurado ao estado exato de
+     antes do teste. `company_counters` não foi resetado (sem acesso a
+     SQL) — a próxima venda real começa do nº 31, não nº 1; aceitável
+     porque o piloto no Vercel já não estava mais com contadores zerados
+     mesmo (venda nº 29 já existia de uma sessão anterior, item 134).
+
+     **Bug real achado no processo**: depois de confirmar a devolução
+     total, o card "Vendas no turno" do Caixa continuou mostrando **1**
+     em vez de **0**. Mesma classe de bug do item 134 (venda cancelada
+     contando indevidamente), só que incompleta: `salesByMethod` e a
+     contagem de `vendas.n` (`src/lib/server/finance.ts`) excluíam
+     `status = 'cancelada'` mas não `'devolvida'` (devolução total).
+     `devolvida_parcial` continua contando normal, de propósito — a venda
+     aconteceu de verdade, só uma peça voltou (o estorno é um lançamento
+     `'devolucao'` separado, visível nas Movimentações); só a devolução
+     TOTAL equivale a cancelar pra este card. Fix: `s.status not in
+     ('cancelada', 'devolvida')` nas duas consultas.
+
+     **Verificação**: `typecheck`/`lint` limpos, deploy `103a14a`
+     confirmado "Ready" (24s). Testado ao vivo em produção: antes do fix
+     "Vendas no turno" mostrava 1 (venda nº 30, devolvida por completo);
+     depois do deploy, mesmo caixa, mesma venda — **0**. `expectedCash`
+     (dinheiro físico) nunca esteve errado, mesma razão documentada no
+     item 134 (cashSales e refunds vêm do `byMethod` sem filtro, se
+     cancelam sozinhos) — só os números de EXIBIÇÃO estavam errados.
 
 ## Como a próxima IA deve trabalhar
 
