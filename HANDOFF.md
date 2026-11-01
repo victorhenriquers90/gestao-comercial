@@ -7077,6 +7077,52 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      pode ter sido resolvido muitas linhas depois, sem a nota original
      ser atualizada.
 
+143. **Pedido do usuário: escolheu "rateio de frete no custo do produto" (item
+     17) como próximo item. Decisão de metodologia confirmada: ratear no
+     custo, não tratar como despesa do período. Commit `6f091be`.**
+
+     **Infra nova** (`src/lib/stock-input.ts`, `landedUnitCosts`): rateia
+     frete + imposto - desconto do pedido entre os itens recebidos,
+     proporcional ao VALOR de cada item (`quantity * unitCost`), não por
+     quantidade igual — um item de R$500 absorve mais frete que um de
+     R$10 no mesmo pedido. Garantia matemática de custo nunca negativo
+     quando o pedido tem `total >= 0` (já garantido por `savePurchaseFn`):
+     `landedCost_i = unitCost_i * (total/subtotal)`. Quando subtotal é
+     zero (pedido só de itens grátis/bonificação), cai pra rateio igual
+     por quantidade. 7 testes novos em `stock-input.test.ts`, incluindo o
+     exemplo exato do item 17 (10un a R$50 + R$100 frete → R$60).
+
+     **Aplicado em `receivePurchaseFn`** (`src/lib/server/catalog.ts`):
+     antes gravava `cost = unit_cost` direto; agora usa `landedUnitCosts`.
+     `purchase_items.unit_cost` continua intocado (preço negociado com o
+     fornecedor, não custo de estoque) — só `products`/
+     `product_variants.cost` (usado em margem/CMV) passa a refletir o
+     custo de aterrissagem.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes), deploy
+     `6f091be` confirmado "Ready". Testado ao vivo em produção reproduzindo
+     o exemplo exato do HANDOFF: pedido de 10un de `ZZTESTE Produto Vercel
+     Pilot` a R$50 + R$100 de frete (total R$600), recebido — confirmado
+     no Postgres real via tela de Produtos: custo foi de R$30,00 (valor
+     antigo do produto) pra **R$60,00** exatos. Limpeza: `undoReceivePurchaseFn`
+     reverteu estoque e conta a pagar (não reverte custo — limitação
+     pré-existente da função "versão estreita", não alterada aqui); custo
+     e status Inativo/estoque 0 restaurados manualmente depois. O pedido
+     nº 10 em si ficou como "Enviado" (não há como cancelar/excluir um
+     pedido de compra pela UI, só receber) — inofensivo, não entra em
+     nenhum total financeiro nesse status, claramente identificável pelo
+     nome `ZZTESTE`.
+
+     **Achado à parte, sobre a ferramenta de automação, não sobre o
+     app**: o `ConfirmBar` (`shared.tsx`, portal pro `document.body`) não
+     respondia a cliques do `computer` tool nesta sessão — nem por
+     coordenada nem por `ref`, em duas abas diferentes, sem request de
+     rede nenhuma disparada. `document.querySelector(...).click()` direto
+     via JS funcionou de primeira. Não é bug do `gestao-comercial`
+     (confirmado lendo o componente — é um `<button onClick>` comum); fica
+     registrado como nota de ambiente pra quem testar "Desfazer
+     recebimento" (ou qualquer `ConfirmBar`) ao vivo numa sessão futura.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
