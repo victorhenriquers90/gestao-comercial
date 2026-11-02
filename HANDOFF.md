@@ -7318,6 +7318,49 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        em 1440px foi conferido por `getComputedStyle`, não por
        screenshot (ilegível naquela largura).
 
+147. **Pedido do usuário: "continuar melhorando o sistema" → escolheu
+     "auditoria de segurança/integridade". Escopo deliberadamente
+     estreito: código tocado/criado NESTA sessão (itens 143-146), não
+     repetição da varredura completa dos itens 116-121. Um achado real.
+     Commit `4089dce`.**
+
+     **Achado**: `adjustStockFn` (`src/lib/server/catalog.ts`) declarava
+     `note: string` no validador mas nunca chamava `requireLine`/
+     `sanitizeLine` nele — ao contrário de `cancelSaleFn`/
+     `createReturnFn`/`cancelPayableFn`/`cancelReceivableFn`/
+     `cancelExpenseFn`/`cashMoveFn`, que já seguem esse padrão (o
+     princípio já documentado no código: "validação de tela não vale pra
+     quem chama o servidor direto"). Uma chamada direta ao servidor
+     (contornando `estoque.tsx`, que acabou de ganhar validação inline
+     no item 144) gravava `note` vazio, sem limite de tamanho, com
+     caractere de controle — exatamente no log de Movimentações que
+     existe pra explicar POR QUE o estoque mudou.
+
+     **Fix**: `adjustStockFn` agora exige motivo (`requireLine`) — a
+     tela só chama esta função quando NÃO há transferência, caminho em
+     que o motivo é sempre obrigatório pela própria regra de
+     `estoque.tsx`. `transferStockFn.note` continua opcional (tem padrão
+     "Transferência entre lojas"), só ganhou sanitização
+     (`optionalLine`) por consistência — não virou obrigatório.
+
+     **Varredura dos outros campos de texto livre em `server/*.ts`**
+     (grep por `(note|reason|motivo|description)\??: string` em todo
+     `src/lib/server`): `explainCashDifferenceFn` valida dentro do
+     handler (não no validator, mas valida); `cashMoveFn` e
+     `stock-count.ts` já usam `optionalLine`/`requireLine`. Nenhum outro
+     buraco achado.
+
+     **Verificação, não só type-check**: `typecheck`/`lint`/`test`
+     limpos (518 testes), deploy `4089dce` confirmado "Ready". Provado
+     ao vivo em produção com uma chamada FORJADA ao servidor (não pela
+     UI): interceptei `window.fetch` pra capturar o formato exato do
+     payload de um `adjustStockFn` legítimo, depois repeti a chamada
+     trocando só `note` por `""` via `fetch()` direto no console —
+     resposta `{"error":{"message":"Motivo obrigatório."}}`, estoque
+     confirmado intacto depois (QTD 0, igual antes da tentativa). Prova
+     que a validação é real no servidor, não só decoração de tipo
+     TypeScript que o bundler apaga em runtime.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
