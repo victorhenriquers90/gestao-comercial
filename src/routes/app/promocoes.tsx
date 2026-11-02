@@ -240,7 +240,7 @@ function PromocoesPage() {
             </Field>
           ) : null}
           {form.kind === "bxgy" ? (
-            <div className="mt-block grid grid-cols-2 gap-2">
+            <div className="field-grid-2 mt-block gap-2">
               <Field label="Compre (quantidade)">
                 <Input
                   type="number"
@@ -289,7 +289,7 @@ function PromocoesPage() {
               <ProductPicker activeOnly ariaLabel="Produto da promoção" value={product} onChange={setProduct} />
             </Field>
           ) : null}
-          <div className="mt-block grid grid-cols-2 gap-2">
+          <div className="field-grid-2 mt-block gap-2">
             <Field label="Início">
               <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
             </Field>

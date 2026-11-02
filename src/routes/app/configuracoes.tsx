@@ -266,7 +266,7 @@ function ConfigPage() {
                 onChange={(e) => setForm({ ...form, document: maskCnpj(e.target.value) })}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-block">
+            <div className="field-grid-2 gap-block">
               <Field label="Inscrição Estadual">
                 <Input value={form.ie} onChange={(e) => setForm({ ...form, ie: e.target.value })} />
               </Field>
@@ -283,7 +283,7 @@ function ConfigPage() {
                 </Select>
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-block">
+            <div className="field-grid-2 gap-block">
               <Field label="E-mail">
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </Field>
@@ -294,7 +294,7 @@ function ConfigPage() {
             <Field label="Endereço">
               <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </Field>
-            <div className="grid grid-cols-3 gap-block">
+            <div className="field-grid-3 gap-block">
               <Field label="Cidade">
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </Field>
@@ -347,7 +347,7 @@ function ConfigPage() {
                             onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })}
                           />
                         </Field>
-                        <div className="grid grid-cols-2 gap-block">
+                        <div className="field-grid-2 gap-block">
                           <Field label="Código">
                             <Input
                               value={storeForm.code}
@@ -367,7 +367,7 @@ function ConfigPage() {
                             onChange={(e) => setStoreForm({ ...storeForm, address: e.target.value })}
                           />
                         </Field>
-                        <div className="grid grid-cols-3 gap-block">
+                        <div className="field-grid-3 gap-block">
                           <Field label="Cidade">
                             <Input
                               value={storeForm.city}

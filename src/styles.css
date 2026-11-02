@@ -957,6 +957,38 @@
   }
 
   /*
+    Par/trio de campo CURTO (UF, CEP, Código...) dentro de um Card com
+    `max-w-*` -- `.form-grid` (acima) tem mínimo de 16rem por coluna, largo
+    demais pra estes: numa largura comum de desktop (Card max-w-xl=36rem)
+    3 colunas de 16rem nem cabem, `.form-grid` quebraria o layout que já
+    funciona. Breakpoint em unidade de CONTAINER (`@container main`, a
+    mesma tomada que `.content-pane` já dá pra toda rota de `/app/*` --
+    ver `.dash-stage`/`.pdv-cart`/`.pdv-side`/`.topbar` mais abaixo pro
+    mesmo padrão), não de viewport do Tailwind: a largura real disponível
+    pro formulário depende de sidebar+padding+max-w do Card, não só da
+    janela -- um `sm:`/`md:` do Tailwind reage à janela inteira e erra
+    exatamente nesse descasamento.
+  */
+  .field-grid-2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @container main (min-width: 26rem) {
+    .field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  .field-grid-3 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @container main (min-width: 22rem) {
+    .field-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container main (min-width: 34rem) {
+    .field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  /*
     PDV. Escala de espaco 4/8/12/16/24/32; raio 8px nos controles e 12px
     nos paineis; dinheiro em Outfit com algarismos tabulares (Syne fica
     pros titulos -- invariante 9 do HANDOFF). Separacao por filete, nao

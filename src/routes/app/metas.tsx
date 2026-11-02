@@ -226,7 +226,7 @@ function MetasPage() {
               onChange={(e) => setForm({ ...form, amount: e.target.value })}
             />
           </Field>
-          <div className="mt-block grid grid-cols-2 gap-2">
+          <div className="field-grid-2 mt-block gap-2">
             <Field label="Início">
               <Input type="date" value={form.periodStart} onChange={(e) => setForm({ ...form, periodStart: e.target.value })} />
             </Field>
