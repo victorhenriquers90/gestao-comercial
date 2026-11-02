@@ -7123,6 +7123,70 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      registrado como nota de ambiente pra quem testar "Desfazer
      recebimento" (ou qualquer `ConfirmBar`) ao vivo numa sessão futura.
 
+144. **Pedido do usuário: "unificar os 3 mecanismos de validação" (item
+     136/139). Decisão: unificar os campos "Motivo" (toast) e o formulário
+     Nova Despesa (`required` nativo) no mesmo padrão de erro inline do
+     item 139 — toast de erro de SERVIDOR continua como está, não faz
+     parte disto. Commit `7d72b32`.**
+
+     **Investigação antes de mexer, achado maior que o esperado**: o
+     pedido original citava "3 mecanismos" (toast, `required` nativo,
+     diálogo de motivo), mas `grep` revelou uma QUARTA variante só em
+     `vendas.tsx` — a justificativa de cancelamento de NFC-e usa um
+     contador "X/15 caracteres" com botão desabilitado, sem toast nem
+     erro inline. Essa ficou de fora de propósito: é um padrão diferente,
+     mais adequado pra um mínimo legal de caracteres (mostra progresso,
+     não só sim/não) — unificar pro padrão simples de erro seria piorar,
+     não corrigir.
+
+     **Aplicado o padrão de erro inline (igual item 139: borda vermelha +
+     "Campo obrigatório.", valida no blur, limpa ao digitar, valida de
+     novo antes de agir) em 4 campos "Motivo" que usavam
+     `toast.error("Informe o motivo.")`**:
+     - Vendas (cancelamento de venda)
+     - Estoque (motivo da movimentação) — **continua condicionalmente
+       obrigatório**: só quando NÃO há transferência pra outra loja
+       (mesma regra do toast antigo), validado passando o valor de
+       `toStore` pra dentro de `validateNote`; selecionar uma loja de
+       transferência limpa o erro na hora, mesmo com o campo ainda vazio.
+     - Devoluções (motivo da devolução)
+     - Financeiro (motivo do cancelamento/estorno de lançamento) — o
+       botão já ficava `disabled` sem motivo (sem dizer qual campo
+       faltava); removido o `disabled` nessa condição, mantido só pro
+       envio em andamento, e adicionado o erro inline no campo.
+
+     **Financeiro, formulário "Nova despesa"**: os 3 `required` nativos
+     (Descrição/Valor/Data) viraram o mesmo padrão — antes dependiam só
+     do balão de validação do navegador (texto e aparência diferentes do
+     resto do sistema). O formulário continua não-controlado (FormData +
+     `form.reset()`, padrão já existente ali por causa do `e.currentTarget`
+     morrer depois do `await`) — os 3 erros são estado à parte, validados
+     no blur de cada campo e de novo no submit (lendo do FormData), os
+     3 aparecem juntos se todos estiverem vazios (não só o primeiro, como
+     o navegador fazia um de cada vez).
+
+     **Achado e corrigido no caminho**: em Vendas e Estoque, o motivo/nota
+     digitado ficava preso ao abrir o diálogo de OUTRO registro sem
+     enviar o anterior (nunca era resetado ao trocar de `openId`/`adj`) —
+     um `useEffect` novo em cada um reseta o formulário inteiro (incluindo
+     o erro) toda vez que o id muda.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes), deploy
+     `7d72b32` confirmado "Ready". Testado ao vivo em produção:
+     - Nova despesa: clique em "Lançar" vazio mostrou os 3 erros juntos,
+       sem balão nativo nem toast; preenchido corretamente, lançou normal
+       ("Despesa lançada.", SAÍDAS foi a R$1,00).
+     - Cancelar despesa: clique em "Confirmar cancelamento" sem motivo
+       mostrou o erro inline (antes o botão ficava só desabilitado, sem
+       explicar por quê); preenchido, cancelou normal e o dinheiro voltou
+       ao caixa (SAÍDAS de volta a R$0,00) — dado de teste já limpo nesse
+       mesmo fluxo.
+     - Estoque: "Ajustar" sem motivo e sem transferência mostrou o erro;
+       selecionar "Loja Shopping" em Transferir limpou o erro na hora, sem
+       precisar digitar nada no Motivo — confirmando a regra condicional.
+       Fechado sem registrar (não queria mexer no estoque de verdade só
+       pra este teste).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
