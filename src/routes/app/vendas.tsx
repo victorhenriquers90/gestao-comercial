@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input, Textarea } from "@/components/ui/input";
+import { Field, Input, Textarea } from "@/components/ui/input";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
@@ -49,6 +49,21 @@ function VendasPage() {
   }
   const [openId, setOpenId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
+  // Mesmo padrão de Clientes/Fornecedores/Produtos (item 139): erro inline
+  // no lugar de toast pra um campo vazio -- aqui substitui o
+  // `toast.error("Informe o motivo.")` que existia antes.
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  function validateReason(value: string) {
+    const ok = value.trim().length > 0;
+    setReasonError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
+  useEffect(() => {
+    // Sem isto, o motivo digitado pra uma venda ficava preso ao abrir outra
+    // -- nunca era limpo ao trocar de `openId`.
+    setReason("");
+    setReasonError(null);
+  }, [openId]);
   // Guarda o id da venda, não só um boolean (mesmo padrão de confirmReceive
   // em compras.tsx): se o Dialog de detalhe fechar sozinho (Esc, clique fora)
   // enquanto o confirm ainda está aberto por cima, `openId` já virou null e um
@@ -435,12 +450,22 @@ function VendasPage() {
                 <p className="text-xs text-muted-foreground">Esta venda não gerou comissão.</p>
               ) : null}
               {String(detail.data.sale.status) === "finalizada" ? (
-                <div className="no-print flex gap-2">
-                  <Input placeholder="Motivo do cancelamento" value={reason} onChange={(e) => setReason(e.target.value)} />
+                <div className="no-print flex items-end gap-2">
+                  <Field label="Motivo do cancelamento" className="flex-1" error={reasonError ?? undefined}>
+                    <Input
+                      value={reason}
+                      aria-invalid={reasonError != null}
+                      onChange={(e) => {
+                        setReason(e.target.value);
+                        if (reasonError && e.target.value.trim()) setReasonError(null);
+                      }}
+                      onBlur={(e) => validateReason(e.target.value)}
+                    />
+                  </Field>
                   <Button
                     variant="destructive"
                     onClick={() => {
-                      if (!reason.trim()) return toast.error("Informe o motivo.");
+                      if (!validateReason(reason)) return;
                       setConfirmCancel(openId);
                     }}
                   >

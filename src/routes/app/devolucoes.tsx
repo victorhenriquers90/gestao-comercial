@@ -30,6 +30,14 @@ function DevolucoesPage() {
   const [open, setOpen] = useState(false);
   const [saleNumber, setSaleNumber] = useState("");
   const [reason, setReason] = useState("");
+  // Mesmo padrão de Clientes/Fornecedores/Produtos/Vendas/Estoque: erro
+  // inline no lugar de toast pra um campo vazio.
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  function validateReason(value: string) {
+    const ok = value.trim().length > 0;
+    setReasonError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
   const [kind, setKind] = useState<"parcial" | "total" | "troca">("parcial");
   const [saleId, setSaleId] = useState<number | null>(null);
   const [saleLabel, setSaleLabel] = useState("");
@@ -189,6 +197,7 @@ function DevolucoesPage() {
             setSaleId(null);
             setLines([]);
             setReason("");
+            setReasonError(null);
             setSaleNumber("");
           }
         }}
@@ -266,14 +275,22 @@ function DevolucoesPage() {
               <option value="troca">Troca</option>
             </Select>
           </Field>
-          <Field label="Motivo" className="mt-block">
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Field label="Motivo" className="mt-block" error={reasonError ?? undefined}>
+            <Textarea
+              value={reason}
+              aria-invalid={reasonError != null}
+              onChange={(e) => {
+                setReason(e.target.value);
+                if (reasonError && e.target.value.trim()) setReasonError(null);
+              }}
+              onBlur={(e) => validateReason(e.target.value)}
+            />
           </Field>
           <Button
             className="mt-4"
             disabled={!saleId || confirmando}
             onClick={async () => {
-              if (!reason.trim()) return toast.error("Informe o motivo.");
+              if (!validateReason(reason)) return;
               if (!saleId || confirmando) return;
               const items = lines
                 .filter((l) => l.qty > 0)

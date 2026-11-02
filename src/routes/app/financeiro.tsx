@@ -85,6 +85,33 @@ function FinanceiroPage() {
   /** Trava o envio da despesa: dois cliques gravavam dois lancamentos iguais. */
   const [lancandoDespesa, setLancandoDespesa] = useState(false);
   /**
+   * Erro inline nos 3 campos obrigatórios de Nova despesa -- mesmo padrão
+   * do resto do sistema (Clientes/Fornecedores/Produtos/Vendas/Estoque/
+   * Devoluções). Antes, só o `required` nativo do HTML cobria isso: um
+   * balão do navegador, com texto e aparência diferentes do resto da tela.
+   * O formulário continua não-controlado (FormData/form.reset(), ver
+   * comentário no onSubmit) -- os erros são um estado à parte, validado no
+   * blur de cada campo e de novo no submit.
+   */
+  const [descError, setDescError] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
+  function validateDesc(v: string) {
+    const ok = v.trim().length > 0;
+    setDescError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
+  function validateAmount(v: string) {
+    const ok = Number.isFinite(Number(v)) && Number(v) > 0;
+    setAmountError(ok ? null : "Informe um valor maior que zero.");
+    return ok;
+  }
+  function validateDate(v: string) {
+    const ok = v.trim().length > 0;
+    setDateError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
+  /**
    * Mesmo problema da despesa, em mais tres lugares: "Pagar", "Confirmar"
    * recebimento e os dois dialogos de "Salvar" so tinham `disabled={!x}`,
    * que nao cobre o clique duplo -- o pedido em voo ainda le a condicao como
@@ -111,6 +138,15 @@ function FinanceiroPage() {
   /** Lancamento que a pessoa esta cancelando e o motivo (obrigatorio: vai pra Auditoria). */
   const [cancelando, setCancelando] = useState<CancelTarget | null>(null);
   const [motivo, setMotivo] = useState("");
+  // Mesmo padrão de Clientes/Fornecedores/Produtos/Vendas/Estoque/
+  // Devoluções: erro inline em vez de toast (o botão já ficava desabilitado
+  // sem motivo, mas sem nenhuma indicação visual de QUAL campo faltava).
+  const [motivoError, setMotivoError] = useState<string | null>(null);
+  function validateMotivo(value: string) {
+    const ok = value.trim().length > 0;
+    setMotivoError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
   const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false);
 
   const PAY_PAGE_SIZE = 100;
@@ -207,12 +243,13 @@ function FinanceiroPage() {
 
   function pedirCancelamento(alvo: CancelTarget) {
     setMotivo("");
+    setMotivoError(null);
     setCancelando(alvo);
   }
 
   async function confirmarCancelamento() {
     if (!cancelando || confirmandoCancelamento) return;
-    if (!motivo.trim()) return toast.error("Informe o motivo do cancelamento.");
+    if (!validateMotivo(motivo)) return;
     const alvo = cancelando;
     setConfirmandoCancelamento(true);
     try {
@@ -687,14 +724,24 @@ function FinanceiroPage() {
               // envio, isso gravava a despesa DUPLICADA.
               const form = e.currentTarget;
               const fd = new FormData(form);
+              const desc = String(fd.get("d") ?? "");
+              const amount = String(fd.get("a") ?? "");
+              const date = String(fd.get("dt") ?? "");
+              // && em vez de early-return por campo: mostra os 3 erros de
+              // uma vez, não só o primeiro -- um balão nativo só apontava
+              // um campo por tentativa.
+              const okDesc = validateDesc(desc);
+              const okAmount = validateAmount(amount);
+              const okDate = validateDate(date);
+              if (!okDesc || !okAmount || !okDate) return;
               setLancandoDespesa(true);
               try {
                 await saveExpenseFn({
                   data: {
-                    description: String(fd.get("d")),
+                    description: desc,
                     category: String(fd.get("c")),
-                    amount: Number(fd.get("a")),
-                    spentAt: String(fd.get("dt")),
+                    amount: Number(amount),
+                    spentAt: date,
                     method: String(fd.get("m")),
                     storeId: storeId,
                   },
@@ -703,6 +750,9 @@ function FinanceiroPage() {
                 void qc.invalidateQueries({ queryKey: ["expenses"] });
                 void qc.invalidateQueries({ queryKey: ["flow"] });
                 form.reset();
+                setDescError(null);
+                setAmountError(null);
+                setDateError(null);
               } catch (err) {
                 toast.error(err instanceof Error ? err.message : "Falha ao lançar a despesa.");
               } finally {
@@ -713,8 +763,15 @@ function FinanceiroPage() {
             {/* Os quatro campos nao tinham rotulo nenhum -- e o de data nem
                 placeholder: um campo vazio, sem nada dizendo que e a data da
                 despesa. E um lancamento de dinheiro SAINDO do caixa. */}
-            <Field label="Descrição" className="min-w-48 flex-1">
-              <Input name="d" required />
+            <Field label="Descrição" className="min-w-48 flex-1" error={descError ?? undefined}>
+              <Input
+                name="d"
+                aria-invalid={descError != null}
+                onChange={(e) => {
+                  if (descError && e.target.value.trim()) setDescError(null);
+                }}
+                onBlur={(e) => validateDesc(e.target.value)}
+              />
             </Field>
             <Field label="Categoria">
               <Select name="c">
@@ -723,16 +780,35 @@ function FinanceiroPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Valor" className="w-36">
+            <Field label="Valor" className="w-36" error={amountError ?? undefined}>
               <div className="relative">
                 <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
                   R$
                 </span>
-                <Input name="a" type="number" step="0.01" min="0.01" className="pl-9" required />
+                <Input
+                  name="a"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  className="pl-9"
+                  aria-invalid={amountError != null}
+                  onChange={(e) => {
+                    if (amountError && Number.isFinite(Number(e.target.value)) && Number(e.target.value) > 0) setAmountError(null);
+                  }}
+                  onBlur={(e) => validateAmount(e.target.value)}
+                />
               </div>
             </Field>
-            <Field label="Data da despesa">
-              <Input name="dt" type="date" required />
+            <Field label="Data da despesa" error={dateError ?? undefined}>
+              <Input
+                name="dt"
+                type="date"
+                aria-invalid={dateError != null}
+                onChange={(e) => {
+                  if (dateError && e.target.value.trim()) setDateError(null);
+                }}
+                onBlur={(e) => validateDate(e.target.value)}
+              />
             </Field>
             <Field label="Como pagou?">
               <Select name="m" defaultValue="dinheiro">
@@ -824,12 +900,17 @@ function FinanceiroPage() {
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          <Field label={ehEstorno ? "Motivo do estorno" : "Motivo do cancelamento"}>
+          <Field label={ehEstorno ? "Motivo do estorno" : "Motivo do cancelamento"} error={motivoError ?? undefined}>
             <Input
               value={motivo}
               maxLength={200}
               autoFocus
-              onChange={(e) => setMotivo(e.target.value)}
+              aria-invalid={motivoError != null}
+              onChange={(e) => {
+                setMotivo(e.target.value);
+                if (motivoError && e.target.value.trim()) setMotivoError(null);
+              }}
+              onBlur={(e) => validateMotivo(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void confirmarCancelamento();
               }}
@@ -838,7 +919,7 @@ function FinanceiroPage() {
           <div className="mt-4 flex gap-2">
             <Button
               variant="destructive"
-              disabled={!motivo.trim() || confirmandoCancelamento}
+              disabled={confirmandoCancelamento}
               onClick={() => void confirmarCancelamento()}
             >
               {confirmandoCancelamento

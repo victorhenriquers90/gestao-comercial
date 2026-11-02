@@ -41,8 +41,26 @@ function EstoquePage() {
   const [type, setType] = useState<"entrada" | "saida" | "ajuste" | "perda">("entrada");
   const [qty, setQty] = useState("1");
   const [note, setNote] = useState("");
+  // Mesmo padrão de Clientes/Fornecedores/Produtos/Vendas: erro inline no
+  // lugar de toast. Só obrigatório quando NÃO é transferência (toStore
+  // vazio) -- mesma regra que o toast antigo já aplicava.
+  const [noteError, setNoteError] = useState<string | null>(null);
+  function validateNote(value: string, transferindo: string) {
+    const ok = value.trim().length > 0 || transferindo !== "";
+    setNoteError(ok ? null : "Campo obrigatório.");
+    return ok;
+  }
   const [toStore, setToStore] = useState("");
   const [registrando, setRegistrando] = useState(false);
+  useEffect(() => {
+    // Sem isto, tipo/quantidade/motivo digitados pra um produto ficavam
+    // presos ao abrir "Ajustar" de outro produto.
+    setType("entrada");
+    setQty("1");
+    setNote("");
+    setNoteError(null);
+    setToStore("");
+  }, [adj]);
 
   const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   // keepPreviousData: sem ele cada letra digitada derrubava a pagina inteira
@@ -273,11 +291,26 @@ function EstoquePage() {
               </p>
             ) : null}
           </Field>
-          <Field label="Motivo" className="mt-block">
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
+          <Field label="Motivo" className="mt-block" error={noteError ?? undefined}>
+            <Textarea
+              value={note}
+              aria-invalid={noteError != null}
+              onChange={(e) => {
+                setNote(e.target.value);
+                if (noteError && (e.target.value.trim() || toStore)) setNoteError(null);
+              }}
+              onBlur={(e) => validateNote(e.target.value, toStore)}
+            />
           </Field>
           <Field label="Transferir para loja" className="mt-block">
-            <Select value={toStore} onChange={(e) => setToStore(e.target.value)}>
+            <Select
+              value={toStore}
+              onChange={(e) => {
+                setToStore(e.target.value);
+                // Motivo deixa de ser obrigatório assim que vira transferência.
+                if (noteError && e.target.value) setNoteError(null);
+              }}
+            >
               <option value="">Não transferir</option>
               {(tenant.data?.stores ?? []).map((s) => (
                 <option key={s.id} value={s.id}>
@@ -291,7 +324,7 @@ function EstoquePage() {
             disabled={registrando}
             onClick={async () => {
               if (!adj || !storeId || registrando) return;
-              if (!note.trim() && !toStore) return toast.error("Informe o motivo.");
+              if (!validateNote(note, toStore)) return;
               // Quantidade validada: campo vazio virava Number("") = 0 e
               // registrava uma movimentacao de 0 unidade. E a trava evita que
               // dois cliques movimentem o estoque duas vezes -- numa loja de
