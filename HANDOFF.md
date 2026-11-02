@@ -7187,6 +7187,72 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        Fechado sem registrar (não queria mexer no estoque de verdade só
        pra este teste).
 
+145. **Pedido do usuário: "o que mais eu posso melhorar no designer do
+     sistema?" → "opção 1, faz o sweep visual" (passada fresca pelas 17
+     telas de `/app`, primeira desde o item 96 — entraram KPIs, ordenação
+     e validação inline em quase todas desde então, sem nenhuma julgada
+     por tipografia/espaçamento). Dois achados reais, nenhum hipotético.
+     Commits `320d853` e `02b30d8` (correção de rota).**
+
+     **Achado 1 — `PageHeader` (`shared.tsx`), sistêmico**: descrição
+     longa (Promoções, Metas — as duas com mais texto no cabeçalho)
+     ficava numa linha só, ocupando quase toda a largura do cabeçalho; o
+     `flex-wrap` do container então empurrava o botão de ação ("Nova
+     promoção"/"Nova meta") pra uma linha abaixo do título, mesmo com
+     espaço real sobrando — só não usado porque o texto nunca quebrava.
+     Confirmado com `getBoundingClientRect` (não só olhando a tela): bloco
+     do título consumia 616px de 677px disponíveis, sem deixar os ~130px
+     do botão caberem ao lado.
+
+     Fix: teto de largura no bloco do título, pra forçar a descrição a
+     quebrar em 2+ linhas. Primeira tentativa (`max-w-xl`, 576px) **não
+     bastou** — testado ao vivo, ainda sobrava só 101px pro botão de
+     129px, continuou empurrando pra baixo. Corrigido pra `max-w-md`
+     (448px) no commit seguinte, confirmado ao vivo nas duas telas: título
+     e botão agora na mesma linha, descrição em 2 linhas.
+
+     **Achado 2 — `saveProductFn` (`catalog.ts`), bug de dado real, achado
+     comparando duas telas lado a lado na mesma sessão**: Produtos mostrava
+     custo R$30,00 pro `ZZTESTE Produto Vercel Pilot`; Estoque, pro MESMO
+     produto, mostrava R$60,00 (valor da compra recebida no item 143).
+     Causa: editar um produto SEM mandar `variants` no payload (todo
+     produto sem grade de cor/tamanho, a maioria do catálogo) atualiza
+     `products.cost` mas nunca `product_variants.cost` — proteção
+     deliberada de uma sessão anterior contra sobrescrever a variante
+     ERRADA num produto com grade de verdade. Só que Estoque, a busca do
+     PDV (`searchPosFn`) e o Dashboard leem `coalesce(v.cost, p.cost)` —
+     priorizam o custo da VARIANTE quando ele existe, então liam o valor
+     congelado desde a criação do produto (ou da última compra recebida),
+     nunca o corrigido.
+
+     Fix: quando a edição não manda `variants` E o produto não tem grade
+     (`!hasVariants` — só uma variante implícita, sem ambiguidade de
+     "qual variante"), também atualiza `product_variants.cost`/`price`. A
+     proteção original fica intacta pro caso real que ela resolvia
+     (produto COM grade).
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes,
+     inalterado — mudança de servidor sem lógica pura isolável), os dois
+     deploys confirmados "Ready". Testado ao vivo em produção: editei o
+     custo do `ZZTESTE Produto Vercel Pilot` de R$30 pra R$25 só pelo
+     formulário simples (sem tocar na grade) — Estoque passou a mostrar
+     R$25,00 imediatamente, batendo com Produtos (antes do fix, ficaria
+     preso em R$60,00). Revertido pra R$30,00 depois, confirmado nas duas
+     telas.
+
+     **Sweep cobriu as 17 telas** (Dashboard, PDV, Vendas, Clientes, CRM,
+     Promoções, Produtos, Estoque, Compras, Fornecedores, Vendedores
+     [Líquido/Equipe], Financeiro, Caixa, Relatórios, Configurações,
+     Devoluções, Metas) em ~678px de largura de conteúdo (não os 1440px
+     do item 96 — o pane de navegador desta sessão só renderiza screenshot
+     legível nessa largura; a emulação de 1440 reduz a imagem demais pra
+     julgar visualmente). Fora os dois achados acima, nenhum outro bug de
+     layout confirmado — tabelas estreitas rolando horizontalmente e o
+     Kanban do CRM rolando são comportamento esperado pra essa largura,
+     não bug. **Não é um sweep nos 1440px reais** — vale refazer nessa
+     largura numa sessão que consiga screenshot legível lá, se o usuário
+     quiser mais rigor.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
