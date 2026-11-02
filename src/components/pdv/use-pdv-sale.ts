@@ -123,8 +123,19 @@ export function usePdvSale() {
   useEffect(() => {
     if (sellerPicked.current || !sellers.data?.length || tenant.isPending) return;
     sellerPicked.current = true;
+    // Só pre-seleciona quando quem está logado É um vendedor cadastrado
+    // (loja de operador único, convenientemente já é quem vai vender).
+    // SEM o match por nome, o fallback antigo (`sellers.data[0]`) pegava
+    // o PRIMEIRO vendedor da lista, qualquer um que fosse -- numa loja
+    // com mais de um vendedor, um admin/gerente abrindo o PDV creditava a
+    // comissão de toda venda pro vendedor errado, em silêncio, sem o
+    // operador escolher nada. Achado testando um "dia de movimento" com
+    // vendedor recém-criado: "Comissão prevista" já aparecia na primeira
+    // venda sem ninguém ter tocado no seletor "Vendedor". Sem match,
+    // fica "Sem vendedor" -- o aviso `warnNoSeller` já existente cobre
+    // o operador esquecendo de escolher.
     const me = tenant.data?.userName;
-    const match = (me ? sellers.data.find((s) => s.name === me) : null) ?? sellers.data[0];
+    const match = me ? sellers.data.find((s) => s.name === me) : null;
     if (match) setSellerId(match.id);
   }, [sellers.data, tenant.data, tenant.isPending]);
 
