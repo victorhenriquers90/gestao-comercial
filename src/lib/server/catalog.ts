@@ -474,6 +474,25 @@ export const saveProductFn = createServerFn({ method: "POST" })
             values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${cost}, ${price})
           `;
         }
+      } else if (!hasVariants) {
+        /*
+          Produto SEM grade sendo editado sem mandar `variants` -- ao
+          contrario de um produto com grade de verdade (onde "nao mexer"
+          evita sobrescrever a variante errada, ver comentario acima),
+          aqui so existe UMA variante, implicita, criada sozinha na
+          criacao. Sem isto, products.cost/price atualizavam normal mas
+          product_variants.cost/price ficavam congelados no valor de
+          quando o produto foi criado (ou da ultima compra recebida) --
+          toda leitura de estoque/PDV usa `coalesce(v.cost, p.cost)`
+          (listStockFn, searchPosFn, o Dashboard), entao lia o valor
+          congelado, nunca o corrigido. Achado comparando Produtos (certo)
+          contra Estoque (desatualizado) pro MESMO produto na mesma
+          sessao.
+        */
+        await sql`
+          update product_variants set cost = ${cost}, price = ${price}
+          where product_id = ${productId} and company_id = ${tenant.companyId} and deleted_at is null
+        `;
       }
       // Preco e custo vao com o antes/depois: sem isso a auditoria diz que
       // alguem "alterou o produto" mas nao diz de quanto para quanto.
