@@ -54,7 +54,7 @@ function CaixaPage() {
   const activeStore = storeId ?? tenant.data?.defaultStoreId ?? 0;
   const role = (tenant.data?.role ?? "pdv") as Role;
   const qc = useQueryClient();
-  const [openAmt, setOpenAmt] = useState("350");
+  const [openAmt, setOpenAmt] = useState("");
   const [openingCaixa, setOpeningCaixa] = useState(false);
   const [moveAmt, setMoveAmt] = useState("");
   const [moveDesc, setMoveDesc] = useState("");

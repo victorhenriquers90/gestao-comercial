@@ -7361,6 +7361,83 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      que a validação é real no servidor, não só decoração de tipo
      TypeScript que o bundler apaga em runtime.
 
+148. **Pedido do usuário: "vamos continuar com os testes no sistema, você
+     precisa ser agora um analista de teste sênior, procurando por bugs no
+     sistema, trabalhe com se estivesse em um dia de muito movimento na
+     loja". Simulação completa de um dia de pico no PDV/Caixa/Vendas/
+     Devoluções/Estoque/Comissões contra o banco real de produção (Vercel +
+     Neon, `company_id=4`). Dois achados reais, ambos corrigidos.**
+
+     **Achado 1 — PDV pré-selecionava vendedor arbitrário** (commit
+     `139d7d6`, feito no início desta mesma sessão de testes, documentado
+     agora): `use-pdv-sale.ts` escolhia `sellers.data[0]` como vendedor
+     padrão quando o nome do usuário logado não batia com nenhum vendedor
+     cadastrado — numa loja com mais de um vendedor, um admin/gerente
+     abrindo o PDV creditava a comissão de toda venda pro PRIMEIRO
+     vendedor da lista, em silêncio, sem o operador escolher nada.
+     Descoberto ao criar `ZZTESTE Vendedor QA` e ver "Comissão prevista"
+     aparecer na primeira venda sem ninguém tocar no seletor. **Fix**:
+     só pré-seleciona quando o usuário logado É ele mesmo um vendedor
+     cadastrado (loja de operador único); sem isso cai em "Sem vendedor"
+     e o aviso `warnNoSeller` já existente cobre o operador esquecendo de
+     escolher.
+
+     **Achado 2 — "Fundo inicial" do Caixa vinha com R$ 350,00 travado no
+     código**: `caixa.tsx` tinha `useState("350")` pro campo que o
+     operador usa pra declarar quanto já tem na gaveta ao abrir o caixa —
+     o ÚNICO campo de dinheiro do arquivo inteiro com um valor fixo; todos
+     os outros (`totalDireto`, `abrirTotal`, `trocoTurno`) começam vazios
+     de propósito, forçando entrada deliberada. Sem crase documentando o
+     motivo do "350" — claramente um valor de teste do desenvolvedor que
+     nunca foi trocado antes do deploy. Pior: o botão "Abrir caixa" (ramo
+     sem troco pendente) não trava em `aberturaValida` como o ramo COM
+     troco trava — só em `!podeFechar`. Resultado prático: qualquer
+     abertura de caixa sem troco pendente pré-populava R$ 350,00 na tela e
+     deixava o botão clicável de imediato; um operador apressado que não
+     reparasse no campo abria o caixa declarando uma gaveta com
+     R$ 350,00 que não existe — e só descobriria a diferença fictícia na
+     hora de fechar, sem explicação (o mesmo tipo de "diferença sem dono"
+     que o aviso de caixa-não-fechado já descreve pra outro cenário).
+     **Fix**: `useState("")`, igual aos outros três campos de dinheiro do
+     arquivo — com campo vazio, clicar sem digitar nada manda `NaN` pro
+     servidor, que já recusa com "Fundo inicial inválido" (comportamento
+     documentado no próprio código, linha ~156-158) em vez de aceitar um
+     valor fictício como válido.
+
+     **Simulação executada** (tudo com prefixo `ZZTESTE`, loja Centro,
+     vendas 31-35 nesta sessão): 5 vendas variando forma de pagamento
+     (dinheiro, débito, PIX, dinheiro+crédito dividido, crediário com
+     cliente e limite de R$1.000), vendedor (nenhum/atribuído), cliente
+     (nenhum/atribuído), mix de item (SKU único/múltiplo); sangria
+     (R$100) e suprimento (R$50); devolução PARCIAL (1 Camiseta da venda
+     nº32); devolução TOTAL (venda nº33 inteira); cancelamento completo
+     (venda nº34); fechamento do caixa que estava aberto há 10 dias desde
+     23/10/2026 (zerou a conferência cega acumulada, "bateu certo",
+     diferença R$0,00) seguido de reabertura normal pro ciclo diário
+     voltar a existir.
+
+     **Conferência cruzada, tudo bateu exato**: auditoria completa do
+     log de Movimentações de estoque confirmou Camiseta QA 40→38 e
+     Calça QA 30→27 unidade por unidade (cada venda, devolução e reversão
+     de cancelamento rastreada linha a linha, nada sobrando nem faltando).
+     Comissão do ZZTESTE Vendedor QA somou exatamente R$25,00 no
+     simulador (R$12,50 da venda 32 menos R$2,50 proporcional à 1
+     Camiseta devolvida = R$10,00, mais R$15,00 da venda 35 crediário;
+     venda 33 excluída por inteiro por ter sido 100% devolvida) — confirma
+     que o rateio de comissão por item e a exclusão de vendas revertidas
+     já funcionam certo, sem precisar de fix. Caixa pós-eventos: VENDAS NO
+     TURNO caiu de 5→3 (exclui cancelada e devolvida), PIX caiu de
+     R$150→R$0 (a venda PIX era a nº33, devolvida total), CARTÕES caiu de
+     R$350→R$250 (a parcela de crédito da venda nº34 cancelada saiu, só
+     ficou o débito da venda nº32). Nenhuma outra inconsistência
+     encontrada apesar da varredura cobrir literalmente todo fluxo de
+     dinheiro do sistema numa única sessão.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes) depois
+     do fix do item 2. Achado 1 já estava deployado e confirmado ao vivo
+     antes desta sessão de testes continuar. Achado 2 aguarda commit+deploy
+     (ver próximo commit desta mesma sessão).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
