@@ -7253,6 +7253,71 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      largura numa sessão que consiga screenshot legível lá, se o usuário
      quiser mais rigor.
 
+146. **Pedido do usuário: "o que mais eu posso melhorar?" → escolheu
+     "responsividade pra tablet" (a outra opção oferecida no item 145).
+     Investigação (modo de planejamento, plano aprovado antes de
+     escrever código) mudou a forma do problema. Commits `163d7a0` e
+     `92e20d6` (correção de regressão achada testando ao vivo).**
+
+     **Achado antes de qualquer código**: a app já tem bastante infra
+     responsiva pronta, só pouco usada fora do Dashboard — sidebar já
+     vira gaveta abaixo de 768px (`app-shell.tsx`, automático via CSS,
+     não precisou de trabalho), `.kpi-grid` já é `repeat(auto-fit,
+     minmax(min(100%,14rem),1fr))` (KPIs de QUALQUER tela já reempilham
+     sozinhos), `.content-pane` já dá `container-type: inline-size` pra
+     toda rota de `/app/*` (só o Dashboard usava, via `.dash-stage`), e
+     tabelas com scroll horizontal já são comportamento aceito (item
+     145). O gargalo real, achado por `grep "grid-cols-[2-9]"` em
+     `src/routes/app`: 8 grids de campo de formulário com
+     `grid-cols-2`/`grid-cols-3` FIXOS, sem nenhum prefixo responsivo —
+     `configuracoes.tsx` (5×, abas Empresa/Lojas), `promocoes.tsx` (2×,
+     diálogo "Nova promoção"), `metas.tsx` (1×). Em largura de tablet
+     retrato, a área de conteúdo sobra bem menor que a tela inteira e um
+     `grid-cols-3` espreme "Cidade" pra ~130-180px.
+
+     **Fix**: duas classes novas em `styles.css` (`.field-grid-2`/
+     `.field-grid-3`), ao lado de `.form-grid` (que já existia mas não
+     era usada em rota nenhuma — seu mínimo de 16rem por coluna é grande
+     demais pros campos curtos destes casos, quebraria o layout mesmo no
+     desktop). Usam `@container` (container query), não `sm:`/`md:` do
+     Tailwind: a largura real disponível depende de
+     sidebar+padding+max-w do Card, não só da janela.
+
+     **Regressão achada testando ao vivo, corrigida no mesmo ciclo**: a
+     primeira versão usava `@container main` (o nome que `.content-pane`
+     registra) — funcionou em Configurações (direto na página), mas
+     `promocoes.tsx`/`metas.tsx` usam esses grids DENTRO de um
+     `<Dialog>`, que é Portal do Radix pro `document.body`, fora de
+     `.content-pane`. Resultado: a query nunca encontrava o container
+     "main" e o grid ficava preso numa coluna só — **mesmo em 1440px de
+     viewport**, não só em tablet. Confirmado com
+     `getComputedStyle(...).gridTemplateColumns` antes de corrigir (não
+     só visual). Fix: a query virou SEM NOME (casa o container mais
+     próximo, seja ele qual for) e `DialogContent`
+     (`src/components/ui/dialog.tsx`) ganhou `[container-type:inline-size]`
+     próprio — corrige os 3 pontos de uma vez e deixa qualquer
+     `@container` futuro dentro de QUALQUER diálogo do sistema
+     funcionando sem precisar repetir essa investigação.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes,
+     inalterado), os dois deploys confirmados "Ready". Testado ao vivo
+     em produção com `getComputedStyle`, não só screenshot:
+     - Configurações (aba Empresa, fora de diálogo): Inscrição Estadual/
+       Regime tributário e Cidade/UF/CEP confirmados 2 colunas em
+       largura de conteúdo ~492px; a largura de 1440px (container real
+       1174px) confirmada em 3 colunas de 170px cada, sem regressão no
+       caso comum.
+     - Promoções → "Nova promoção": Início/Fim (qualquer tipo) e Compre/
+       Pague (tipo "Leve X pague Y") confirmados lado a lado depois do
+       fix — antes do fix, mesma tela, mesma largura, ficavam
+       empilhados.
+     - Metas → "Nova meta": Início/Fim confirmados lado a lado.
+     - Mesma ressalva do item 145: testado a ~492-502px de largura de
+       conteúdo (não os 1024px de tablet paisagem real) por limitação do
+       pane desta sessão pra gerar screenshot legível; o comportamento
+       em 1440px foi conferido por `getComputedStyle`, não por
+       screenshot (ilegível naquela largura).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
