@@ -18,13 +18,17 @@ export function PageHeader({
 }) {
   return (
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      {/* max-w-xl: sem teto, uma descrição longa (Promoções, Metas) ficava
+      {/* max-w-md: sem teto, uma descrição longa (Promoções, Metas) ficava
           numa linha só, ocupando quase toda a largura do cabeçalho -- o
           flex-wrap do container então empurrava o botão de ação pra uma
           linha abaixo do título, mesmo quando sobrava espaço real que só
           não era usado porque o texto não quebrava. Com o teto, o texto
-          quebra em 2 linhas e o botão continua ao lado do título. */}
-      <div className="min-w-0 max-w-xl">
+          quebra em 2+ linhas e o botão continua ao lado do título.
+          max-w-xl (576px) não bastou: testado ao vivo contra a largura real
+          do conteúdo (~678px nesta sessão), sobrava só 677-576=101px pro
+          botão -- menos que a largura de "Nova promoção" (129px). md
+          (448px) deixa folga de verdade, confirmado contra o mesmo caso. */}
+      <div className="min-w-0 max-w-md">
         {description ? <p className="ed-label mb-2">{description}</p> : null}
         <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
           {title}
