@@ -961,19 +961,28 @@
     `max-w-*` -- `.form-grid` (acima) tem mínimo de 16rem por coluna, largo
     demais pra estes: numa largura comum de desktop (Card max-w-xl=36rem)
     3 colunas de 16rem nem cabem, `.form-grid` quebraria o layout que já
-    funciona. Breakpoint em unidade de CONTAINER (`@container main`, a
-    mesma tomada que `.content-pane` já dá pra toda rota de `/app/*` --
-    ver `.dash-stage`/`.pdv-cart`/`.pdv-side`/`.topbar` mais abaixo pro
-    mesmo padrão), não de viewport do Tailwind: a largura real disponível
-    pro formulário depende de sidebar+padding+max-w do Card, não só da
-    janela -- um `sm:`/`md:` do Tailwind reage à janela inteira e erra
-    exatamente nesse descasamento.
+    funciona. Breakpoint em unidade de CONTAINER, não de viewport do
+    Tailwind: a largura real disponível pro formulário depende de
+    sidebar+padding+max-w do Card (ou do Dialog), não só da janela -- um
+    `sm:`/`md:` do Tailwind reage à janela inteira e erra exatamente esse
+    descasamento.
+
+    `@container` SEM NOME de propósito (não `@container main`, que
+    `.content-pane` já dá pra toda rota): um `<Dialog>` é portal do Radix
+    pro `document.body`, fora de `.content-pane` -- `@container main`
+    dentro de um dialog não encontra NENHUM ancestral com esse nome e a
+    regra nunca casa, prendendo o grid numa coluna só mesmo em desktop
+    largo (comprovado ao vivo com `getComputedStyle` antes de corrigir).
+    Sem nome, a query casa o container mais próximo seja ele qual for --
+    `.content-pane` numa tela normal, ou o próprio `DialogContent` (que
+    ganhou `container-type: inline-size` só pra isso, ver `dialog.tsx`)
+    dentro de um diálogo.
   */
   .field-grid-2 {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
-  @container main (min-width: 26rem) {
+  @container (min-width: 26rem) {
     .field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
@@ -981,10 +990,10 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
-  @container main (min-width: 22rem) {
+  @container (min-width: 22rem) {
     .field-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @container main (min-width: 34rem) {
+  @container (min-width: 34rem) {
     .field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 
