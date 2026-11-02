@@ -757,7 +757,16 @@ export const adjustStockFn = createServerFn({ method: "POST" })
       type: "entrada" | "saida" | "ajuste" | "perda";
       quantity: number;
       note: string;
-    }) => d,
+    }) => ({
+      ...d,
+      // Mesmo motivo do cancelSaleFn/createReturnFn: a tela (estoque.tsx)
+      // só deixa chamar esta função sem transferência, onde o motivo é
+      // sempre obrigatório pra validação de tela -- mas sem isto aqui, uma
+      // chamada direta ao servidor passava `note` cru (vazio, sem limite,
+      // com caractere de controle) pro log de Movimentações, que é
+      // justamente o registro que explica POR QUE o estoque mudou.
+      note: requireLine(d.note, "Motivo", 300),
+    }),
   )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
@@ -794,7 +803,14 @@ export const adjustStockFn = createServerFn({ method: "POST" })
 
 export const transferStockFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { fromStoreId: number; toStoreId: number; variantId: number; quantity: number; note?: string }) => d)
+  .validator(
+    (d: { fromStoreId: number; toStoreId: number; variantId: number; quantity: number; note?: string }) => ({
+      ...d,
+      // Opcional de proposito (tem padrao abaixo), mas sem sanitizar: nao
+      // obrigatorio, so ia cru igual o note do adjustStockFn.
+      note: optionalLine(d.note, 300) ?? undefined,
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "stock.adjust");
