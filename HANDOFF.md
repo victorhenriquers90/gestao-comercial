@@ -7438,6 +7438,60 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      antes desta sessão de testes continuar. Achado 2 aguarda commit+deploy
      (ver próximo commit desta mesma sessão).
 
+149. **Continuação do pedido "analista de teste sênior, dia de muito
+     movimento" (itens 147-148): compras/recebimento com rateio de frete
+     (item 143) e promoções Leve X Pague Y testados ao vivo contra o
+     mesmo banco de produção. Um achado real, corrigido.**
+
+     **Compras testado sem bug**: criado fornecedor `ZZTESTE Fornecedor
+     QA`, pedido com 10un a R$60 + frete R$50, recebido — custo unitário
+     ficou exatamente R$65,00 (rateio de frete correto, confirmado no
+     Estoque). "Desfazer recebimento" (janela de 30min) testado também:
+     reverte estoque e conta a pagar como promete; o custo do produto fica
+     no último valor recebido de propósito (`purchase-undo.ts` já
+     documenta: sem histórico de custo gravado, "reverter" inventaria um
+     número, não recupera o antigo — não é bug). `checkCreditLimit`
+     (crediário) não foi testado ao vivo de novo: já tem lock
+     `for update` contra corrida e suite de teste dedicada
+     (`crediario.test.ts`), achado e corrigido em sessão anterior.
+
+     **Achado — carrinho do PDV deixava passar quantidade acima do
+     estoque sem avisar de verdade**: `cart-table.tsx` já mostra um ícone
+     de aviso (⚠ "estoque N") quando `qty > stock`, mas é só texto —
+     `setQty`/o "+" do carrinho (`use-pdv-sale.ts`) nunca travava a
+     quantidade nesse limite. Reproduzido criando a promoção `ZZTESTE
+     Promo Leve3Pague2` (Leve 3 Pague 2 em `ZZTESTE Calça QA`, confirmada
+     correta: 3un = R$300 [paga 2], 2un = R$450 sem desconto, 5un = R$600
+     [1 grupo completo + 2 avulsas, repete por grupo de 3 como esperado])
+     com só 5 unidades em estoque: o "+" deixou chegar a 6 sem travar.
+     Veio até o fim do fluxo (pagamento, bandeira, cliente da venda) e só
+     no último clique de "Finalizar venda" o servidor recusou com
+     "Estoque insuficiente: ZZTESTE Calça QA" — o dado está protegido
+     (`checkoutFn` já bloqueia direitinho, nada vendeu além do estoque
+     real), mas um operador numa loja cheia perderia o fluxo inteiro
+     (forma de pagamento, bandeira do cartão, CPF/cliente) pra descobrir
+     só no fim qual item tinha o problema.
+
+     **Fix**: `finish()` em `use-pdv-sale.ts` agora checa
+     `cart.find(l => l.qty > l.stock)` logo depois de validar caixa
+     aberto/carrinho/loja, ANTES de pedir CPF ou abrir o pagamento —
+     aponta o item exato ("Estoque insuficiente: X (disponível N)")
+     direto, sem o operador passar pelos dois diálogos primeiro. Não
+     troca a validação do servidor (continua sendo a autoridade: o
+     `l.stock` do carrinho é só a foto de quando o item entrou, pode
+     estar desatualizado se alguém mais vendeu o mesmo item em paralelo)
+     — só adianta o aviso pro operador, igual ao padrão já usado nos
+     outros `return` cedo desta mesma função (pagamento ilegível, forma
+     de pagamento ausente, etc.).
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes).
+     Aguarda deploy (próximo commit desta sessão). Limpeza: estoque dos
+     produtos ZZTESTE voltou a zero, promoção `ZZTESTE Promo
+     Leve3Pague2` desativada, pedido de compra `ZZTESTE Fornecedor QA`
+     ficou "Enviado" sem estoque/conta associada (não há como cancelá-lo
+     pela UI depois de salvo — não é um problema real, só não fecha o
+     ciclo visualmente igual aos outros testes).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -476,6 +476,27 @@ export function usePdvSale() {
       toast.error("Selecione uma loja.");
       return;
     }
+    /*
+      `l.stock` e so a foto tirada quando o item entrou no carrinho (linha
+      146) -- o servidor que decide de verdade, com o estoque atual, no
+      `checkoutFn` la embaixo. Mas sem checar aqui tambem, o operador so
+      descobria isso DEPOIS de escolher forma de pagamento, bandeira,
+      cliente da venda -- tudo pra, no ultimo clique, levar um "Estoque
+      insuficiente" generico e ter que voltar pro carrinho pra entender
+      qual item. O carrinho ja mostra o aviso ("estoque N") por item, mas
+      so como texto -- nada impedia o operador de aumentar a quantidade
+      mesmo assim. Pego aqui, antes do CPF e do pagamento, pra apontar o
+      item certo direto, sem passar pelos dois dialogos primeiro.
+    */
+    const semEstoque = cart.find((l) => l.qty > l.stock);
+    if (semEstoque) {
+      toast.error(
+        `Estoque insuficiente: ${semEstoque.label} (${
+          semEstoque.stock <= 0 ? "sem estoque" : `disponível ${semEstoque.stock}`
+        }).`,
+      );
+      return;
+    }
     // CPF/CNPJ na nota e obrigatorio -- mas "obrigatorio" aqui e o operador
     // RESOLVER a pergunta, nao necessariamente digitar um documento: a lei
     // nao deixa a loja recusar a venda so porque o cliente nao quer informar
