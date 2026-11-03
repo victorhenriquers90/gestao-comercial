@@ -7517,6 +7517,67 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      vendas/devoluções/comissões desta sessão, tudo batendo exato —
      nenhum achado novo ali.
 
+150. **Continuação do pedido "analista de teste sênior": Configurações
+     (Cartões, Impressão, Impostos, Lojas) e um achado grande, sistêmico,
+     encontrado por acaso testando uma taxa de cartão customizada perto da
+     meia-noite. Corrigido.**
+
+     **Achado — o servidor roda em UTC em produção, não no fuso da loja,
+     e `ymdLocal` conta com o contrário**: `src/lib/local-date.ts` resolve
+     o "dia de hoje" com os getters LOCAIS do `Date`
+     (`getFullYear/getMonth/getDate`) de propósito, para não cair no bug
+     de `toISOString()` virar amanhã das 21h à meia-noite no Brasil
+     (UTC-3) — o próprio comentário do arquivo documenta esse bug antigo e
+     por que foi corrigido assim. O problema: esses getters só dão o dia
+     certo se o PROCESSO Node achar que está no fuso da loja, e Vercel
+     Functions rodam em UTC por padrão — nada neste repo definia `TZ`
+     antes de uma requisição real chegar ao servidor. `ymdLocal` alimenta
+     `splitInstallments`/`splitCardSettlement` (`installments.ts`,
+     `card.ts`): vencimento de parcela de cartão E de crediário, usados
+     por `commerce.ts`, `finance.ts`, `crediario.ts`, `card-settlement.ts`,
+     `reports.ts`, `insight.ts`, `promo.ts` — ou seja, qualquer cálculo de
+     data do lado do servidor nesta base.
+
+     **Confirmado ao vivo em produção, duas vezes, sem forçar nada**:
+     testando a aba Cartões (taxa customizada Visa 5%/5 dias) e crediário
+     normal (padrão D+30) com vendas feitas às 23h38 e 23h41 (horário de
+     Brasília) — exatamente a janela em que Brasília e UTC discordam do
+     dia. Em ambas, a PRÉVIA no PDV (calculada no navegador, que roda no
+     fuso de verdade) mostrou a data certa (venda de 02/11 → vencimento
+     02/12), mas o banco gravou 03/12 — um dia a mais, nos dois casos,
+     consistente com o servidor achando que já era 03/11 (ainda 02/11 no
+     Brasil às 23h4x, já 03/11 em UTC). A prova final:
+     `local-date.test.ts` já tinha um `before()`/`after()` que força
+     `process.env.TZ = "America/Sao_Paulo"` só para os testes passarem,
+     com o comentário "`o bug so existe fora de UTC`" — confirma que quem
+     escreveu o teste sabia que a correção depende do fuso do PROCESSO,
+     não só da lógica, mas nunca replicou esse `TZ` pro ambiente de
+     produção de verdade.
+
+     **Fix**: `server/middleware/timezone.ts` (novo arquivo) — fixa
+     `process.env.TZ = "America/Sao_Paulo"` a nível de módulo (roda uma
+     vez, no boot do Nitro, antes de qualquer requisição) e repassa tudo
+     com `next()`, sem interceptar rota nenhuma. **Não** entra em
+     `src/lib/server/*.ts`: esses arquivos alimentam `createServerFn` e
+     já têm precedente documentado de vazar pro bundle do navegador numa
+     cadeia de import (`context.ts`, comentário do `readInviteCookie`) —
+     `process` pode nem existir lá. `server/middleware/` é Nitro puro,
+     nunca bundlado pro cliente, e já é auto-descoberto por
+     `vite.config.ts` (`serverDir: "./server"`, mesmo mecanismo do
+     `grok-pwa.ts` que já mora ali do lado).
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes,
+     incluindo os de `local-date.test.ts` que já cobrem a lógica — o que
+     faltava era o ambiente, não a lógica). Nitro só entra em build/
+     preview (`vite.config.ts`), não no `vite dev` puro, então a
+     verificação ao vivo tem que ser em produção depois do deploy: repetir
+     uma venda de cartão/crediário perto da meia-noite e conferir se o
+     vencimento gravado bate com a prévia do PDV.
+
+     Limpeza: estoque dos produtos ZZTESTE zerado de novo, taxa de cartão
+     de teste (Visa 5%/5 dias) removida de Configurações → Cartões depois
+     de confirmar o fix.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
