@@ -487,8 +487,15 @@ export function usePdvSale() {
       so como texto -- nada impedia o operador de aumentar a quantidade
       mesmo assim. Pego aqui, antes do CPF e do pagamento, pra apontar o
       item certo direto, sem passar pelos dois dialogos primeiro.
+
+      So quando `allow_negative_stock` estiver DESLIGADO -- com ele ligado
+      (configuracoes.tsx, "Permitir estoque negativo") o `checkoutFn` deixa
+      passar de proposito, e bloquear aqui travaria uma venda que o
+      servidor aceitaria.
     */
-    const semEstoque = cart.find((l) => l.qty > l.stock);
+    const settingsRow = (settings.data?.settings ?? {}) as Record<string, unknown>;
+    const allowNegativeStock = Boolean(settingsRow.allow_negative_stock);
+    const semEstoque = !allowNegativeStock && cart.find((l) => l.qty > l.stock);
     if (semEstoque) {
       toast.error(
         `Estoque insuficiente: ${semEstoque.label} (${

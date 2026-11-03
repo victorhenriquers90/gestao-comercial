@@ -7485,12 +7485,37 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      de pagamento ausente, etc.).
 
      **Verificação**: `typecheck`/`lint`/`test` limpos (518 testes).
-     Aguarda deploy (próximo commit desta sessão). Limpeza: estoque dos
-     produtos ZZTESTE voltou a zero, promoção `ZZTESTE Promo
-     Leve3Pague2` desativada, pedido de compra `ZZTESTE Fornecedor QA`
-     ficou "Enviado" sem estoque/conta associada (não há como cancelá-lo
-     pela UI depois de salvo — não é um problema real, só não fecha o
-     ciclo visualmente igual aos outros testes).
+     Deploy `b4a6790` confirmado "Ready", fix verificado ao vivo em
+     produção (toast aparece na hora, sem passar por CPF/pagamento).
+
+     **Correção ao próprio fix, mesma sessão, antes de documentar como
+     fechado**: Configurações → Empresa tem um toggle "Permitir estoque
+     negativo" (`company_settings.allow_negative_stock`), e `checkoutFn`
+     (`commerce.ts:480`) já pula a recusa de propósito quando ele está
+     ligado — loja que vende por encomenda/pré-venda usa isso. O
+     `cart.find(l => l.qty > l.stock)` que acabou de entrar em
+     `finish()` não sabia disso: bloquearia no CLIENTE uma venda que o
+     SERVIDOR aceitaria, uma regressão nova para quem usa esse toggle.
+     Achado lendo o código de `checkoutFn` por precaução antes de dar
+     o item como fechado, não ao vivo. **Fix da correção**: `finish()`
+     agora lê `settings.data?.settings.allow_negative_stock` (a mesma
+     query `getSettingsFn` que o hook já carrega pro comprovante — só
+     reaproveitada, nenhuma consulta nova) e só aplica o bloqueio
+     quando o toggle está desligado, espelhando exatamente a condição
+     do servidor. `typecheck`/`lint`/`test` limpos de novo (518).
+     Aguarda deploy (próximo commit).
+
+     Limpeza: estoque dos produtos ZZTESTE voltou a zero, promoção
+     `ZZTESTE Promo Leve3Pague2` desativada, meta `ZZTESTE Meta
+     Vendedor QA` excluída (confirmado: bônus de meta somou certo com
+     o padrão — 7% = 5%+2% numa venda real antes de apagar), pedido de
+     compra `ZZTESTE Fornecedor QA` ficou "Enviado" sem estoque/conta
+     associada (não há como cancelá-lo pela UI depois de salvo — não é
+     um problema real, só não fecha o ciclo visualmente igual aos
+     outros testes). Relatórios (resumo executivo, DRE, aging, quebra
+     de caixa por operador) conferidos contra os números reais das
+     vendas/devoluções/comissões desta sessão, tudo batendo exato —
+     nenhum achado novo ali.
 
 ## Como a próxima IA deve trabalhar
 
