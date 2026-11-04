@@ -7752,6 +7752,60 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `ZZTESTE Fornecedor QA` voltou a mostrar "A pagar" `R$ 0,00`, igual
      à lista acima dela.
 
+154. **Pedido do usuário "engenheiro de software" → PDV: desconto manual
+     por linha (item), que só existia no cabeçalho (F6).**
+
+     **Achado**: `checkoutFn`/`commerce.ts` já validava desconto por LINHA
+     há tempo (`disc = Math.min(lineGross, Math.max(item.discount,
+     descontoPromo))`, limite do operador cobrado só sobre o excedente
+     acima da promoção), mas a UI do PDV desktop nunca expôs campo pra
+     isso — só o desconto de cabeçalho (F6, `DiscountDialog`) existia. A
+     coluna "Desconto" da tabela do carrinho era texto só-leitura.
+
+     **Fix**: botão clicável na coluna "Desconto" (`cart-table.tsx`) abre
+     o MESMO `DiscountDialog` do F6 — generalizado com `title`/
+     `totalLabel`/`initialValue`/`onRemove` opcionais, em vez de duplicar
+     o diálogo pro caso por item (duplicar aqui repetiria exatamente o
+     erro gêmeo-divergente do item 153). `summarizeSale` (`pdv-sale.ts`)
+     passou a separar `promo` (pureza, só promoção) de `manual`
+     (cabeçalho + o excedente manual por linha acima da promoção vigente
+     daquela linha) — sem isso, um desconto manual por item apareceria
+     rotulado "Promoções" no resumo da venda, já que antes só existia uma
+     categoria de desconto. `use-pdv-sale.ts` aplica a MESMA regra
+     max-não-soma do servidor no `priced` (client-side), com
+     `Math.min(lineGross, ...)` pra nunca deixar a linha com total
+     negativo NA TELA antes mesmo de chegar no F10. Guardar/Recuperar
+     (hold) carrega o desconto manual por linha de graça, sem mudança
+     nenhuma: serializa/deserializa o objeto `Line` inteiro. Payload de
+     checkout e simulação de comissão também sem mudança: já consumiam
+     `l.lineDiscount`, que agora incorpora o manual automaticamente.
+     Escopo deliberado: só PDV desktop (`pdv.tsx`); PDV tablet
+     (`pdv-tablet.tsx`/`touch-cart-table.tsx`) nem mostra coluna
+     "Desconto" hoje — estender lá pediria um desenho de UI touch
+     dedicado, fora deste pedido.
+
+     **Verificação**: `typecheck`/`lint` limpos; `test` com 525 (521 + 4
+     novos em `pdv-sale.test.ts`, cobrindo manual puro, manual > promoção
+     — só o excedente conta —, manual < promoção — promoção prevalece,
+     zero manual — e cabeçalho+linha somando no mesmo "manual"). Deploy
+     `282083a` confirmado "Ready" e conferido ao vivo em produção: botão
+     "Desconto" na linha de `ZZTESTE Calca QA` abre diálogo título
+     "Desconto em ZZTESTE Calca QA", aplicar R$30 grava `− R$ 30,00` na
+     coluna e `R$ 120,00` no total da linha, resumo da venda mostra
+     "Desconto − R$ 30,00" (não "Promoções"); reabrir o diálogo preenche
+     R$30 e mostra botão "Remover", que zera de volta pra "—"; F6
+     (cabeçalho) testado em seguida no mesmo carrinho sem regressão
+     (mesmo componente generalizado, título/rótulo default preservados).
+     Finalização completa (F10) não foi possível neste teste: os produtos
+     `ZZTESTE *` ficaram com estoque zero por limpeza de testes
+     anteriores desta sessão (item 152) e o tenant não permite estoque
+     negativo — o bloqueio ("Estoque insuficiente") é o guard correto já
+     testado antes (commits b4a6790/0126f8a), não uma lacuna deste
+     recurso; o payload de checkout em si não mudou de forma (mesmo
+     campo `discount` por linha), só o valor que carrega. Carrinho de
+     teste cancelado ao final (sem venda real criada, sem dado pra
+     limpar).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
