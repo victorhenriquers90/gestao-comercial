@@ -7806,6 +7806,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      teste cancelado ao final (sem venda real criada, sem dado pra
      limpar).
 
+155. **PDV tablet: desconto por item (continuação do 154) e um achado de
+     layout — a 1024px o nome do produto era ilegível.**
+
+     **Achado (pré-existente, medido em produção a 1024×768)**: o
+     `pdv-tablet.css` declara o alvo como paisagem 1024–1366px, mas no
+     piso desse alvo as colunas fixas (#, Qtd, Unitário, Total, Remover =
+     544px) deixavam 86px pra coluna Produto — 54px de texto depois do
+     padding. Na tela: "ZZTE…" no lugar do nome e "sem" no lugar de "sem
+     estoque"; o operador não sabia o que estava no carrinho. De quebra,
+     o stepper de quantidade (170px, três alvos de 56px) vazava 10px pra
+     coluna vizinha e a lixeira ficava encostada à direita em vez de
+     centralizada — conteúdo mais largo que a área útil alinha no início
+     (inline: CSS Text 3; bloco com `margin: auto` sobrecarregado), não
+     centraliza. Uma coluna "Desconto" igual à do desktop (+112px) faria
+     a tabela estourar (656px fixos numa tabela de 630px).
+
+     **Fix**: (1) sem coluna "Unitário" própria — o unitário vai na linha
+     de baixo do nome, respeitando a unidade (`R$ 50,00/un`,
+     `R$ 39,90/kg`), com o SKU por último (o que menos importa no
+     balcão, e na frente empurrava o aviso de estoque pra fora); (2) o
+     TOTAL da linha vira o alvo de toque do desconto por item (128×56px),
+     com o desconto embaixo dele ("− R$ 5,00" em destaque, ou "Desconto"
+     apagado quando não há) — mesmo `DiscountDialog`/`setLineDiscount` do
+     desktop, ligados em `pdv-tablet.tsx` do mesmo jeito; (3) padding
+     lateral das células 1rem→0.75rem, "#" 3→2.5rem, Remover 4.5→4rem, e
+     padding lateral zero nas células do stepper e da lixeira (aí
+     centralizam de verdade). Nenhum alvo de toque encolheu.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (525). Deploys
+     `58d6bf9` + `3effe33` "Ready", medido ao vivo a 1024×768: sem
+     rolagem horizontal; coluna Produto 86→206px (texto 54→182px);
+     "ZZTESTE Camiseta QA" e "R$ 50,00/un ⚠ sem estoque" cabem inteiros,
+     nome longo de variação corta com reticências; stepper com 3px de
+     folga dos dois lados, lixeira 4px. A 1366×768: Produto 490px, os
+     dois nomes inteiros. Fluxo com TOQUE real (não `.click()` via JS):
+     tocar no total abriu "Desconto em ZZTESTE Camiseta QA" com base
+     R$ 50,00; modo Percentual 10% → prévia R$ 45,00 → aplicar: linha
+     `R$ 45,00 / − R$ 5,00`, painel "Desconto − R$ 5,00", total R$ 75,00.
+     Guardar → Recuperar preservou o desconto por linha (no 154 isso só
+     tinha sido conferido lendo código). Carrinho cancelado e venda
+     guardada consumida — nada sobrou no banco.
+
+     **Nota pra quem testar no painel do navegador**: emulando viewport
+     maior que o painel, a captura vem com a página encolhida E com
+     tarja preta (1024px ocupam ~575px de uma imagem de 800px), e clique
+     por `ref` usa coordenada de viewport — erra o alvo. Converter
+     `getBoundingClientRect()` pela escala real (largura ocupada ÷
+     `innerWidth`) e clicar por coordenada funciona.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
