@@ -74,10 +74,13 @@ export function SupplierPanel({
     void qc.invalidateQueries({ queryKey: ["suppliers"] });
   }
 
-  const openPay = (detail.data?.payables ?? []).reduce(
-    (a, r) => a + Math.max(0, r.amount - r.paid),
-    0,
-  );
+  // Mesmo ajuste do customer-panel.tsx (openRec): cancelar um titulo so
+  // muda o status, nunca reduz `amount` -- um titulo cancelado (ex.: pedido
+  // de compra desfeito) ainda somava aqui, mostrando o fornecedor "a pagar"
+  // por uma divida que o proprio Financeiro ja nao contava mais.
+  const openPay = (detail.data?.payables ?? [])
+    .filter((r) => r.status === "pendente" || r.status === "parcial" || r.status === "vencido")
+    .reduce((a, r) => a + Math.max(0, r.amount - r.paid), 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

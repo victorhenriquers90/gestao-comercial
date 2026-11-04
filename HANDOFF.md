@@ -7707,6 +7707,49 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `0` nos dois, contra `1,333`/`2` antes do fix — "Giro" continua
      mostrando `3`/`2` (coluna separada, sem mudança de propósito).
 
+153. **Continuação do pedido "analista de teste sênior": Produtos
+     (categoria, variações cor/tamanho), exportação Excel dos relatórios
+     e busca global (Ctrl K). Um achado real na ficha do fornecedor,
+     encontrado comparando com o painel do cliente. Corrigido.**
+
+     **Variações/categoria testadas sem bug**: produto com 3 variações
+     (Azul/P, Azul/M, Vermelho/P) criou 3 variantes de verdade, cada uma
+     com seu próprio estoque e preço, aparecendo certinho na busca do
+     PDV; categoria nova vinculou e apareceu em "Por categoria"
+     (R$550 "Sem categoria" + R$30 da categoria nova = R$580 total,
+     exato). Exportação Excel revisada por código (não precisou baixar o
+     arquivo pra conferir): usa os mesmos `report.data.rows` já exibidos
+     na tela, com proteção contra injeção de fórmula (campo começando
+     com `=+-@` vira texto) e BOM UTF-8 pro Excel abrir acentuação
+     certa — já correto por construção. Busca global (Ctrl K) achou os
+     6 registros ZZTESTE certos (produto/cliente/fornecedor) e navegou
+     pro registro certo ao clicar.
+
+     **Achado — ficha do fornecedor contava título CANCELADO como "a
+     pagar"**: abrindo `ZZTESTE Fornecedor QA` pela busca global, o
+     card "A pagar" mostrava R$650,00, mas a LISTA de fornecedores (na
+     mesma tela, acima) mostrava R$0,00 pro mesmo fornecedor — os R$650
+     eram a conta a pagar da compra nº11 (item 150 do HANDOFF, já
+     cancelada de propósito como parte daquele teste). `supplier-
+     panel.tsx` somava `amount - paid` de TODOS os títulos retornados
+     por `getSupplierFn` sem filtrar por status — incluindo os
+     `cancelado`, cujo `amount` nunca é zerado no cancelamento (só o
+     status muda). `listSuppliersFn` (a lista) já filtrava certo
+     (`status in ('pendente','parcial','vencido')`), só a ficha
+     individual não.
+
+     A prova de que isto é um descuido, não uma decisão: `customer-
+     panel.tsx` (o painel GÊMEO, do lado do cliente) já tinha o filtro
+     certo, com um comentário detalhado explicando EXATAMENTE este
+     mesmo bug — só nunca foi replicado pro painel do fornecedor.
+
+     **Fix**: `supplier-panel.tsx` ganhou o mesmo `.filter(...)` que o
+     `customer-panel.tsx` já usa, antes do `.reduce(...)` que soma "A
+     pagar".
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (521 testes).
+     Aguarda deploy e verificação ao vivo (próximo commit).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
