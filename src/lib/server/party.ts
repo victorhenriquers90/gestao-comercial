@@ -592,10 +592,15 @@ export const addCustomerNoteFn = createServerFn({ method: "POST" })
       where id = ${data.customerId} and company_id = ${tenant.companyId} and deleted_at is null
     `;
     if (!cliente) throw new Error("Cliente não encontrado.");
-    await sql`
+    const [row] = await sql<{ id: number }>`
       insert into customer_notes (company_id, customer_id, user_id, body)
       values (${tenant.companyId}, ${cliente.id}, ${tenant.userId}, ${data.body})
+      returning id
     `;
+    await audit(sql, tenant, "create", "customer_note", row!.id, null, {
+      customerId: cliente.id,
+      body: data.body,
+    });
     return { ok: true };
   });
 
@@ -609,10 +614,16 @@ export const saveCrmTaskFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "crm.write");
     await assertOwned(sql, tenant.companyId, "customers", data.customerId);
-    await sql`
+    const [row] = await sql<{ id: number }>`
       insert into crm_tasks (company_id, customer_id, user_id, title, due_at)
       values (${tenant.companyId}, ${data.customerId}, ${tenant.userId}, ${data.title}, ${data.dueAt ?? null})
+      returning id
     `;
+    await audit(sql, tenant, "create", "crm_task", row!.id, null, {
+      customerId: data.customerId,
+      title: data.title,
+      dueAt: data.dueAt ?? null,
+    });
     return { ok: true };
   });
 
@@ -625,10 +636,22 @@ export const toggleCrmTaskFn = createServerFn({ method: "POST" })
     // certo (nao vazava entre lojas), mas qualquer papel autenticado podia
     // concluir/reabrir tarefa de CRM -- inclusive os que nem enxergam a tela.
     assertCan(tenant.role, "crm.write");
+    const [before] = await sql<{ done_at: string | null }>`
+      select done_at from crm_tasks where id = ${data.id} and company_id = ${tenant.companyId}
+    `;
+    if (!before) throw new Error("Tarefa não encontrada.");
     await sql`
       update crm_tasks set done_at = ${data.done ? new Date().toISOString() : null}
       where id = ${data.id} and company_id = ${tenant.companyId}
     `;
+    await auditUpdate(
+      sql,
+      tenant,
+      "crm_task",
+      data.id,
+      { done: before.done_at != null },
+      { done: data.done },
+    );
     return { ok: true };
   });
 
@@ -668,10 +691,22 @@ export const moveCrmFn = createServerFn({ method: "POST" })
     // mandar qualquer string: o cliente sumia de toda coluna do funil, sem
     // erro nenhum avisando.
     if (!isCrmStage(data.stage)) throw new Error("Estágio inválido.");
+    const [before] = await sql<{ crm_stage: string }>`
+      select crm_stage from customers where id = ${data.customerId} and company_id = ${tenant.companyId}
+    `;
+    if (!before) throw new Error("Cliente não encontrado.");
     await sql`
       update customers set crm_stage = ${data.stage}, updated_at = now()
       where id = ${data.customerId} and company_id = ${tenant.companyId}
     `;
+    await auditUpdate(
+      sql,
+      tenant,
+      "customer",
+      data.customerId,
+      { crm_stage: before.crm_stage },
+      { crm_stage: data.stage },
+    );
     return { ok: true };
   });
 

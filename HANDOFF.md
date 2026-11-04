@@ -7578,6 +7578,57 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      de teste (Visa 5%/5 dias) removida de Configurações → Cartões depois
      de confirmar o fix.
 
+151. **Continuação do pedido "analista de teste sênior": CRM (quadro de
+     funil, tarefas, anotações). Um achado real: CRM inteiro sem trilha
+     de auditoria. Corrigido.**
+
+     **CRM testado funcionando**: mudar o estágio do cliente
+     `ZZTESTE Cliente QA` (painel do cliente → "Estágio no funil") de
+     "Novo contato" pra "Venda" persistiu e refletiu certo na lista e no
+     filtro por etapa (inclusive excluindo o cliente quando o filtro não
+     bate, com empty state correto). Tarefa criada com `Agendar`, marcada
+     concluída (checkbox com `line-through`), e nota salva em
+     "Anotações" — todas as três sobreviveram a um reload completo da
+     página.
+
+     **Achado**: nenhuma das quatro escritas do CRM —
+     `moveCrmFn` (mover estágio pelo quadro `/app/crm` ou pelo seletor do
+     painel do cliente), `addCustomerNoteFn`, `saveCrmTaskFn`,
+     `toggleCrmTaskFn` (`party.ts`) — chamava `audit`/`auditUpdate`, ao
+     contrário de literalmente toda outra escrita do sistema (venda,
+     estoque, promoção, meta, compra, cliente via "Salvar dados",
+     fornecedor, vendedor). Reproduzido ao vivo: mudei o estágio do
+     cliente teste e criei tarefa/nota nesta sessão — a Auditoria
+     (Configurações → Auditoria) não registrou nenhuma das três ações,
+     parando exatamente no último evento ANTES disso (`LojaVictorTeste
+     ajustou estoque #2`, 02/11 23:53). Pra uma loja que usa o funil pra
+     decidir quem atender primeiro, "quem moveu este cliente pra
+     'Perdido' e quando" ou "quem anotou isto no cadastro" ficava sem
+     resposta nenhuma.
+
+     **Fix**: as quatro funções em `party.ts` agora chamam
+     `audit`/`auditUpdate` (mesmo padrão já usado no resto do arquivo):
+     `moveCrmFn` lê o `crm_stage` atual antes de atualizar e grava
+     antes→depois; `addCustomerNoteFn`/`saveCrmTaskFn` usam `returning
+     id` pra conseguir o id recém-criado; `toggleCrmTaskFn` lê o
+     `done_at` atual antes de marcar/desmarcar. `audit-label.ts` ganhou
+     rótulos pra `customer_note`/`crm_task` (sem isso o título da
+     auditoria mostraria o nome cru da tabela) e um `FieldKind`
+     `"crmStage"` que traduz o slug (`novo`/`venda`/etc.) pro rótulo que
+     o usuário já vê na tela, em vez de aparecer cru. `title` entrou no
+     fallback de nome do `auditTitle` — sem isso, a criação de uma
+     tarefa de CRM apareceria só como "#7" em vez do texto da tarefa.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (**521** testes —
+     3 novos em `audit-label.test.ts` cobrindo tradução de estágio,
+     criação/conclusão de tarefa e criação de nota). Aguarda deploy
+     (próximo commit). Limpeza: estágio do `ZZTESTE Cliente QA` ficou em
+     "Venda" (reflete a realidade — o cliente comprou de verdade; não é
+     poluição de teste, é estado correto de CRM); tarefa e nota de teste
+     deste item ficam no histórico do cliente (mesmo padrão de não
+     apagar registro que já virou prova de auditoria, só reverter
+     impacto financeiro quando existe).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

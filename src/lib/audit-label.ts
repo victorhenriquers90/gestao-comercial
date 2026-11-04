@@ -1,11 +1,13 @@
 import {
   COMMISSION_KIND_LABELS,
+  CRM_STAGE_LABELS,
   PAYMENT_LABELS,
   PROMO_KIND_LABELS,
   PURCHASE_STATUS_LABELS,
   RECEIPT_METHOD_LABELS,
   TARGET_BONUS_LABELS,
   TIER_BASIS_LABELS,
+  type CrmStage,
   type PaymentMethod,
   type ReceiptMethod,
   type TargetBonusKind,
@@ -48,6 +50,8 @@ const ENTITY: Record<string, string> = {
   promotion: "promoção",
   commission_rule: "regra de comissão",
   target: "meta",
+  customer_note: "nota de cliente",
+  crm_task: "tarefa de CRM",
 };
 
 const ACTION: Record<string, string> = {
@@ -96,7 +100,8 @@ type FieldKind =
   | "tierBasis"
   | "bonusKind"
   | "tiers"
-  | "purchaseStatus";
+  | "purchaseStatus"
+  | "crmStage";
 
 type FieldDef = { label: string; kind: FieldKind };
 
@@ -132,6 +137,7 @@ const FIELDS: Record<string, FieldDef> = {
   supplierId: { label: "fornecedor", kind: "ref" },
   customerId: { label: "cliente", kind: "ref" },
   storeId: { label: "loja", kind: "ref" },
+  crm_stage: { label: "estágio no funil", kind: "crmStage" },
 };
 
 /*
@@ -192,6 +198,16 @@ const ENTITY_FIELDS: Record<string, Record<string, FieldDef>> = {
     tax: { label: "imposto", kind: "money" },
     discount: { label: "desconto", kind: "money" },
     total: { label: "total", kind: "money" },
+  },
+  crm_task: {
+    customerId: { label: "cliente", kind: "ref" },
+    title: { label: "tarefa", kind: "text" },
+    dueAt: { label: "vencimento", kind: "date" },
+    done: { label: "concluída", kind: "yesno" },
+  },
+  customer_note: {
+    customerId: { label: "cliente", kind: "ref" },
+    body: { label: "nota", kind: "text" },
   },
 };
 
@@ -271,6 +287,8 @@ function show(kind: FieldKind, v: unknown): string {
       return TARGET_BONUS_LABELS[v as TargetBonusKind] ?? String(v);
     case "purchaseStatus":
       return PURCHASE_STATUS_LABELS[String(v)] ?? String(v);
+    case "crmStage":
+      return CRM_STAGE_LABELS[v as CrmStage] ?? String(v);
     case "tiers": {
       if (!Array.isArray(v) || v.length === 0) return "nenhuma";
       return v
@@ -323,7 +341,8 @@ export function auditTitle(row: AuditRow): string {
   const what = ENTITY[row.entity] ?? row.entity;
   const after = asRecord(row.after_data);
   const before = asRecord(row.before_data);
-  const nome = after?.name ?? before?.name ?? after?.label ?? after?.description ?? before?.description;
+  const nome =
+    after?.name ?? before?.name ?? after?.label ?? after?.title ?? after?.description ?? before?.description;
   const alvo = typeof nome === "string" && nome ? ` “${nome}”` : row.entity_id != null ? ` #${row.entity_id}` : "";
   return `${who} ${verb} ${what}${alvo}`;
 }

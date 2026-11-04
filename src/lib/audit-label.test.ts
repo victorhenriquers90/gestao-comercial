@@ -341,4 +341,55 @@ describe("mudancas da auditoria", () => {
     assert.deepEqual(auditChanges({ action: "create", entity: "store", before_data: null, after_data: { name: "X" } }), []);
     assert.deepEqual(auditChanges({ action: "x", entity: "y", before_data: [1], after_data: "z" }), []);
   });
+
+  it("estagio do funil traduz o valor, nao o slug cru", () => {
+    assert.deepEqual(
+      auditChanges({
+        action: "update",
+        entity: "customer",
+        before_data: { crm_stage: "novo" },
+        after_data: { crm_stage: "venda" },
+      }),
+      ["estágio no funil: Novo contato → Venda"],
+    );
+  });
+
+  it("tarefa de CRM: titulo pelo nome da tarefa, criacao e conclusao", () => {
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "create", entity: "crm_task", entity_id: 7, after_data: { title: "Ligar amanhã" } }),
+      "Ana criou tarefa de CRM “Ligar amanhã”",
+    );
+    const criada = auditChanges({
+      action: "create",
+      entity: "crm_task",
+      before_data: null,
+      after_data: { customerId: 4, title: "Ligar amanhã", dueAt: "2026-11-10", done: false },
+    });
+    assert.deepEqual(criada, ["cliente: nº 4", "tarefa: Ligar amanhã", "vencimento: 10/11/2026"]);
+    assert.deepEqual(
+      auditChanges({
+        action: "update",
+        entity: "crm_task",
+        before_data: { done: false },
+        after_data: { done: true },
+      }),
+      ["concluída: não → sim"],
+    );
+  });
+
+  it("nota de cliente: titulo pelo numero, corpo aparece na criacao", () => {
+    assert.equal(
+      auditTitle({ user_name: "Ana", action: "create", entity: "customer_note", entity_id: 12, after_data: { customerId: 4, body: "Prefere WhatsApp" } }),
+      "Ana criou nota de cliente #12",
+    );
+    assert.deepEqual(
+      auditChanges({
+        action: "create",
+        entity: "customer_note",
+        before_data: null,
+        after_data: { customerId: 4, body: "Prefere WhatsApp" },
+      }),
+      ["cliente: nº 4", "nota: Prefere WhatsApp"],
+    );
+  });
 });
