@@ -7621,13 +7621,33 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
      **Verificação**: `typecheck`/`lint`/`test` limpos (**521** testes —
      3 novos em `audit-label.test.ts` cobrindo tradução de estágio,
-     criação/conclusão de tarefa e criação de nota). Aguarda deploy
-     (próximo commit). Limpeza: estágio do `ZZTESTE Cliente QA` ficou em
-     "Venda" (reflete a realidade — o cliente comprou de verdade; não é
-     poluição de teste, é estado correto de CRM); tarefa e nota de teste
-     deste item ficam no histórico do cliente (mesmo padrão de não
-     apagar registro que já virou prova de auditoria, só reverter
-     impacto financeiro quando existe).
+     criação/conclusão de tarefa e criação de nota). Deploy `2363b17`
+     confirmado "Ready" e achado verificado ao vivo: mudar o estágio do
+     `ZZTESTE Cliente QA` de "Venda" pra "Interessado" e de volta gerou a
+     linha "LojaVictorTeste alterou cliente #1 — estágio no funil:
+     Venda → Interessado" na Auditoria, com os rótulos certos (não o
+     slug cru `venda`/`interessado`). Limpeza: estágio do
+     `ZZTESTE Cliente QA` ficou em "Venda" (reflete a realidade — o
+     cliente comprou de verdade; não é poluição de teste, é estado
+     correto de CRM); tarefa e nota de teste deste item ficam no
+     histórico do cliente (mesmo padrão de não apagar registro que já
+     virou prova de auditoria, só reverter impacto financeiro quando
+     existe).
+
+     **Nota operacional, sem relação com o código deste item**: o push
+     do commit `2363b17` não disparou deploy automático sozinho —
+     confirmado via `vercel.com/api/v7/deployments` que nenhum
+     deployment foi criado por 5+ minutos, bem acima da janela normal
+     (~20-40s) que todo push anterior desta sessão levou. O webhook
+     GitHub→Vercel parece ter falhado silenciosamente nesta vez
+     (commit chegou certo no `origin/main`, `gh api .../commits/.../
+     status` confirmou "pending" sem nenhum status registrado). Resolvido
+     sem mexer em configuração nenhuma: menu "..." da lista de
+     deployments → "Create Deployment" → colar `main` → "Deploy to
+     Production" (o dialog resolve o commit mais recente da branch
+     sozinho e mostra qual vai antes de confirmar). Se isso se repetir,
+     este é o caminho manual — não é preciso reconectar o repositório
+     nem mexer em Git Settings.
 
 ## Como a próxima IA deve trabalhar
 
