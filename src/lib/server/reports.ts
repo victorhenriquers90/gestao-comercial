@@ -643,7 +643,17 @@ export const reportFn = createServerFn({ method: "POST" })
         const stock = num(r.stock);
         const sold = num(r.sold);
         const giro = stock > 0 ? sold / stock : sold > 0 ? sold : 0;
-        const cover = giro > 0 ? days / giro : 0;
+        /*
+          Direto (estoque * dias / vendidos), nao `days / giro`: pra quem
+          vendeu TUDO que tinha (estoque zerado), `giro` cai no fallback
+          acima (vira o proprio `sold`, so pra nao sumir da lista) e
+          `days / giro` saia como `dias / vendidos` -- um numero de dias
+          de cobertura POSITIVO pra quem tem ZERO peca na prateleira. Com
+          zero estoque a cobertura so pode ser zero, e e exatamente o que
+          a formula direta ja da (stock=0 no numerador), sem precisar de
+          caso especial.
+        */
+        const cover = stock > 0 && sold > 0 ? (stock * days) / sold : 0;
         return [String(r.name), stock, sold, giro, cover];
       });
       return pack({

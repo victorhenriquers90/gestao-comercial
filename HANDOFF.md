@@ -7649,6 +7649,61 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      este é o caminho manual — não é preciso reconectar o repositório
      nem mexer em Git Settings.
 
+152. **Continuação do pedido "analista de teste sênior": Dashboard,
+     Estoque (Inventário, Transferência entre lojas), Financeiro
+     (Despesas, Cobrança, Fluxo de caixa, baixa de cartão vencido) e
+     Relatórios (Curva ABC, Giro). Um achado real no relatório de Giro.
+     Corrigido.**
+
+     **Tudo testado sem bug, com conferência cruzada precisa**: Dashboard
+     bateu exato contra números já validados (faturamento, comissões,
+     produtos mais vendidos); alerta de "Estoque baixo"/"Abaixo do
+     mínimo" aparece e some corretamente ao redor do limiar; Inventário
+     tratou sobra E falta no mesmo lote (R$135,00 de divergência líquida
+     — 3 Calças sobrando a R$65 menos 3 Camisetas faltando a R$20 — exato
+     1 a 1 no log de Movimentações); Transferência entre lojas moveu
+     estoque certinho entre Loja Centro e Loja Shopping (achei um falso
+     alarme no meio do teste — achei que o seletor "Transferir para loja"
+     do diálogo compartilhava estado com o seletor de loja do topo da
+     tela, mas era só o meu próprio script pegando o `<select>` errado,
+     já que os dois têm "Loja Shopping" como opção — são campos
+     independentes de verdade); baixa de um título de cartão vencido
+     ("Receber" → "Transferência") moveu o valor certo pra "Entradas" sem
+     tocar no caixa físico; Despesas (lançar → cancelar) devolveu o
+     dinheiro ao caixa exatamente como o aviso prometeu; Cobrança ficou
+     corretamente restrita a dívida de cliente (crediário), sem misturar
+     com baixa de cartão vencida da adquirente; Curva ABC classificou
+     81,8% de receita acumulada como Classe B (não A — correto, passou
+     dos 80%) com o próprio limiar como caso de teste.
+
+     **Achado — "Dias de cobertura" do relatório de Giro dava um número
+     positivo pra produto com ZERO peça em estoque**: `reports.ts`
+     calculava `cover = days / giro`, e `giro` já tinha um fallback pra
+     quando `stock === 0`: virava o próprio `sold` (só pra não sumir da
+     lista, já que `sold/stock` é indefinido). O problema é que `cover`
+     herdava esse fallback torto: virava `dias do período / vendidos` —
+     um número de dias positivo sugerindo que o produto "aguenta" tantos
+     dias, quando na real a prateleira está vazia, o número certo é
+     ZERO. Reproduzido direto nos dados de teste desta sessão (Calça e
+     Camiseta, ambas zeradas depois de vender): "Dias de cobertura" de
+     1,333 e 2 — nenhum dos dois faz sentido pra estoque zerado.
+
+     **Fix**: `cover` passa a ser calculado direto
+     (`stock * days / sold`), sem depender do fallback de `giro`. Pra
+     estoque > 0 dá exatamente o mesmo resultado de antes (é a mesma
+     conta, só sem o desvio por `giro`); pra estoque = 0, o `stock` no
+     numerador já zera a conta sozinho, sem precisar de caso especial.
+     `giro` continua com o mesmo fallback de antes (mostrar `sold` numa
+     coluna separada, rotulada "Giro", quando o estoque zerou — decisão
+     de exibição que não muda, só o cálculo de cobertura que dependia
+     dela errado).
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (521 testes — a
+     lógica em si é simples o bastante pra verificar só por leitura mais
+     o teste ao vivo abaixo, sem extrair pra `lib/` com teste próprio,
+     já que é usada num único lugar). Aguarda deploy e verificação ao
+     vivo (próximo commit).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
