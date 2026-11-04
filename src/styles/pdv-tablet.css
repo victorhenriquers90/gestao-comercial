@@ -102,7 +102,7 @@
   top: 0;
   z-index: 1;
   height: 2.75rem;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-card);
   font-size: 0.75rem;
@@ -121,11 +121,24 @@
   text-align: center;
 }
 
+/*
+  Padding lateral 0.75rem (nao 1rem) e "#"/remover mais estreitos: a 1024px
+  cada 8px aqui e nome de produto a mais. Stepper e lixeira continuam com
+  56px -- so transbordam pro padding da propria celula, centralizados.
+*/
 .pdvt-cart td {
   height: 4.75rem;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
   vertical-align: middle;
+}
+
+/* Stepper (170px) e lixeira (56px) sao mais largos que a area util com
+   padding: conteudo largo demais alinha a esquerda e vazava pra celula
+   vizinha (ou pra fora da tabela). Sem padding lateral, centralizam. */
+.pdvt-cart td.pdvt-col-qty,
+.pdvt-cart td.pdvt-col-rm {
+  padding-inline: 0;
 }
 
 .pdvt-cart tbody tr[data-selected] td {
@@ -152,7 +165,7 @@
 }
 
 .pdvt-col-idx {
-  width: 3rem;
+  width: 2.5rem;
 }
 .pdvt-col-qty {
   width: 11rem;
@@ -176,7 +189,7 @@
   background: var(--color-muted);
 }
 .pdvt-col-rm {
-  width: 4.5rem;
+  width: 4rem;
 }
 
 @keyframes pdvt-flash-a {
