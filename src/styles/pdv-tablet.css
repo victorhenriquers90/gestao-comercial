@@ -157,11 +157,23 @@
 .pdvt-col-qty {
   width: 11rem;
 }
-.pdvt-col-unit {
-  width: 7.5rem;
-}
 .pdvt-col-total {
-  width: 8rem;
+  width: 9rem;
+}
+
+/* Total da linha = alvo de toque do desconto por item (ver touch-cart-table.tsx). */
+.pdvt-line-total {
+  display: block;
+  width: calc(100% + 1rem);
+  min-height: 3.5rem;
+  margin-inline: -0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.75rem;
+  text-align: right;
+}
+
+.pdvt-line-total:active {
+  background: var(--color-muted);
 }
 .pdvt-col-rm {
   width: 4.5rem;

@@ -10,8 +10,22 @@ import { cn } from "@/lib/utils";
  * mais alta, stepper de quantidade e botão de remover com alvo de toque
  * ≥56×56 — o desktop usa 32×32, apertado demais pro dedo. Mesma lógica de
  * dados (`CartTableProps`, vinda de `usePdvSale`), só o layout muda.
+ *
+ * Sem coluna "Unitário" nem "Desconto" separadas: a 1024px (piso do alvo
+ * paisagem, ver pdv-tablet.css) as colunas fixas deixavam ~54px pro nome
+ * do produto ("ZZTE…"). O unitário vai na linha de baixo do nome e o
+ * desconto embaixo do total, que vira o alvo de toque pra dar desconto.
  */
-export function TouchCartTable({ lines, commission, selectedId, onSelect, onQty, onRemove, flash }: CartTableProps) {
+export function TouchCartTable({
+  lines,
+  commission,
+  selectedId,
+  onSelect,
+  onQty,
+  onRemove,
+  flash,
+  onLineDiscount,
+}: CartTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,7 +44,6 @@ export function TouchCartTable({ lines, commission, selectedId, onSelect, onQty,
               <th className="pdvt-col-idx text-right">#</th>
               <th>Produto</th>
               <th className="pdvt-col-qty text-center">Qtd</th>
-              <th className="pdvt-col-unit text-right">Unitário</th>
               <th className="pdvt-col-total text-right">Total</th>
               <th className="pdvt-col-rm">
                 <span className="sr-only">Remover</span>
@@ -42,6 +55,7 @@ export function TouchCartTable({ lines, commission, selectedId, onSelect, onQty,
               const selecionada = l.variantId === selectedId;
               const acimaDoEstoque = l.qty > l.stock;
               const comissao = commission?.[i];
+              const totalLinha = l.sellPrice * l.qty - l.lineDiscount;
               return (
                 <tr
                   key={l.variantId}
@@ -60,18 +74,21 @@ export function TouchCartTable({ lines, commission, selectedId, onSelect, onQty,
                   <td className="pdvt-col-idx num text-muted-foreground">{i + 1}</td>
                   <td className="min-w-0">
                     <span className="block truncate font-medium">{l.label}</span>
-                    {l.promoName || acimaDoEstoque || l.sku ? (
-                      <span className="flex items-center gap-x-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground">
-                        <span className="shrink-0 tabular">{l.sku}</span>
-                        {acimaDoEstoque ? (
-                          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-warning">
-                            <TriangleAlert className="size-4" />
-                            {l.stock <= 0 ? "sem estoque" : `estoque ${l.stock}`}
-                          </span>
-                        ) : null}
-                        {l.promoName ? <span className="truncate font-medium text-primary">{l.promoName}</span> : null}
+                    {/* SKU por ultimo: e o que menos importa no balcao, e na
+                        frente empurrava o aviso de estoque pra fora da celula. */}
+                    <span className="flex items-center gap-x-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground">
+                      <span className="shrink-0 tabular">
+                        {formatBRL(l.sellPrice)}/{l.unit.toLowerCase()}
                       </span>
-                    ) : null}
+                      {acimaDoEstoque ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 font-medium text-warning">
+                          <TriangleAlert className="size-4" />
+                          {l.stock <= 0 ? "sem estoque" : `estoque ${l.stock}`}
+                        </span>
+                      ) : null}
+                      {l.promoName ? <span className="truncate font-medium text-primary">{l.promoName}</span> : null}
+                      {l.sku ? <span className="shrink-0 tabular">{l.sku}</span> : null}
+                    </span>
                   </td>
                   <td className="pdvt-col-qty text-center">
                     <TouchQtyStepper
@@ -80,9 +97,35 @@ export function TouchCartTable({ lines, commission, selectedId, onSelect, onQty,
                       onChange={(q) => onQty(l.variantId, q)}
                     />
                   </td>
-                  <td className="pdvt-col-unit num">{formatBRL(l.sellPrice)}</td>
-                  <td className="pdvt-col-total num font-semibold">
-                    {formatBRL(l.sellPrice * l.qty - l.lineDiscount)}
+                  <td className="pdvt-col-total num">
+                    {onLineDiscount ? (
+                      <button
+                        type="button"
+                        className="pdvt-line-total"
+                        aria-label={`Desconto em ${l.label} (total ${formatBRL(totalLinha)})`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLineDiscount(l.variantId);
+                        }}
+                      >
+                        <span className="block font-semibold text-foreground">{formatBRL(totalLinha)}</span>
+                        <span
+                          className={cn(
+                            "block text-sm",
+                            l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground",
+                          )}
+                        >
+                          {l.lineDiscount > 0 ? `− ${formatBRL(l.lineDiscount)}` : "Desconto"}
+                        </span>
+                      </button>
+                    ) : (
+                      <>
+                        <span className="block font-semibold">{formatBRL(totalLinha)}</span>
+                        {l.lineDiscount > 0 ? (
+                          <span className="block text-sm text-primary">{`− ${formatBRL(l.lineDiscount)}`}</span>
+                        ) : null}
+                      </>
+                    )}
                   </td>
                   <td className="pdvt-col-rm">
                     <button
