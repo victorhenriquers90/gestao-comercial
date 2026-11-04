@@ -7748,7 +7748,9 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      pagar".
 
      **Verificação**: `typecheck`/`lint`/`test` limpos (521 testes).
-     Aguarda deploy e verificação ao vivo (próximo commit).
+     Deploy `59232eb` confirmado "Ready" e conferido ao vivo: a ficha de
+     `ZZTESTE Fornecedor QA` voltou a mostrar "A pagar" `R$ 0,00`, igual
+     à lista acima dela.
 
 ## Como a próxima IA deve trabalhar
 
