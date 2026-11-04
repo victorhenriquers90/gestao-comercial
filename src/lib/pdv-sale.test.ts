@@ -37,6 +37,50 @@ describe("summarizeSale", () => {
       gross: 0, promo: 0, subtotal: 0, manual: 0, total: 0, pieces: 0, lines: 0,
     });
   });
+
+  it("desconto manual por linha entra em 'manual', nao em 'promo' -- mesmo vindo da coluna Desconto do carrinho", () => {
+    // Peca de R$100 com promoDiscount 0 mas lineDiscount 15 (manual, sem
+    // promocao nenhuma aplicada): o R$15 tem que contar como desconto do
+    // OPERADOR (igual ao F6), nao aparecer como "Promoções" no resumo --
+    // senao o cupom credita um desconto concedido por alguem como se fosse
+    // regra do sistema.
+    const s = summarizeSale([{ qty: 1, sellPrice: 100, lineDiscount: 15, promoDiscount: 0 }], 0);
+    assert.equal(s.promo, 0);
+    assert.equal(s.manual, 15);
+    assert.equal(s.total, 85);
+  });
+
+  it("manual por linha MAIOR que a promocao: so a diferenca conta pro manual (nao soma os dois)", () => {
+    // Promocao ja tirava R$10; operador decidiu dar R$18 (substitui, nao
+    // soma) -- igual ao checkoutFn (Math.max, nao +), que e quem de fato
+    // grava a venda. So os R$8 a mais contam pro limite do papel.
+    const s = summarizeSale([{ qty: 1, sellPrice: 100, lineDiscount: 18, promoDiscount: 10 }], 0);
+    assert.equal(s.promo, 10);
+    assert.equal(s.manual, 8);
+    assert.equal(s.total, 82);
+  });
+
+  it("manual por linha MENOR que a promocao vigente: promocao continua valendo, manual nao soma nada", () => {
+    // O operador "tentou" dar R$5 numa linha que a promocao ja reduz em
+    // R$10 -- o maior dos dois e o que vale (lineDiscount já vem assim de
+    // quem monta a linha), entao o manual efetivo e zero.
+    const s = summarizeSale([{ qty: 1, sellPrice: 100, lineDiscount: 10, promoDiscount: 10 }], 0);
+    assert.equal(s.promo, 10);
+    assert.equal(s.manual, 0);
+  });
+
+  it("header e manual por linha somam no mesmo 'manual'", () => {
+    const s = summarizeSale(
+      [
+        { qty: 1, sellPrice: 100, lineDiscount: 20, promoDiscount: 0 },
+        { qty: 1, sellPrice: 50, lineDiscount: 0 },
+      ],
+      5,
+    );
+    assert.equal(s.manual, 25);
+    assert.equal(s.promo, 0);
+    assert.equal(s.total, 125);
+  });
 });
 
 describe("paymentStatus", () => {

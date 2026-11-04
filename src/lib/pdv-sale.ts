@@ -16,16 +16,28 @@ export function valorDigitado(texto: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export type SaleLineLike = { qty: number; sellPrice: number; lineDiscount: number };
+export type SaleLineLike = {
+  qty: number;
+  sellPrice: number;
+  /** Desconto EFETIVO da linha: o maior entre promoção e manual (nunca soma os dois). */
+  lineDiscount: number;
+  /**
+   * Só a parte de promoção, pra separar de um desconto manual por item
+   * (botão "Desconto" da coluna, F6 escopo linha). Omitido = sem desconto
+   * manual nesta linha, `lineDiscount` é puro promoção (comportamento de
+   * antes do desconto por linha existir).
+   */
+  promoDiscount?: number;
+};
 
 export type SaleSummary = {
   /** Preco cheio x quantidade, antes de qualquer desconto. */
   gross: number;
-  /** Descontos de promocao, somados das linhas. */
+  /** Descontos de promocao, somados das linhas (nunca inclui desconto manual). */
   promo: number;
   /** Bruto menos promocoes -- o "subtotal" que o desconto manual abate. */
   subtotal: number;
-  /** Desconto manual (F6) sobre a venda. */
+  /** Desconto manual: F6 no cabecalho MAIS o manual por linha, somados. */
   manual: number;
   total: number;
   /** Quantidade de pecas (soma das quantidades). */
@@ -34,22 +46,28 @@ export type SaleSummary = {
   lines: number;
 };
 
-export function summarizeSale(lines: readonly SaleLineLike[], manualDiscount: number): SaleSummary {
+export function summarizeSale(lines: readonly SaleLineLike[], headerDiscount: number): SaleSummary {
   let gross = 0;
   let promo = 0;
+  let lineManual = 0;
   let pieces = 0;
   for (const l of lines) {
     gross += l.sellPrice * l.qty;
-    promo += l.lineDiscount;
+    // Sem promoDiscount (chamador antigo, ou linha sem desconto manual): o
+    // desconto inteiro da linha e promocao, igual sempre foi.
+    const pureza = l.promoDiscount ?? l.lineDiscount;
+    promo += pureza;
+    lineManual += Math.max(0, l.lineDiscount - pureza);
     pieces += l.qty;
   }
   const subtotal = gross - promo;
+  const manual = headerDiscount + lineManual;
   return {
     gross,
     promo,
     subtotal,
-    manual: manualDiscount,
-    total: Math.max(0, subtotal - manualDiscount),
+    manual,
+    total: Math.max(0, subtotal - manual),
     pieces,
     lines: lines.length,
   };

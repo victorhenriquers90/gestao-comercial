@@ -18,8 +18,21 @@ export const PDV_FINISH_CLASS =
   "pdv-finish h-14 w-full justify-start gap-3 rounded-sm px-5 text-base font-semibold [&_svg]:size-5 [@media(max-height:760px)]:h-12";
 
 export type Hit =Awaited<ReturnType<typeof searchPosFn>>[number];
-export type Line = Hit & { qty: number; lineDiscount: number; override?: number; promoName?: string | null };
-export type PricedLine = Line & { sellPrice: number; lineDiscount: number; promoName: string | null };
+export type Line = Hit & {
+  qty: number;
+  lineDiscount: number;
+  /** Desconto manual por linha (R$), concedido pelo operador -- igual ao F6, so que escopo item. */
+  manualDiscount?: number;
+  override?: number;
+  promoName?: string | null;
+};
+export type PricedLine = Line & {
+  sellPrice: number;
+  lineDiscount: number;
+  /** So a parte de promocao, separada do manual -- ver summarizeSale (pdv-sale.ts). */
+  promoDiscount: number;
+  promoName: string | null;
+};
 
 export type PayRow = {
   method: PaymentMethod;

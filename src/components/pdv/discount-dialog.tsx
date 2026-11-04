@@ -10,19 +10,35 @@ import { cn } from "@/lib/utils";
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Base do desconto: subtotal ja com as promocoes. */
+  /** Base do desconto: subtotal ja com as promocoes (venda) ou bruto da linha (item). */
   subtotal: number;
   limitPct: number;
   onApply: (value: number) => void;
+  /** Titulo do dialogo. Default: "Desconto na venda" (F6, escopo cabecalho). */
+  title?: string;
+  /** Rotulo do campo "novo total". Default: "Novo total". */
+  totalLabel?: string;
+  /** Valor ja concedido, pra reabrir editando em vez de sempre começar vazio. */
+  initialValue?: number;
+  /** Com desconto ja concedido (initialValue > 0), mostra "Remover desconto" junto do botao principal. */
+  onRemove?: () => void;
 };
 
-/** F6: desconto na venda, em R$ ou %, com a previa do novo total. */
+/**
+ * F6 (cabecalho) e o botao "Desconto" da coluna do carrinho (por linha,
+ * ver cart-table.tsx) usam o MESMO dialogo -- so o titulo, a base do
+ * percentual e o que `onApply` faz do lado de fora mudam. Duplicar o
+ * dialogo pros dois casos ia divergir em algum detalhe de validacao cedo
+ * ou tarde (ja aconteceu antes nesta base com fornecedor/cliente, ver
+ * item 153 do HANDOFF).
+ */
 export function DiscountDialog(p: Props) {
   const [mode, setMode] = useState<"value" | "pct">("value");
   const [input, setInput] = useState("");
 
   useEffect(() => {
-    if (p.open) setInput("");
+    if (p.open) setInput(p.initialValue ? String(p.initialValue).replace(".", ",") : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- so ao ABRIR; reagir a initialValue mudando com o dialogo aberto sobrescreveria o que o operador esta digitando
   }, [p.open]);
 
   // parseMoneyInput, nao Number(input.replace(",",".")): "1.500" digitado
@@ -49,7 +65,7 @@ export function DiscountDialog(p: Props) {
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Desconto na venda</DialogTitle>
+          <DialogTitle>{p.title ?? "Desconto na venda"}</DialogTitle>
           <DialogDescription>Limite do seu perfil: {p.limitPct}%.</DialogDescription>
         </DialogHeader>
         <form onSubmit={aplicar}>
@@ -92,7 +108,7 @@ export function DiscountDialog(p: Props) {
             </div>
           </Field>
           <div className="mt-3 flex items-baseline justify-between rounded-sm bg-muted px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Novo total</span>
+            <span className="text-muted-foreground">{p.totalLabel ?? "Novo total"}</span>
             <span className={cn("font-semibold tabular", acimaDoLimite && "text-destructive")}>
               {formatBRL(Math.max(0, p.subtotal - valor))}
             </span>
@@ -100,9 +116,24 @@ export function DiscountDialog(p: Props) {
           {acimaDoLimite ? (
             <p className="mt-1 text-xs text-destructive">Acima do limite de {p.limitPct}% do seu perfil.</p>
           ) : null}
-          <Button type="submit" className="mt-5 h-11 w-full rounded-sm" disabled={!valido || acimaDoLimite}>
-            Aplicar desconto
-          </Button>
+          <div className="mt-5 flex gap-2">
+            {p.onRemove && p.initialValue ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-sm"
+                onClick={() => {
+                  p.onRemove?.();
+                  p.onOpenChange(false);
+                }}
+              >
+                Remover
+              </Button>
+            ) : null}
+            <Button type="submit" className="h-11 flex-1 rounded-sm" disabled={!valido || acimaDoLimite}>
+              Aplicar desconto
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

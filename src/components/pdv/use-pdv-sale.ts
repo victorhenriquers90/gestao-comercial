@@ -193,7 +193,18 @@ export function usePdvSale() {
       l.qty,
       sellPrice,
     );
-    return { ...l, sellPrice, lineDiscount: hit?.discount ?? 0, promoName: hit?.name ?? null };
+    const promoDiscount = hit?.discount ?? 0;
+    /*
+      Mesma regra do checkoutFn (commerce.ts): manual e promocao NAO somam,
+      vale o maior -- um operador que decide dar mais desconto numa peca ja
+      promocionada substitui a promocao, nao empilha em cima dela. Sem o
+      Math.min no bruto da linha, um manual digitado maior que o proprio
+      preco deixaria a linha com total negativo na TELA (o servidor ja
+      limitava isto, mas so descobria depois do F10).
+    */
+    const lineGross = Number((sellPrice * l.qty).toFixed(2));
+    const lineDiscount = Math.min(lineGross, Math.max(l.manualDiscount ?? 0, promoDiscount));
+    return { ...l, sellPrice, lineDiscount, promoDiscount, promoName: hit?.name ?? null };
   });
   const summary = summarizeSale(priced, headerDisc);
   const { subtotal, total } = summary;
@@ -344,6 +355,16 @@ export function usePdvSale() {
 
   function setQty(variantId: number, qty: number) {
     setCart((c) => c.map((x) => (x.variantId === variantId ? { ...x, qty } : x)));
+  }
+
+  /**
+   * Desconto manual por linha -- mesma ideia do F6, so que escopo item (ex.:
+   * uma peça com defeito leve, sem precisar descontar o carrinho inteiro).
+   * `priced` acima já pisa no de promoção quando este é maior (Math.max,
+   * igual ao checkoutFn) -- aqui só grava o que o operador digitou.
+   */
+  function setLineDiscount(variantId: number, amount: number) {
+    setCart((c) => c.map((x) => (x.variantId === variantId ? { ...x, manualDiscount: amount } : x)));
   }
 
   function remove(variantId: number) {
@@ -719,6 +740,7 @@ export function usePdvSale() {
     setSelectedId,
     flash,
     setQty,
+    setLineDiscount,
     remove,
     add,
 

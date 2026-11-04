@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
-import { useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { CartTable } from "@/components/pdv/cart-table";
 import { CustomerDialog } from "@/components/pdv/customer-dialog";
 import { DiscountDialog } from "@/components/pdv/discount-dialog";
@@ -31,6 +31,7 @@ function PdvPage() {
     setSelectedId,
     flash,
     setQty,
+    setLineDiscount,
     remove,
     add,
     customer,
@@ -85,6 +86,10 @@ function PdvPage() {
     commissionNote,
     tenantDiscountLimit,
   } = pdv;
+
+  /** variantId da linha com o dialogo de desconto por item aberto; null = fechado. */
+  const [lineDiscountFor, setLineDiscountFor] = useState<number | null>(null);
+  const lineDiscountTarget = priced.find((l) => l.variantId === lineDiscountFor) ?? null;
 
   /** Teclas com a busca vazia: o cupom responde ao teclado. */
   function onCartKey(e: ReactKeyboardEvent<HTMLInputElement>) {
@@ -215,6 +220,7 @@ function PdvPage() {
           onQty={setQty}
           onRemove={remove}
           flash={flash}
+          onLineDiscount={setLineDiscountFor}
         />
 
         <p className="pdv-keys" aria-hidden>
@@ -281,6 +287,28 @@ function PdvPage() {
         subtotal={subtotal}
         limitPct={tenantDiscountLimit}
         onApply={setHeaderDisc}
+      />
+
+      <DiscountDialog
+        open={lineDiscountFor !== null}
+        onOpenChange={(v) => {
+          if (!v) setLineDiscountFor(null);
+        }}
+        subtotal={
+          lineDiscountTarget
+            ? lineDiscountTarget.sellPrice * lineDiscountTarget.qty - lineDiscountTarget.promoDiscount
+            : 0
+        }
+        limitPct={tenantDiscountLimit}
+        title={lineDiscountTarget ? `Desconto em ${lineDiscountTarget.label}` : "Desconto no item"}
+        totalLabel="Novo total do item"
+        initialValue={lineDiscountTarget?.manualDiscount ?? 0}
+        onApply={(value) => {
+          if (lineDiscountFor != null) setLineDiscount(lineDiscountFor, value);
+        }}
+        onRemove={() => {
+          if (lineDiscountFor != null) setLineDiscount(lineDiscountFor, 0);
+        }}
       />
 
       <PaymentDialog

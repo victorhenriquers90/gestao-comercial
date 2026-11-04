@@ -16,6 +16,8 @@ export type CartTableProps = {
   onRemove: (variantId: number) => void;
   /** Ultimo item adicionado; `n` muda a cada adicao pra reanimar a mesma linha. */
   flash: { id: number; n: number } | null;
+  /** Abre o desconto manual desta linha (coluna Desconto, clicavel). Omitido = coluna so-leitura (tablet). */
+  onLineDiscount?: (variantId: number) => void;
 };
 
 /**
@@ -23,7 +25,16 @@ export type CartTableProps = {
  * monitor de 1366x768 mostrava UM item inteiro -- o operador rolava pra ver
  * a propria venda. Em linha de 52px cabem dez.
  */
-export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRemove, flash }: CartTableProps) {
+export function CartTable({
+  lines,
+  commission,
+  selectedId,
+  onSelect,
+  onQty,
+  onRemove,
+  flash,
+  onLineDiscount,
+}: CartTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,8 +112,27 @@ export function CartTable({ lines, commission, selectedId, onSelect, onQty, onRe
                     />
                   </td>
                   <td className="pdv-col-unit num">{formatBRL(l.sellPrice)}</td>
-                  <td className={cn("pdv-col-disc num", l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground")}>
-                    {l.lineDiscount > 0 ? `− ${formatBRL(l.lineDiscount)}` : "—"}
+                  <td className="pdv-col-disc num">
+                    {onLineDiscount ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-xs px-1 -mx-1 hover:bg-muted",
+                          l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground",
+                        )}
+                        aria-label={`Desconto em ${l.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLineDiscount(l.variantId);
+                        }}
+                      >
+                        {l.lineDiscount > 0 ? `− ${formatBRL(l.lineDiscount)}` : "—"}
+                      </button>
+                    ) : l.lineDiscount > 0 ? (
+                      <span className="text-primary">{`− ${formatBRL(l.lineDiscount)}`}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="pdv-col-total num font-semibold">{formatBRL(l.sellPrice * l.qty - l.lineDiscount)}</td>
                   <td className="pdv-col-rm text-right">
