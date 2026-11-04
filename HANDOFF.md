@@ -7701,8 +7701,11 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Verificação**: `typecheck`/`lint`/`test` limpos (521 testes — a
      lógica em si é simples o bastante pra verificar só por leitura mais
      o teste ao vivo abaixo, sem extrair pra `lib/` com teste próprio,
-     já que é usada num único lugar). Aguarda deploy e verificação ao
-     vivo (próximo commit).
+     já que é usada num único lugar). Deploy `fb4fa7f` confirmado
+     "Ready" e conferido ao vivo: "Dias de cobertura" de
+     `ZZTESTE Calca QA`/`ZZTESTE Camiseta QA` (ambas zeradas) virou
+     `0` nos dois, contra `1,333`/`2` antes do fix — "Giro" continua
+     mostrando `3`/`2` (coluna separada, sem mudança de propósito).
 
 ## Como a próxima IA deve trabalhar
 
