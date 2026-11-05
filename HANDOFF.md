@@ -8192,6 +8192,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      Médios corrigidos (159), 7 Baixos corrigidos (160). Nada ficou
      pendente da lista original.
 
+161. **Pedido do usuário: testar `/app/pdv-tablet` ao vivo. Fluxo completo
+     passou com toque real (`PointerEvent` com `pointerType: 'touch'`, não
+     clique sintético); um achado — "Cancelar venda" não fechava com
+     Escape — corrigido.**
+
+     **Testado sem problema, a 1024px e 1366px**: buscar/adicionar
+     produto, stepper de quantidade, desconto por item (tocar no total
+     da linha), desconto no cabeçalho (os dois somam certo: R$10 +
+     R$5 = R$15), vincular cliente (mostra o débito antes de confirmar),
+     vendedor + comissão prevista (recalcula ao vivo), trocar forma de
+     pagamento pra Crediário (mostra a parcela), Guardar → Recuperar
+     (desconto do item, desconto do cabeçalho, cliente e vendedor todos
+     preservados), campo de Observação.
+
+     **Achado — "Cancelar venda" não fechava com Escape**:
+     `sale-panel.tsx` (desktop) e `touch-sale-panel.tsx` (tablet) têm o
+     MESMO bloco inline (duplicado de propósito, ver item 153) — não é
+     um `Dialog`/`AlertDialog` do Radix, só um `<div role="alertdialog">`
+     que troca o botão "Cancelar venda" por "Sim, cancelar"/"Não" no
+     lugar. Por não ser um dialog de verdade, não herdava o Escape que
+     TODO outro "sim/não" do PDV já fecha com (F4/F6/F8, o `ConfirmBar`
+     corrigido no item 159). **Fix**: `useEffect` local em cada um,
+     ouvindo Escape só enquanto a confirmação está aberta.
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy
+     `f68fc5f` "Ready". Ao vivo nas duas telas: abrir "Cancelar venda",
+     Escape fecha a confirmação E o carrinho continua intacto (testado
+     com `cartStillHasItem: true` logo depois do Escape, nos dois).
+     Carrinhos de teste cancelados ao final.
+
+     **Achado adjacente, NÃO corrigido (fora do pedido, só registrado)**:
+     enquanto a confirmação "Cancelar venda?" está aberta, o atalho F10
+     (Finalizar venda) do `pdv.tsx` continua funcionando por baixo dela —
+     o handler de teclado da página só suspende atalhos quando existe
+     `[role="dialog"][data-state="open"]` na tela (linha do
+     `dialogoAberto` em `pdv.tsx`), e este bloco usa `role="alertdialog"`,
+     não `"dialog"`, então não é pego pela checagem. Um F10 por reflexo
+     enquanto o operador está no meio de desistir de uma venda finalizaria
+     ela mesmo assim. Não corrigido agora porque é um achado diferente do
+     que foi pedido (Escape) — avisar o usuário antes de mexer.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
