@@ -1255,7 +1255,8 @@
     text-align: center;
   }
 
-  .pdv-sku-inline {
+  .pdv-sku-inline,
+  .pdv-disc-inline {
     display: none;
   }
 
@@ -1284,7 +1285,9 @@
     width: 3rem;
   }
 
-  /* Tela estreita: some Codigo e Desconto; o SKU desce pra baixo do nome. */
+  /* Tela estreita: some Codigo e Desconto; o SKU desce pra baixo do nome e
+     o desconto do item (botao inclusive) pra baixo do total -- sem isto, num
+     monitor de 1024px nao havia como dar nem VER desconto por item. */
   @container pdv-cart (max-width: 46rem) {
     .pdv-col-code,
     .pdv-col-disc {
@@ -1292,6 +1295,10 @@
     }
     .pdv-sku-inline {
       display: inline;
+    }
+    .pdv-disc-inline {
+      display: block;
+      margin-left: auto;
     }
   }
 

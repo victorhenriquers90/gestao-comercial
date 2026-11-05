@@ -135,7 +135,30 @@ export function CartTable({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="pdv-col-total num font-semibold">{formatBRL(l.sellPrice * l.qty - l.lineDiscount)}</td>
+                  <td className="pdv-col-total num font-semibold">
+                    {formatBRL(l.sellPrice * l.qty - l.lineDiscount)}
+                    {onLineDiscount ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          "pdv-disc-inline rounded-xs px-1 -mr-1 text-xs font-normal hover:bg-muted",
+                          l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground",
+                        )}
+                        aria-label={`Desconto em ${l.label}`}
+                        title="Desconto neste item (tecla %)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLineDiscount(l.variantId);
+                        }}
+                      >
+                        {l.lineDiscount > 0 ? `− ${formatBRL(l.lineDiscount)}` : "Desconto"}
+                      </button>
+                    ) : l.lineDiscount > 0 ? (
+                      <span className="pdv-disc-inline text-xs font-normal text-primary">
+                        {`− ${formatBRL(l.lineDiscount)}`}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="pdv-col-rm text-right">
                     <Button
                       size="icon-sm"
