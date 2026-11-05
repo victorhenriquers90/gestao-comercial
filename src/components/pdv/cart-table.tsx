@@ -121,6 +121,7 @@ export function CartTable({
                           l.lineDiscount > 0 ? "text-primary" : "text-muted-foreground",
                         )}
                         aria-label={`Desconto em ${l.label}`}
+                        title="Desconto neste item (tecla %)"
                         onClick={(e) => {
                           e.stopPropagation();
                           onLineDiscount(l.variantId);

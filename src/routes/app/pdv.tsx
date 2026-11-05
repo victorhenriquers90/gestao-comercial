@@ -120,6 +120,10 @@ function PdvPage() {
     } else if (e.key === "Delete" && sel) {
       e.preventDefault();
       remove(sel.variantId);
+    } else if (e.key === "%" && sel) {
+      e.preventDefault();
+      setLineDiscountFor(sel.variantId);
+      setLineDiscountOpen(true);
     }
   }
 
@@ -237,7 +241,7 @@ function PdvPage() {
         <p className="pdv-keys" aria-hidden>
           Busca vazia: <kbd>↑</kbd>
           <kbd>↓</kbd> escolhe o item · <kbd>+</kbd>
-          <kbd>−</kbd> quantidade · <kbd>Del</kbd> remove
+          <kbd>−</kbd> quantidade · <kbd>%</kbd> desconto no item · <kbd>Del</kbd> remove
         </p>
       </section>
 

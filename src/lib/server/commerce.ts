@@ -500,10 +500,11 @@ export const checkoutFn = createServerFn({ method: "POST" })
       }
       const descontoPromo = promo?.discount ?? 0;
       const lineGross = Number((item.unitPrice * item.quantity).toFixed(2));
-      // O desconto da linha (manual ou de promocao, o maior dos dois) nunca
-      // passa do proprio bruto dela. Sem este teto, um item.discount maior
-      // que unitPrice*quantity (so alcancavel chamando o servidor direto --
-      // nao existe campo de desconto por linha na UI) deixava aquela linha
+      // O desconto da linha (o enviado ou o de promocao, o maior dos dois --
+      // o PDV manda promocao + extra do operador, ver lineDiscountWithExtra
+      // em pdv-sale.ts) nunca passa do proprio bruto dela. A tela tambem
+      // limita isto, mas o servidor nao pode depender dela: sem este teto,
+      // um item.discount maior que unitPrice*quantity deixava aquela linha
       // com total negativo, mascarado por outra linha positiva maior no
       // mesmo carrinho: o total agregado e o percentual de desconto do
       // operador (calculados mais abaixo) ficavam dentro do limite do
