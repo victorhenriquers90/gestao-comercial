@@ -1,5 +1,5 @@
 import { CircleCheck, MessageSquareText, Pause, Percent, Play, UserRound, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { SalePanelProps } from "@/components/pdv/sale-panel";
 import { PDV_FINISH_CLASS } from "@/components/pdv/sale-model";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,23 @@ export function TouchSalePanel(p: SalePanelProps) {
   const [notasAbertas, setNotasAbertas] = useState(false);
   const [confirmarCancelar, setConfirmarCancelar] = useState(false);
 
+  /*
+    Mesmo bloco inline do SalePanel desktop (sale-panel.tsx) -- nao e um
+    Dialog do Radix, entao nao fecha com Escape sozinho. O tablet nao
+    depende de teclado fisico, mas um teclado Bluetooth conectado (ou o
+    atalho do teclado virtual) deve se comportar igual ao resto do app;
+    manter os dois SalePanel em sincronia evita o mesmo tipo de
+    divergencia gemea ja encontrada nesta base (ver HANDOFF, item 153).
+  */
+  useEffect(() => {
+    if (!confirmarCancelar) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmarCancelar(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmarCancelar]);
+
   const podeFinalizar = !vazio && p.registerOpen && !p.busy;
   const motivoBloqueio = !p.registerOpen ? "Caixa fechado" : vazio ? "Adicione um produto" : null;
 
@@ -39,7 +56,9 @@ export function TouchSalePanel(p: SalePanelProps) {
           <span className="min-w-0 flex-1 text-left">
             {p.customerName || p.customerDoc ? (
               <>
-                <span className="block truncate text-base font-medium">{p.customerName ?? "Consumidor"}</span>
+                <span className="block truncate text-base font-medium">
+                  {p.customerName ?? "Consumidor"}
+                </span>
                 {p.customerDoc ? (
                   <span className="block truncate text-sm text-muted-foreground tabular">
                     {formatDoc(p.customerDoc)}
@@ -52,7 +71,9 @@ export function TouchSalePanel(p: SalePanelProps) {
                 <span className="block text-sm">Pergunte ao cliente</span>
               </>
             ) : (
-              <span className="block text-base text-muted-foreground">Consumidor não identificado</span>
+              <span className="block text-base text-muted-foreground">
+                Consumidor não identificado
+              </span>
             )}
           </span>
         </button>
@@ -208,8 +229,18 @@ export function TouchSalePanel(p: SalePanelProps) {
 
       <div className="pdvt-actions">
         <div className="grid grid-cols-2 gap-2.5">
-          <TouchSecondaryAction icon={<Percent />} label="Desconto" onClick={p.onDiscount} disabled={vazio} />
-          <TouchSecondaryAction icon={<Pause />} label="Guardar" onClick={p.onHold} disabled={vazio} />
+          <TouchSecondaryAction
+            icon={<Percent />}
+            label="Desconto"
+            onClick={p.onDiscount}
+            disabled={vazio}
+          />
+          <TouchSecondaryAction
+            icon={<Pause />}
+            label="Guardar"
+            onClick={p.onHold}
+            disabled={vazio}
+          />
           <TouchSecondaryAction
             icon={<Play />}
             label="Recuperar"
@@ -243,7 +274,11 @@ export function TouchSalePanel(p: SalePanelProps) {
 
         <div className="flex min-h-11 items-center justify-center">
           {confirmarCancelar ? (
-            <div className="flex items-center gap-2 text-base" role="alertdialog" aria-label="Confirmar cancelamento">
+            <div
+              className="flex items-center gap-2 text-base"
+              role="alertdialog"
+              aria-label="Confirmar cancelamento"
+            >
               <span className="text-muted-foreground">Cancelar esta venda?</span>
               <Button
                 variant="destructive"
@@ -255,7 +290,11 @@ export function TouchSalePanel(p: SalePanelProps) {
               >
                 Sim, cancelar
               </Button>
-              <Button variant="ghost" className="h-11 rounded-sm px-4" onClick={() => setConfirmarCancelar(false)}>
+              <Button
+                variant="ghost"
+                className="h-11 rounded-sm px-4"
+                onClick={() => setConfirmarCancelar(false)}
+              >
                 Não
               </Button>
             </div>

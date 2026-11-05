@@ -1,13 +1,5 @@
-import {
-  CircleCheck,
-  MessageSquareText,
-  Pause,
-  Percent,
-  Play,
-  UserRound,
-  X,
-} from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { CircleCheck, MessageSquareText, Pause, Percent, Play, UserRound, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Select } from "@/components/ui/select";
@@ -64,6 +56,23 @@ export function SalePanel(p: SalePanelProps) {
   const [notasAbertas, setNotasAbertas] = useState(false);
   const [confirmarCancelar, setConfirmarCancelar] = useState(false);
 
+  /*
+    Nao e um Dialog do Radix (so um bloco inline que troca o botao de
+    lugar), entao nao herda o Escape que todo OUTRO dialogo do PDV
+    fecha com -- pdv.tsx tem seu proprio handler de Escape na window,
+    mas esse so cobre os dialogos de verdade (F4/F6/F8 etc.), nao este
+    estado local daqui. Sem isto, "Cancelar venda" era o unico "sim/nao"
+    do PDV que Escape nao fechava.
+  */
+  useEffect(() => {
+    if (!confirmarCancelar) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmarCancelar(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmarCancelar]);
+
   const podeFinalizar = !vazio && p.registerOpen && !p.busy;
   const motivoBloqueio = !p.registerOpen ? "Caixa fechado" : vazio ? "Adicione um produto" : null;
 
@@ -81,7 +90,9 @@ export function SalePanel(p: SalePanelProps) {
           <span className="min-w-0 flex-1 text-left">
             {p.customerName || p.customerDoc ? (
               <>
-                <span className="block truncate text-sm font-medium">{p.customerName ?? "Consumidor"}</span>
+                <span className="block truncate text-sm font-medium">
+                  {p.customerName ?? "Consumidor"}
+                </span>
                 {p.customerDoc ? (
                   <span className="block truncate text-xs text-muted-foreground tabular">
                     {formatDoc(p.customerDoc)}
@@ -94,7 +105,9 @@ export function SalePanel(p: SalePanelProps) {
                 <span className="block text-xs">Pergunte ao cliente</span>
               </>
             ) : (
-              <span className="block text-sm text-muted-foreground">Consumidor não identificado</span>
+              <span className="block text-sm text-muted-foreground">
+                Consumidor não identificado
+              </span>
             )}
           </span>
           <Kbd>F4</Kbd>
@@ -157,7 +170,13 @@ export function SalePanel(p: SalePanelProps) {
       <div className="pdv-section">
         <div className="flex items-center justify-between">
           <span className="ed-label">Pagamento</span>
-          <Button variant="ghost" size="sm" className="-mr-2 h-7 gap-1.5 rounded-sm px-2" onClick={p.onPay} disabled={vazio}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-mr-2 h-7 gap-1.5 rounded-sm px-2"
+            onClick={p.onPay}
+            disabled={vazio}
+          >
             {p.pay.informed ? "Alterar" : "Informar"}
             <Kbd>F8</Kbd>
           </Button>
@@ -247,8 +266,20 @@ export function SalePanel(p: SalePanelProps) {
 
       <div className="pdv-actions">
         <div className="grid grid-cols-2 gap-2">
-          <SecondaryAction icon={<Percent />} label="Desconto" kbd="F6" onClick={p.onDiscount} disabled={vazio} />
-          <SecondaryAction icon={<Pause />} label="Guardar" kbd="F9" onClick={p.onHold} disabled={vazio} />
+          <SecondaryAction
+            icon={<Percent />}
+            label="Desconto"
+            kbd="F6"
+            onClick={p.onDiscount}
+            disabled={vazio}
+          />
+          <SecondaryAction
+            icon={<Pause />}
+            label="Guardar"
+            kbd="F9"
+            onClick={p.onHold}
+            disabled={vazio}
+          />
           <SecondaryAction
             icon={<Play />}
             label="Recuperar"
@@ -292,7 +323,11 @@ export function SalePanel(p: SalePanelProps) {
 
         <div className="flex min-h-8 items-center justify-center">
           {confirmarCancelar ? (
-            <div className="flex items-center gap-2 text-sm" role="alertdialog" aria-label="Confirmar cancelamento">
+            <div
+              className="flex items-center gap-2 text-sm"
+              role="alertdialog"
+              aria-label="Confirmar cancelamento"
+            >
               <span className="text-muted-foreground">Cancelar esta venda?</span>
               <Button
                 size="sm"
@@ -305,7 +340,12 @@ export function SalePanel(p: SalePanelProps) {
               >
                 Sim, cancelar
               </Button>
-              <Button size="sm" variant="ghost" className="h-8 rounded-sm" onClick={() => setConfirmarCancelar(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 rounded-sm"
+                onClick={() => setConfirmarCancelar(false)}
+              >
                 Não
               </Button>
             </div>
