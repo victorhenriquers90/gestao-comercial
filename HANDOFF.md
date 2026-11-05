@@ -7753,7 +7753,9 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      à lista acima dela.
 
 154. **Pedido do usuário "engenheiro de software" → PDV: desconto manual
-     por linha (item), que só existia no cabeçalho (F6).**
+     por linha (item), que só existia no cabeçalho (F6).** *(A regra
+     "max entre manual e promoção" e a checagem de limite por escopo
+     descritas abaixo foram REVISTAS no item 156 — leia o 156.)*
 
      **Achado**: `checkoutFn`/`commerce.ts` já validava desconto por LINHA
      há tempo (`disc = Math.min(lineGross, Math.max(item.discount,
@@ -7854,6 +7856,70 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      por `ref` usa coordenada de viewport — erra o alvo. Converter
      `getBoundingClientRect()` pela escala real (largura ocupada ÷
      `innerWidth`) e clicar por coordenada funciona.
+
+156. **Os diálogos de desconto do PDV (item 154) não seguiam a regra do
+     servidor. Três defeitos meus, achados comparando com o
+     `checkoutFn` antes de testar uma venda completa. Corrigido.**
+
+     **Achado**: o `checkoutFn` mede o limite do papel sobre o desconto
+     do operador na venda INTEIRA (`operatorDiscountPct`: extra dos
+     itens + cabeçalho ÷ venda já com promoções). O diálogo do 154
+     checava só o próprio escopo:
+     (1) **limite**: 10% no item + 10% no cabeçalho passavam no diálogo
+     num limite de 10% e o F10 recusava; ao contrário, 50% num item de
+     R$100 numa venda de R$1.000 (5% da venda) era barrado, embora o
+     servidor aceite;
+     (2) **prévia errada em item com promoção**: a prévia era "preço já
+     promocional − digitado", mas o cálculo usava `max(manual,
+     promoção)` — com promoção de R$10, digitar R$5 previa R$85 e a
+     linha ficava em R$90;
+     (3) **F6 ignorava os descontos por item**: base e prévia sobre o
+     subtotal cheio, mostrando total maior que o real.
+
+     **Fix**: `lineDiscountWithExtra` (`pdv-sale.ts`) — desconto do item
+     = promoção + o EXTRA do operador (até o bruto da linha), que é o
+     que a prévia já mostrava e o que o operador espera ("dar mais 5
+     num item em promoção"). O `checkoutFn` NÃO muda: o PDV manda
+     promoção + extra, `max(promoção+extra, promoção)` devolve o mesmo
+     valor e só o extra conta contra o limite. A linha guarda o EXTRA
+     (não a soma) porque a promoção muda com a quantidade ("leve 3").
+     `operatorPctOf` (`pdv-sale.ts`) = mesma conta de
+     `operatorDiscountPct`, usada pelos dois diálogos via prop
+     obrigatória `operatorPct` (venda inteira, com o escopo trocado pelo
+     valor digitado). Mensagem diz quando são os OUTROS descontos que
+     estouram ("Somado aos outros descontos desta venda (X%), passa do
+     limite…"). F6 abate/prevê sobre `headerBase` (subtotal já sem os
+     descontos por item). Item em promoção mostra "Já com <promoção>
+     (− R$ X); este desconto é a mais." De quebra: o diálogo do item
+     piscava "Desconto no item"/R$ 0,00 ao fechar (a linha selecionada
+     era zerada junto do fechar) — aberto/fechado virou estado
+     separado.
+
+     **Verificação**: `typecheck`/`lint` limpos; `test` 534 (+9:
+     `lineDiscountWithExtra` e `operatorPctOf`, incluindo os dois casos
+     que a checagem por escopo errava). Deploys `d49cb57` + `da39061`
+     "Ready". Ao vivo, com a promoção descartável `ZZTESTE Promo
+     Leve3Pague2` reativada só durante o teste: 3× `ZZTESTE Calca QA` →
+     promoção −R$150, linha R$300; diálogo do item mostra a nota da
+     promoção, R$30 → prévia R$270 → linha `R$ 270,00 / − R$ 180,00`,
+     painel "Promoções − R$ 150,00 / Desconto − R$ 30,00". Quantidade
+     3→2: promoção sai, extra de R$30 fica (linha R$270). Limite (admin
+     = 100%): item com 100% e R$1 no F6 → diálogo recusa com "Somado aos
+     outros descontos desta venda (100,0%)…" e botão desabilitado (antes:
+     aceitava, 0,3% sozinho, e o F10 dava "Total inválido"). Fechar o
+     diálogo amostrado a cada 16ms: título e prévia do item até sumir.
+     Mesmo fluxo no PDV tablet a 1024px com toque real: idêntico.
+     Carrinhos cancelados; promoção devolvida a "Inativa".
+
+     **Não verificado (decisão, não esquecimento)**: venda finalizada de
+     verdade com desconto por item. Os `ZZTESTE *` estão com estoque
+     zero, e fechar o teste exigiria repor estoque, vender e cancelar —
+     o cancelamento desfaz estoque/recebível/comissão/caixa, mas a venda
+     cancelada, o número e as movimentações ficam no histórico de
+     produção pra sempre. Testes assim foram autorizados pelo usuário
+     antes (item 10), então ficam pra quando ele pedir. O caminho do
+     servidor não mudou e a conta dele está coberta por
+     `discount.test.ts` + os testes novos.
 
 ## Como a próxima IA deve trabalhar
 
