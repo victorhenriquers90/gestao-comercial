@@ -8102,18 +8102,24 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (b) overlay do Dialog comum (Clientes → Novo cliente) e do
      AlertDialog, os dois com `animationName: "enter"` (antes: nenhum) e
      `oklab(0 0 0 / 0.6)` no tema escuro (antes: 45%) — medido via
-     `getComputedStyle` logo na abertura. **Não verificado ao vivo**, por
-     risco/custo: o clique real em "Registrar sangria" (criaria um
-     movimento de caixa de verdade, sem desfazer simples pela tela) — a
-     garantia vem de ler a ordem de composição de evento do Radix
-     (`AlertDialogAction` chama o `onClick` do chamador ANTES do próprio
-     fechamento) e confirmar que os 6 call-sites de `ConfirmBar` já
-     zeram o próprio estado como primeira linha do `onConfirm`, tornando
-     o fechamento duplo (meu `onCancel` + o deles) idempotente; dimming
-     do Financeiro/Promoções/Devoluções, painel de NCM com erro forçado,
-     e o botão do editor de imagem — cobertos por leitura de código +
-     typecheck, não clicados ao vivo (sessão encerrada por limite de uso
-     no meio da verificação).
+     `getComputedStyle` logo na abertura; (c) dimming do Financeiro
+     (aba Pagar): digitar na busca pegou o wrapper com `aria-busy="true"`
+     durante o refetch (`keepPreviousData` segura a tabela antiga visível,
+     só esmaecida); (d) painel de NCM (Produtos → "NCM fiscal"), caminho
+     feliz sem regressão: segue mostrando a contagem real de pendências
+     ("4 de 4 produto(s) sem classificação fiscal") em vez de qualquer
+     mensagem de erro — o branch novo de `isError` não interferiu no caso
+     comum. **Não verificado ao vivo**, por risco/custo: o clique real em
+     "Registrar sangria" (criaria um movimento de caixa de verdade, sem
+     desfazer simples pela tela) — a garantia vem de ler a ordem de
+     composição de evento do Radix (`AlertDialogAction` chama o `onClick`
+     do chamador ANTES do próprio fechamento) e confirmar que os 6
+     call-sites de `ConfirmBar` já zeram o próprio estado como primeira
+     linha do `onConfirm`, tornando o fechamento duplo (meu `onCancel` +
+     o deles) idempotente; o `isError` forçado de verdade no painel de
+     NCM/backup (precisaria derrubar a consulta de propósito); e o botão
+     do editor de imagem numa foto grande o bastante pra pegar a janela
+     de carregamento — cobertos por leitura de código + typecheck.
 
      10 commits, um por achado: `fc03f8f`, `594cdc9`, `c5ba043`,
      `1d01627`, `714f62c`, `09b8614`, `0860368`, `75bb4c9`, `50a61af`,
