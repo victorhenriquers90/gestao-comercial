@@ -11,18 +11,38 @@ import { isReceiptMethod, isTargetBonusKind, type TargetBonusKind } from "@/lib/
 import type { Sql } from "@/lib/db";
 import { dump, type Row } from "@/lib/json";
 import { assertCan, can } from "@/lib/permissions";
-import { optionalLine, requireIsoDate, requireLine, requireMoney, requireMultiline } from "@/lib/sanitize";
+import {
+  optionalLine,
+  requireIsoDate,
+  requireLine,
+  requireMoney,
+  requireMultiline,
+} from "@/lib/sanitize";
 import { planReversal, planSettlement } from "@/lib/settlement";
 import { checkHandover, parseHandoverAmount, safeAmount } from "@/lib/shift-handover";
 import { num } from "@/lib/utils";
 import { parsePaging, parseSort } from "@/lib/paging";
 import { allocateTax, money, type TaxResult } from "@/lib/tax";
 import type { CommissionSlipData } from "@/components/commission-slip";
-import { assertOwned, assertStore, assertStoreOptional, audit, auditUpdate, requireTenant, type Tenant } from "./context";
+import {
+  assertOwned,
+  assertStore,
+  assertStoreOptional,
+  audit,
+  auditUpdate,
+  requireTenant,
+  type Tenant,
+} from "./context";
 import { taxForSeller, taxInsert } from "./commission";
 import { ymdLocal } from "@/lib/local-date";
 
-function accountStatus(row: { status: string; due_date: string; amount: unknown; paid?: unknown; received?: unknown }) {
+function accountStatus(row: {
+  status: string;
+  due_date: string;
+  amount: unknown;
+  paid?: unknown;
+  received?: unknown;
+}) {
   if (row.status === "pago" || row.status === "cancelado") return row.status;
   const open = num(row.amount) - num(row.paid ?? row.received);
   if (open <= 0.009) return "pago";
@@ -37,15 +57,27 @@ const PAYABLE_SORT_COLUMNS = {
   due: "ap.due_date",
   amount: "ap.amount",
 } as const;
-const PAYABLE_SORT_KEYS = Object.keys(PAYABLE_SORT_COLUMNS) as (keyof typeof PAYABLE_SORT_COLUMNS)[];
+const PAYABLE_SORT_KEYS = Object.keys(
+  PAYABLE_SORT_COLUMNS,
+) as (keyof typeof PAYABLE_SORT_COLUMNS)[];
 
 export const listPayablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
-    ...d,
-    page: parsePaging(d),
-    order: parseSort(d, PAYABLE_SORT_KEYS, "due", "asc"),
-  }))
+  .validator(
+    (d: {
+      storeId?: number;
+      status?: string;
+      q?: string;
+      sort?: string;
+      dir?: string;
+      limit?: number;
+      offset?: number;
+    }) => ({
+      ...d,
+      page: parsePaging(d),
+      order: parseSort(d, PAYABLE_SORT_KEYS, "due", "asc"),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
@@ -74,7 +106,13 @@ export const listPayablesFn = createServerFn({ method: "POST" })
           and ($3::text is null or ap.description ilike $3 or s.legal_name ilike $3)
         order by ${PAYABLE_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, ap.id ${data.order.dir}
         limit $4 offset $5`,
-      [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        termo ? `%${termo}%` : null,
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
     const items = rows
@@ -167,7 +205,9 @@ export const savePayableFn = createServerFn({ method: "POST" })
             (data.supplierId ?? null) !== (cur.supplier_id == null ? null : num(cur.supplier_id)) ||
             (data.storeId ?? null) !== (cur.store_id == null ? null : num(cur.store_id)))
         ) {
-          throw new Error("Conta gerada por uma compra: só descrição, categoria e vencimento podem mudar.");
+          throw new Error(
+            "Conta gerada por uma compra: só descrição, categoria e vencimento podem mudar.",
+          );
         }
         await sql`
           update accounts_payable set description = ${data.description}, category = ${data.category},
@@ -254,7 +294,8 @@ export const settlePayableFn = createServerFn({ method: "POST" })
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
-      if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
+      if (row.status === "cancelado")
+        throw new Error("Este título foi cancelado e não aceita baixa.");
       // Juros/desconto omitidos mantêm o que o título já tinha: uma baixa parcial
       // sem eles não pode zerar o que a anterior combinou.
       const interest = baixa.interest ?? num(row.interest);
@@ -331,15 +372,27 @@ const RECEIVABLE_SORT_COLUMNS = {
   due: "ar.due_date",
   amount: "ar.amount",
 } as const;
-const RECEIVABLE_SORT_KEYS = Object.keys(RECEIVABLE_SORT_COLUMNS) as (keyof typeof RECEIVABLE_SORT_COLUMNS)[];
+const RECEIVABLE_SORT_KEYS = Object.keys(
+  RECEIVABLE_SORT_COLUMNS,
+) as (keyof typeof RECEIVABLE_SORT_COLUMNS)[];
 
 export const listReceivablesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
-    ...d,
-    page: parsePaging(d),
-    order: parseSort(d, RECEIVABLE_SORT_KEYS, "due", "asc"),
-  }))
+  .validator(
+    (d: {
+      storeId?: number;
+      status?: string;
+      q?: string;
+      sort?: string;
+      dir?: string;
+      limit?: number;
+      offset?: number;
+    }) => ({
+      ...d,
+      page: parsePaging(d),
+      order: parseSort(d, RECEIVABLE_SORT_KEYS, "due", "asc"),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
@@ -360,7 +413,13 @@ export const listReceivablesFn = createServerFn({ method: "POST" })
           and ($3::text is null or ar.description ilike $3 or c.name ilike $3)
         order by ${RECEIVABLE_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, ar.id ${data.order.dir}
         limit $4 offset $5`,
-      [tenant.companyId, data.storeId ?? null, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        termo ? `%${termo}%` : null,
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
     const items = rows
@@ -518,7 +577,8 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
          where id = ${data.id} and company_id = ${tenant.companyId} for update
       `;
       if (!row) throw new Error("Título não encontrado.");
-      if (row.status === "cancelado") throw new Error("Este título foi cancelado e não aceita baixa.");
+      if (row.status === "cancelado")
+        throw new Error("Este título foi cancelado e não aceita baixa.");
       const interest = baixa.interest ?? num(row.interest);
       const discount = baixa.discount ?? num(row.discount);
       const plano = planSettlement({
@@ -603,7 +663,8 @@ export const settleReceivableFn = createServerFn({ method: "POST" })
 export const reverseSettlementFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { kind: string; id: number; reason: string }) => {
-    if (d.kind !== "payable" && d.kind !== "receivable") throw new Error("Tipo de título inválido.");
+    if (d.kind !== "payable" && d.kind !== "receivable")
+      throw new Error("Tipo de título inválido.");
     return { kind: d.kind, id: d.id, reason: parseCancelReason(d.reason) };
   })
   .handler(async ({ context, data }) => {
@@ -650,7 +711,8 @@ export const reverseSettlementFn = createServerFn({ method: "POST" })
           select store_id from cash_movements
            where id = ${num(ultima.cash_movement_id)} and company_id = ${tenant.companyId}
         `;
-        if (!orig) throw new Error("Não foi possível localizar a movimentação de caixa desta baixa.");
+        if (!orig)
+          throw new Error("Não foi possível localizar a movimentação de caixa desta baixa.");
         // `for update` serializa com o fechamento: o caixa não fecha entre a checagem e o estorno.
         const [reg] = await sql<{ id: number }>`
           select id from cash_registers
@@ -923,7 +985,8 @@ async function loadOpenRegister(
       summary: null,
     };
   }
-  const revelar = opts.force === true || (opts.canReveal === true && reg.expected_revealed_at != null);
+  const revelar =
+    opts.force === true || (opts.canReveal === true && reg.expected_revealed_at != null);
 
   const movements = await sql<Row>`
     select * from cash_movements
@@ -990,7 +1053,9 @@ async function loadOpenRegister(
     if (m.type === "estorno_liquidacao") return a - num(m.total);
     return a;
   }, 0);
-  const suprimento = byMethod.filter((m) => m.type === "suprimento").reduce((a, m) => a + num(m.total), 0);
+  const suprimento = byMethod
+    .filter((m) => m.type === "suprimento")
+    .reduce((a, m) => a + num(m.total), 0);
   const refunds = byMethod
     .filter((m) => m.type === "devolucao" || m.type === "cancelamento")
     .reduce((a, m) => a + num(m.total), 0);
@@ -1001,7 +1066,8 @@ async function loadOpenRegister(
     if (m.type === "estorno_recebimento") return a - num(m.total);
     return a;
   }, 0);
-  const expectedCash = num(reg.opening_amount) + cashSales + recebimentos + suprimento - sangria - refunds;
+  const expectedCash =
+    num(reg.opening_amount) + cashSales + recebimentos + suprimento - sangria - refunds;
 
   return {
     register: {
@@ -1120,9 +1186,7 @@ export const revealExpectedCashFn = createServerFn({ method: "POST" })
     await audit(sql, tenant, "reveal-expected", "cash_register", reg.id, null, {
       storeId: data.storeId,
     });
-    return dump(
-      await loadOpenRegister(sql, tenant.companyId, data.storeId, { force: true }),
-    );
+    return dump(await loadOpenRegister(sql, tenant.companyId, data.storeId, { force: true }));
   });
 
 /**
@@ -1403,8 +1467,7 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
           kind: classifyDifference(diff).kind,
           pendente: needsExplanation(diff) && r.difference_reason == null,
           reason: r.difference_reason == null ? null : String(r.difference_reason),
-          explainedAt:
-            r.difference_explained_at == null ? null : String(r.difference_explained_at),
+          explainedAt: r.difference_explained_at == null ? null : String(r.difference_explained_at),
           explainedBy: r.explained_by_name == null ? null : String(r.explained_by_name),
           // Fechamento em que o esperado ja tinha sido revelado nao e cego,
           // e quem revisa precisa saber disso pra ler a diferenca (ou a
@@ -1428,7 +1491,8 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
             antes de contar -- o "Fechamentos recentes" nao e tela separada, e
             a secao seguinte da mesma pagina.
           */
-          handoverPendente: r.handover_amount != null && num(r.handover_amount) > 0 && !r.handover_consumed,
+          handoverPendente:
+            r.handover_amount != null && num(r.handover_amount) > 0 && !r.handover_consumed,
           ficaNaGaveta: podeRevelarHandover(r) ? num(r.handover_amount) : null,
           vaiProCofre: podeRevelarHandover(r)
             ? safeAmount(num(r.closing_amount), num(r.handover_amount))
@@ -1445,7 +1509,9 @@ export const listCashClosuresFn = createServerFn({ method: "POST" })
 
 /** So revela o troco de turno depois que o proximo ja abriu (ja contou as cegas). */
 function podeRevelarHandover(r: Row): boolean {
-  return r.handover_amount != null && (r.handover_consumed === true || num(r.handover_amount) === 0);
+  return (
+    r.handover_amount != null && (r.handover_consumed === true || num(r.handover_amount) === 0)
+  );
 }
 
 /**
@@ -1490,24 +1556,31 @@ export const explainCashDifferenceFn = createServerFn({ method: "POST" })
 
 export const cashMoveFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { storeId: number; type: "sangria" | "suprimento"; amount: number; description: string }) => {
-    // Validado AQUI, nao so na tela. A checagem que existia vivia em
-    // caixa.tsx, e validacao de tela nao vale para quem chama o servidor
-    // direto. Importa porque estes valores entram no expectedCash do
-    // fechamento (= abertura + vendas em dinheiro + suprimento - sangria -
-    // devolucoes): um suprimento NEGATIVO derruba o dinheiro esperado, e a
-    // diferenca em especie some da conferencia -- o mesmo desvio que a
-    // validacao de pagamento fechou por outra porta.
-    if (d.type !== "sangria" && d.type !== "suprimento") {
-      throw new Error("Tipo de movimentação inválido.");
-    }
-    return {
-      storeId: d.storeId,
-      type: d.type,
-      amount: requireMoney(d.amount, "Valor"),
-      description: optionalLine(d.description, 200),
-    };
-  })
+  .validator(
+    (d: {
+      storeId: number;
+      type: "sangria" | "suprimento";
+      amount: number;
+      description: string;
+    }) => {
+      // Validado AQUI, nao so na tela. A checagem que existia vivia em
+      // caixa.tsx, e validacao de tela nao vale para quem chama o servidor
+      // direto. Importa porque estes valores entram no expectedCash do
+      // fechamento (= abertura + vendas em dinheiro + suprimento - sangria -
+      // devolucoes): um suprimento NEGATIVO derruba o dinheiro esperado, e a
+      // diferenca em especie some da conferencia -- o mesmo desvio que a
+      // validacao de pagamento fechou por outra porta.
+      if (d.type !== "sangria" && d.type !== "suprimento") {
+        throw new Error("Tipo de movimentação inválido.");
+      }
+      return {
+        storeId: d.storeId,
+        type: d.type,
+        amount: requireMoney(d.amount, "Valor"),
+        description: optionalLine(d.description, 200),
+      };
+    },
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "cash.write");
@@ -1535,9 +1608,10 @@ export const cashMoveFn = createServerFn({ method: "POST" })
 
 export const listExpensesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(
-    (d: { storeId?: number | null; limit?: number; offset?: number }) => ({ ...d, page: parsePaging(d) }),
-  )
+  .validator((d: { storeId?: number | null; limit?: number; offset?: number }) => ({
+    ...d,
+    page: parsePaging(d),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.read");
@@ -1558,7 +1632,15 @@ export const listExpensesFn = createServerFn({ method: "POST" })
       [tenant.companyId, data.storeId ?? null, data.page.limit, data.page.offset],
     );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
-    return { items: dump(rows.map((r) => { const { row_count: _rc, ...rest } = r; return rest; })), total };
+    return {
+      items: dump(
+        rows.map((r) => {
+          const { row_count: _rc, ...rest } = r;
+          return rest;
+        }),
+      ),
+      total,
+    };
   });
 
 export const saveExpenseFn = createServerFn({ method: "POST" })
@@ -1652,7 +1734,10 @@ function parseCancelReason(raw: unknown): string {
 
 export const cancelPayableFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .validator((d: { id: number; reason: string }) => ({
+    id: d.id,
+    reason: parseCancelReason(d.reason),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
@@ -1687,7 +1772,10 @@ export const cancelPayableFn = createServerFn({ method: "POST" })
 
 export const cancelReceivableFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .validator((d: { id: number; reason: string }) => ({
+    id: d.id,
+    reason: parseCancelReason(d.reason),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
@@ -1724,7 +1812,10 @@ export const cancelReceivableFn = createServerFn({ method: "POST" })
 
 export const cancelExpenseFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: number; reason: string }) => ({ id: d.id, reason: parseCancelReason(d.reason) }))
+  .validator((d: { id: number; reason: string }) => ({
+    id: d.id,
+    reason: parseCancelReason(d.reason),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "finance.write");
@@ -1927,7 +2018,8 @@ export const saveTargetFn = createServerFn({ method: "POST" })
       throw new Error("Bônus de comissão exige um vendedor.");
     }
     if (bonusKind === "extra_percent") {
-      if (bonusValue <= 0 || bonusValue > 20) throw new Error("Bônus percentual deve ser maior que 0 e no máximo 20%.");
+      if (bonusValue <= 0 || bonusValue > 20)
+        throw new Error("Bônus percentual deve ser maior que 0 e no máximo 20%.");
     } else if (bonusKind === "extra_fixed") {
       if (bonusValue <= 0 || bonusValue > 100000) throw new Error("Bônus fixo inválido.");
     } else {
@@ -1936,7 +2028,17 @@ export const saveTargetFn = createServerFn({ method: "POST" })
     const storeId = data.storeId ?? null;
     const sellerId = data.sellerId ?? null;
     const categoryId = data.categoryId ?? null;
-    const after = { name, amount, periodStart, periodEnd, storeId, sellerId, categoryId, bonusKind, bonusValue };
+    const after = {
+      name,
+      amount,
+      periodStart,
+      periodEnd,
+      storeId,
+      sellerId,
+      categoryId,
+      bonusKind,
+      bonusValue,
+    };
     return sql.transaction(async (sql) => {
       if (data.id) {
         const [cur] = await sql<Row>`
@@ -2049,12 +2151,21 @@ const COMMISSION_SORT_COLUMNS = {
   net: "c.net_amount",
   date: "c.created_at",
 } as const;
-const COMMISSION_SORT_KEYS = Object.keys(COMMISSION_SORT_COLUMNS) as (keyof typeof COMMISSION_SORT_COLUMNS)[];
+const COMMISSION_SORT_KEYS = Object.keys(
+  COMMISSION_SORT_COLUMNS,
+) as (keyof typeof COMMISSION_SORT_COLUMNS)[];
 
 export const listCommissionsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { sellerId?: number; status?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
+    (d: {
+      sellerId?: number;
+      status?: string;
+      sort?: string;
+      dir?: string;
+      limit?: number;
+      offset?: number;
+    }) => ({
       ...d,
       page: parsePaging(d),
       order: parseSort(d, COMMISSION_SORT_KEYS, "date", "desc"),
@@ -2094,7 +2205,13 @@ export const listCommissionsFn = createServerFn({ method: "POST" })
         order by case when c.status = 'pendente' then 0 else 1 end,
                  ${COMMISSION_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, c.id ${data.order.dir}
         limit $4 offset $5`,
-      [tenant.companyId, data.sellerId ?? null, data.status ?? null, data.page.limit, data.page.offset],
+      [
+        tenant.companyId,
+        data.sellerId ?? null,
+        data.status ?? null,
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
     const items = rows.map((r) => ({
@@ -2151,6 +2268,14 @@ async function companySlipHeader(sql: Sql, companyId: number) {
   };
 }
 
+/**
+ * `ids` filtra NO SQL, não depois em JS: o `for update of c` abaixo
+ * trava toda linha que o SELECT devolve. Filtrar em JS buscava (e
+ * travava) TODA comissão pendente da empresa pra pagar uma única —
+ * `payCommissionFn` chama com `ids: [id]` e sem `sellerId`, então travava
+ * literalmente todo mundo pendente até aquela transação terminar. Pagar a
+ * comissão de um vendedor não tinha por que esperar a de outro.
+ */
 async function loadPendingCommissions(
   sql: Sql,
   companyId: number,
@@ -2177,11 +2302,12 @@ async function loadPendingCommissions(
        left join commission_rules cr on cr.id = c.rule_id
       where c.company_id = $1 and c.status = 'pendente'
         and ($2::int is null or c.seller_id = $2)
+        and ($3::int[] is null or c.id = any($3))
       order by c.seller_id, c.id
       for update of c`,
-    [companyId, sellerId ?? null],
+    [companyId, sellerId ?? null, ids?.length ? ids : null],
   );
-  const mapped = rows.map((r) => ({
+  return rows.map((r) => ({
     id: num(r.id),
     amount: num(r.amount),
     seller_id: num(r.seller_id),
@@ -2192,11 +2318,6 @@ async function loadPendingCommissions(
     rule_name: r.rule_name == null ? null : String(r.rule_name),
     note: r.note == null ? null : String(r.note),
   }));
-  if (ids?.length) {
-    const allow = new Set(ids);
-    return mapped.filter((r) => allow.has(r.id));
-  }
-  return mapped;
 }
 
 function taxInsertFromSplit(
@@ -2244,7 +2365,9 @@ async function settleSellerBatch(
   if (!seller) throw new Error("Nenhuma comissão pendente neste filtro.");
   const amounts = rows.map((r) => r.amount);
   const grossTotal = money(amounts.reduce((a, n) => a + n, 0));
-  const tax = await taxForSeller(sql, tenant.companyId, seller.seller_id, grossTotal, { onlyPaid: true });
+  const tax = await taxForSeller(sql, tenant.companyId, seller.seller_id, grossTotal, {
+    onlyPaid: true,
+  });
   const splits = allocateTax(amounts, tax);
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
