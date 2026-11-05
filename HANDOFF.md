@@ -7921,6 +7921,53 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      servidor não mudou e a conta dele está coberta por
      `discount.test.ts` + os testes novos.
 
+157. **Três buracos deixados pelo desconto por item (154/156), achados
+     revendo a feature sozinha, sem o usuário pedir: sem atalho de
+     teclado, invisível em monitor de 1024px, e fechar um diálogo
+     perdia o foco da busca. Corrigidos.**
+
+     **Achado 1 — sem teclado**: o PDV desktop é todo operável por
+     teclado (setas escolhem item, `+`/`-` quantidade, `Del` remove, F6
+     desconto na venda) menos o desconto por item, só mouse. **Fix**:
+     `%` com a busca vazia abre o desconto da linha selecionada — mesma
+     tecla que já é "percentual" no diálogo. Barra de atalhos e `title`
+     do botão avisam.
+
+     **Achado 2 — some em monitor de 1024px**: a coluna "Desconto" já
+     tinha uma regra pra sumir (`@container pdv-cart (max-width:
+     46rem)`, pro celular/janela estreita), mas ninguém tinha medido
+     contra o breakpoint real — um monitor de 1024px dá 672px de
+     carrinho, JÁ abaixo dos 46rem. Resultado: nem dava pra abrir com
+     mouse (coluna some) nem pra VER o valor de um desconto já
+     aplicado. **Fix**: mesmo padrão que o SKU já usa (desce pra baixo
+     do nome nessa largura) — o desconto desce pra baixo do TOTAL da
+     linha, clicável, com `.pdv-disc-inline` escondida por padrão e
+     mostrada só dentro do mesmo container query.
+
+     **Achado 3 — foco perdido ao fechar diálogo**: o Radix devolve o
+     foco pro elemento que abriu o diálogo (`DialogTrigger`), mas os
+     diálogos do PDV abrem por atalho de teclado ou botão comum, sem
+     trigger — fechar qualquer um (F4/F6/%/F8/Guardar/Recuperar/recibo)
+     jogava o foco pro `<body>`, e o próximo código do leitor de
+     código de barras se perdia (o operador tinha que clicar no campo
+     de novo). **Fix**: ao fechar o ÚLTIMO diálogo aberto (não quando
+     um abre outro em sequência), foco volta pra busca. Só desktop —
+     no tablet focar a busca abriria o teclado virtual a cada diálogo
+     fechado.
+
+     **Verificação**: `typecheck`/`lint`/`test` limpos (534, sem teste
+     novo — os três são interação de UI, cobertos ao vivo). Deploys
+     `449d482`, `870cd16`, `0bd647d` "Ready". Ao vivo a 1024×768: tecla
+     `%` com um evento de teclado de verdade (`shiftKey: true, key:
+     "%"`, não um atalho fake) abriu "Desconto em ZZTESTE Camiseta QA";
+     coluna Desconto confirmada `display: none` nessa largura e o botão
+     inline "Desconto" visível no lugar certo (zoom confirmado por
+     screenshot); clique real no botão inline abriu o mesmo diálogo;
+     aplicar R$5 por Enter fechou o diálogo, mostrou "− R$ 5,00" inline
+     E devolveu o foco pro campo de busca (`document.activeElement`
+     conferido depois de cada passo, sem single-tick de folga). Carrinho
+     de teste cancelado.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
