@@ -1,7 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { formatBRL, formatPct } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
@@ -58,9 +64,15 @@ export function DiscountDialog(p: Props) {
   const acimaDoLimite = valido && p.operatorPct(valor) > p.limitPct + 0.05;
   // Desconto do operador no RESTO da venda (este escopo zerado): e o que
   // explica um 5% recusado num limite de 10%.
+  //
+  // `Number.isFinite`: carrinho com promocao comendo o subtotal inteiro
+  // (ex.: item 100% off) devolve Infinity de `operatorDiscountPct` (base
+  // zero pra dividir) -- sem a checagem, `formatPct(Infinity)` imprime
+  // "0%" (seu proprio fallback pra nao-finito), e a mensagem ficava
+  // "...(0%), passa do limite..." -- contraditoria: diz 0% E que estourou.
   const outros = p.operatorPct(0);
   const motivo =
-    outros > 0.005
+    Number.isFinite(outros) && outros > 0.005
       ? `Somado aos outros descontos desta venda (${formatPct(outros)}), passa do limite de ${p.limitPct}% do seu perfil.`
       : `Acima do limite de ${p.limitPct}% do seu perfil.`;
 
@@ -86,7 +98,11 @@ export function DiscountDialog(p: Props) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={aplicar}>
-          <div className="grid grid-cols-2 gap-1 rounded-sm bg-muted p-1" role="radiogroup" aria-label="Tipo de desconto">
+          <div
+            className="grid grid-cols-2 gap-1 rounded-sm bg-muted p-1"
+            role="radiogroup"
+            aria-label="Tipo de desconto"
+          >
             {(
               [
                 ["value", "Valor (R$)"],
@@ -101,7 +117,9 @@ export function DiscountDialog(p: Props) {
                 onClick={() => setMode(id)}
                 className={cn(
                   "h-8 rounded-xs text-sm font-medium transition-colors",
-                  mode === id ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground",
+                  mode === id
+                    ? "bg-card text-foreground shadow-soft"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {label}
@@ -110,7 +128,10 @@ export function DiscountDialog(p: Props) {
           </div>
           {/* A unidade fica fixa no campo: "10" pode ser R$ 10 ou 10%, e como
               placeholder ela sumia no primeiro digito. */}
-          <Field label={mode === "pct" ? "Desconto em percentual" : "Desconto em reais"} className="mt-block">
+          <Field
+            label={mode === "pct" ? "Desconto em percentual" : "Desconto em reais"}
+            className="mt-block"
+          >
             <div className="relative">
               <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
                 {mode === "pct" ? "%" : "R$"}
@@ -130,9 +151,7 @@ export function DiscountDialog(p: Props) {
               {formatBRL(Math.max(0, p.subtotal - valor))}
             </span>
           </div>
-          {acimaDoLimite ? (
-            <p className="mt-1 text-xs text-destructive">{motivo}</p>
-          ) : null}
+          {acimaDoLimite ? <p className="mt-1 text-xs text-destructive">{motivo}</p> : null}
           <div className="mt-5 flex gap-2">
             {p.onRemove && p.initialValue ? (
               <Button
@@ -147,7 +166,11 @@ export function DiscountDialog(p: Props) {
                 Remover
               </Button>
             ) : null}
-            <Button type="submit" className="h-11 flex-1 rounded-sm" disabled={!valido || acimaDoLimite}>
+            <Button
+              type="submit"
+              className="h-11 flex-1 rounded-sm"
+              disabled={!valido || acimaDoLimite}
+            >
               Aplicar desconto
             </Button>
           </div>
