@@ -83,8 +83,11 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
    (cupom). Kicker = classe `ed-label` (11px, uppercase, tracking 0.14em).
    Não voltar para Inter / Plus Jakarta / Fraunces. Não meter terceira família
    de texto.
-10. **Foto de login:** `/public/login-store.jpg`, `object-fit: cover`, full-bleed
-    atrás do cartão. Não recortar rostos; `object-position: 58% 32%`.
+10. **Login (tela dividida, item 165/166):** `.login-hero` (foto
+    `/public/login-store.webp`, `object-fit: cover`, `object-position: 63%
+    38%`) à esquerda a partir de `lg` (1024px); `.login-form-panel` (fundo
+    sólido, sem blur) à direita. Abaixo de `lg` a foto some e só sobra o
+    formulário. Não recortar rostos ao reajustar `object-position`.
 11. **Design é sistêmico.** Mudança visual que vale pra "todas as telas" entra
     em `src/components/ui/*`, `src/components/shared.tsx`, `app-shell.tsx` ou
     nos tokens do `styles.css` — não tela por tela. Os KPIs seguem chapados de
@@ -8430,6 +8433,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      colunas, texto legível) — a foto placeholder já está no ar, só vai
      ser trocada quando a definitiva chegar (próximo passo: reajustar
      `object-position` em `.login-hero-img` pra ela).
+
+166. **Foto definitiva do login (item 165): o dono da loja mandou a
+     imagem, trocada no lugar do placeholder "VESTI SHOPPING".**
+
+     Nova foto (família pagando por aproximação no caixa, sem marca
+     fictícia visível) é paisagem (1672×941), ao contrário da antiga que
+     era retrato (1152×1728) — isso muda qual eixo o `object-fit: cover`
+     recorta. Na coluna retrato do `.login-hero` (mais alta que larga em
+     qualquer largura de tela realista — só inverteria com uma janela
+     muito baixa e larga, caso extremo que não vale currar), uma foto
+     paisagem larga assim é escalada pra cobrir a ALTURA inteira e o
+     recorte fica só nas laterais; a altura inteira (0-941) sempre
+     aparece, do teto às sacolas no chão.
+
+     `object-position: 63% 38%` (era `50% 30%`, provisório) centra o
+     recorte horizontal na família inteira + o gesto de pagamento por
+     aproximação (mão com o celular encostando na maquininha) — de
+     propósito fora do recorte: a vendedora à direita e a prateleira de
+     bolsas à esquerda (não dava pra caber as duas pontas junto com a
+     família sem apertar demais). Conferido por cálculo direto (JS lendo
+     `getBoundingClientRect`/`naturalWidth` e replicando a matemática do
+     `object-fit: cover`, não só olhando screenshot) que a janela visível
+     bate com a composição pretendida: ~579px–1332px de 1672px na
+     horizontal (as duas crianças, os dois adultos e a mão no pagamento),
+     altura inteira.
+
+     Arquivo trocado de `.jpg` pra `.webp` (a imagem recebida já veio
+     nesse formato; sem ferramenta de conversão no ambiente, e webp tem
+     suporte nativo em todo navegador moderno, então manter é mais
+     simples que converter) — `public/login-store.webp` no lugar de
+     `public/login-store.jpg`, `src/routes/login.tsx` e a referência no
+     "Domínio rápido" (item 10) e no `AGENTS.project.md` atualizados
+     juntos. `src/lib/sanitize.test.ts:34` **não** mudou — o
+     `/login-store.jpg` ali é só uma string de exemplo genérica pro
+     sanitizador de URL, não uma referência ao arquivo de verdade.
+
+     **Verificação**: `typecheck`/`lint` limpos (mesmos avisos
+     pré-existentes de sempre, nenhum novo). Visual no servidor de dev:
+     a foto nova renderizando dentro do `.login-hero` sem cortar nenhum
+     rosto, crop conferido por cálculo (acima) batendo com a composição
+     pretendida. Deploy Vercel "Ready", confirmado ao vivo em produção.
 
 ## Como a próxima IA deve trabalhar
 

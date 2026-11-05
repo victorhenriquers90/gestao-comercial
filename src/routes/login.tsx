@@ -204,7 +204,7 @@ function LoginPage() {
     <main className="login-page grid min-h-dvh lg:grid-cols-2">
       <div className="login-hero relative hidden overflow-hidden lg:block" aria-hidden>
         <img
-          src="/login-store.jpg"
+          src="/login-store.webp"
           alt=""
           className="login-hero-img"
           fetchPriority="high"

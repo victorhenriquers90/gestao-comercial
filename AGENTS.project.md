@@ -9,6 +9,6 @@ sandbox Grok — **este arquivo** é o contrato do produto.
 - CPF/CNPJ: `src/lib/document.ts`. EAN: `src/lib/check-digit.ts`.
 - Sem login social. CSRF em mutações. Sanitizar entrada na borda.
 - Fontes: Outfit + Syne + IBM Plex Mono. Classe `ed-label` nos kickers.
-- Login: imagem full-bleed `/public/login-store.jpg`.
+- Login: tela dividida (foto `/public/login-store.webp` à esquerda, formulário à direita); abaixo de `lg` só o formulário.
 - Migrations só para frente (`migrations/0021_*.sql` em diante).
 - Detalhes e mapa: [HANDOFF.md](HANDOFF.md).
