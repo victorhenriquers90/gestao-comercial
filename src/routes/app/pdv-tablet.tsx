@@ -104,8 +104,13 @@ function PdvTabletPage() {
     tenantDiscountLimit,
   } = pdv;
 
-  /** variantId da linha com o dialogo de desconto por item aberto; null = fechado. */
+  /*
+    Linha do dialogo de desconto por item. Continua setada ao FECHAR (o
+    aberto/fechado e estado separado): o dialogo anima a saida ainda com o
+    item na tela, em vez de piscar "Desconto no item" e R$ 0,00.
+  */
   const [lineDiscountFor, setLineDiscountFor] = useState<number | null>(null);
+  const [lineDiscountOpen, setLineDiscountOpen] = useState(false);
   const lineDiscountTarget = priced.find((l) => l.variantId === lineDiscountFor) ?? null;
 
   return (
@@ -177,7 +182,10 @@ function PdvTabletPage() {
           onQty={setQty}
           onRemove={remove}
           flash={flash}
-          onLineDiscount={setLineDiscountFor}
+          onLineDiscount={(id) => {
+            setLineDiscountFor(id);
+            setLineDiscountOpen(true);
+          }}
         />
       </section>
 
@@ -242,10 +250,8 @@ function PdvTabletPage() {
       />
 
       <DiscountDialog
-        open={lineDiscountFor !== null}
-        onOpenChange={(v) => {
-          if (!v) setLineDiscountFor(null);
-        }}
+        open={lineDiscountOpen}
+        onOpenChange={setLineDiscountOpen}
         subtotal={
           lineDiscountTarget
             ? lineDiscountTarget.sellPrice * lineDiscountTarget.qty - lineDiscountTarget.promoDiscount
