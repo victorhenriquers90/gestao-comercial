@@ -8053,6 +8053,72 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      baixos — lista completa na resposta ao usuário desta conversa, não
      duplicada aqui por brevidade.
 
+159. **Continuação do item 158 (revisão completa): os 10 achados Médios,
+     corrigidos a pedido do usuário ("pode seguir com os outros itens,
+     começando pelo Medium").**
+
+     1. **Dialog sem animação em todo o app** — `dark:bg-black/60data-...`
+        era um token só pro Tailwind (sem espaço); `animate-in` e o
+        `dark:bg-black/60` nunca eram gerados. `src/components/ui/dialog.tsx`.
+     2. **`loadPendingCommissions` travava a empresa inteira pra pagar UMA
+        comissão** — filtro de `ids` era em JS, depois do `FOR UPDATE` já
+        ter travado tudo que bateu no WHERE sem ele. Filtro foi pro SQL
+        (`id = any($3)`). `finance.ts`.
+     3. **`runAction` mostrava "Failed to fetch" pro operador** — `TypeError`
+        (falha de rede) tratado como se fosse erro de negócio do servidor.
+        `mensagemDeErro` nova, exportada e testada, trata `TypeError`
+        separado. `run-action.ts` + `run-action.test.ts` (4 testes).
+     4. **`adjustStockFn` ignorava "Permitir estoque negativo" fora de
+        "ajuste"** — só olhava o tipo do movimento, nunca a configuração
+        que o checkout já respeita. `catalog.ts`.
+     5. **Busca global (Ctrl K) sem guarda de corrida** — resposta mais
+        lenta de um termo mais velho podia sobrescrever a de um termo mais
+        novo. Contador de geração em `app-shell.tsx`.
+     6. **`ConfirmBar` sem Escape/foco preso/role** — reescrito sobre
+        `AlertDialog` do Radix (`@radix-ui/react-alert-dialog`, já
+        instalado, zero uso antes) — `src/components/ui/alert-dialog.tsx`
+        novo + `shared.tsx`. De quebra, corrigido o mesmo veu claro no
+        tema escuro que o Dialog comum já tinha resolvido.
+     7. **Financeiro (Pagar/Receber)/Promoções/Devoluções sem feedback de
+        refetch** — `opacity-60`/`aria-busy` que as outras 7 telas
+        paginadas já usam.
+     8. **Painel de NCM dizia "tudo classificado" numa falha de consulta**
+        — `ncm-bulk-panel.tsx`, branch de `isError` novo.
+     9. **Painéis de prontidão NFC-e e saúde do backup sumiam da tela numa
+        falha** — os dois tratavam erro igual a "nada pra avisar", bem nos
+        dois painéis que existem pra NÃO deixar um problema passar
+        silencioso. `nfce-readiness-panel.tsx`, `backup-status-card.tsx`.
+     10. **"Usar recorte" podia apagar a foto** — botão só checava `!src`
+         (verdadeiro antes da imagem terminar de carregar), `apply()` usa
+         `rotated` (só existe depois do `loadImage` assíncrono). Um toque
+         rápido numa foto grande/tablet lento chamava `onApply("")`.
+         `image-editor.tsx`.
+
+     **Verificação**: `typecheck`/`lint` limpos; `test` 540 (536 + 4 novos
+     de `mensagemDeErro`). Deploy `49fdf05` "Ready". Ao vivo, confirmado:
+     (a) `role="alertdialog"` + foco preso + `aria-describedby`/
+     `aria-labelledby` corretos no `ConfirmBar` de Sangria (Caixa);
+     Escape fechou sem registrar nada (sem toast novo, sem navegação);
+     (b) overlay do Dialog comum (Clientes → Novo cliente) e do
+     AlertDialog, os dois com `animationName: "enter"` (antes: nenhum) e
+     `oklab(0 0 0 / 0.6)` no tema escuro (antes: 45%) — medido via
+     `getComputedStyle` logo na abertura. **Não verificado ao vivo**, por
+     risco/custo: o clique real em "Registrar sangria" (criaria um
+     movimento de caixa de verdade, sem desfazer simples pela tela) — a
+     garantia vem de ler a ordem de composição de evento do Radix
+     (`AlertDialogAction` chama o `onClick` do chamador ANTES do próprio
+     fechamento) e confirmar que os 6 call-sites de `ConfirmBar` já
+     zeram o próprio estado como primeira linha do `onConfirm`, tornando
+     o fechamento duplo (meu `onCancel` + o deles) idempotente; dimming
+     do Financeiro/Promoções/Devoluções, painel de NCM com erro forçado,
+     e o botão do editor de imagem — cobertos por leitura de código +
+     typecheck, não clicados ao vivo (sessão encerrada por limite de uso
+     no meio da verificação).
+
+     10 commits, um por achado: `fc03f8f`, `594cdc9`, `c5ba043`,
+     `1d01627`, `714f62c`, `09b8614`, `0860368`, `75bb4c9`, `50a61af`,
+     `49fdf05`.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
