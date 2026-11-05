@@ -119,23 +119,12 @@ function LoginPage() {
 
   if (isPending) {
     return (
-      <main className="login-page relative flex min-h-dvh flex-col items-center justify-center gap-3 px-6">
-        <div className="login-photo" aria-hidden>
-          <img
-            src="/login-store.jpg"
-            alt=""
-            className="login-scene"
-            fetchPriority="high"
-            decoding="async"
-          />
+      <main className="login-page flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6">
+        <div className="relative grid size-16 place-items-center">
+          <Spinner className="absolute inset-0 size-16" />
+          <BrandMark className="size-8" />
         </div>
-        <div className="relative z-[1] flex flex-col items-center gap-3">
-          <div className="relative grid size-16 place-items-center">
-            <Spinner className="absolute inset-0 size-16" tone="inverse" />
-            <BrandMark className="size-8" tone="inverse" />
-          </div>
-          <p className="text-sm text-primary-foreground/85">Abrindo a loja…</p>
-        </div>
+        <p className="text-sm text-muted-foreground">Abrindo a loja…</p>
       </main>
     );
   }
@@ -212,19 +201,29 @@ function LoginPage() {
   const signingUp = mode === "up";
 
   return (
-    <main className="login-page relative min-h-dvh">
-      <div className="login-photo" aria-hidden>
+    <main className="login-page grid min-h-dvh lg:grid-cols-2">
+      <div className="login-hero relative hidden overflow-hidden lg:block" aria-hidden>
         <img
           src="/login-store.jpg"
           alt=""
-          className="login-scene"
+          className="login-hero-img"
           fetchPriority="high"
           decoding="async"
         />
+        <div className="login-hero-overlay" />
+        <div className="relative z-[1] flex h-full flex-col justify-end p-10 xl:p-14">
+          <div className="flex items-center gap-3">
+            <BrandMark className="size-10" tone="inverse" />
+            <p className="ed-label text-primary-foreground/80">{APP_NAME}</p>
+          </div>
+          <p className="mt-6 max-w-sm font-display text-2xl leading-snug font-semibold text-primary-foreground xl:text-3xl">
+            Acesse o PDV, a folha e o caixa da operação.
+          </p>
+        </div>
       </div>
-      <section className="login-panel">
-        <div className="login-card animate-in fade-in-0 zoom-in-95 duration-300 rounded-2xl p-6 lg:p-8">
-            <div className="mb-7 flex items-center gap-3">
+      <section className="login-form-panel flex items-center justify-center px-6 py-10">
+        <div className="login-card animate-in fade-in-0 duration-300">
+            <div className="mb-7 flex items-center gap-3 lg:hidden">
               <BrandMark className="size-10" />
               <p className="ed-label">{APP_NAME}</p>
             </div>

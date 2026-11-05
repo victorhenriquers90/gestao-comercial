@@ -232,32 +232,22 @@
   --color-destructive-foreground: var(--destructive-foreground);
 }
 
-.login-photo {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  width: 100vw;
-  height: 100dvh;
-  overflow: hidden;
+.login-hero {
   background: #1a1916;
 }
 
-.login-scene {
+.login-hero-img {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* A foto fonte e retrato (1152x1728) usada como fundo paisagem em tela
-     cheia -- o navegador precisa descartar a maior parte da altura pra
-     cobrir a largura, entao a janela vertical visivel e estreita (~30% da
-     foto original em telas widescreen tipicas). 22% deixa essa janela
-     terminar nos ombros/maquininha ainda fechada na mao da vendedora, em
-     vez de cortar a maquininha na metade (o que acontecia em 32% e lia
-     como "pessoas cortadas" -- ver historico do login-store.jpg). */
-  object-position: 58% 22%;
+  /* Posicao provisoria enquanto a foto (VESTI SHOPPING, generica/gerada
+     por IA, sem relacao com o produto) e trocada por uma definitiva --
+     reajustar object-position depois que a imagem final chegar, mesmo
+     processo documentado no historico antigo deste arquivo. */
+  object-position: 50% 30%;
   animation: login-ken-burns 24s ease-in-out infinite alternate;
 }
 
@@ -307,78 +297,27 @@
   }
 }
 
-.login-photo::after {
-  content: "";
+.login-hero-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    130% 110% at 50% 42%,
-    rgb(26 25 22 / 0.34) 0%,
-    rgb(26 25 22 / 0.62) 100%
-  );
+  /* So pro texto (logo + frase) no rodape do painel ler bem sobre
+     qualquer foto -- nao precisa escurecer o topo, diferente da versao
+     anterior em tela cheia onde o cartao flutuava no meio da foto. */
+  background: linear-gradient(0deg, rgb(26 25 22 / 0.72) 0%, rgb(26 25 22 / 0) 55%);
 }
 
-.login-panel {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  min-height: 100dvh;
-  width: 100%;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem 1rem;
-  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
-  padding-left: max(1rem, env(safe-area-inset-left));
-  padding-right: max(1rem, env(safe-area-inset-right));
+.login-form-panel {
+  background: var(--background);
 }
 
 .login-card {
-  width: min(100%, 26rem);
-  /* Vidro fosco. Mais transparente que uma tentativa inicial de 82% --
-     em telas estreitas o card cobre quase 100% da largura/altura, entao
-     opacidade alta escondia a foto quase inteira atras dele (o pedido foi
-     literalmente "essa parte precisa ficar mais transparente pra nao
-     cortar tanto a foto"). 58% ainda segura o contraste do texto
-     (#1a1916) porque o blur mistura a foto por baixo antes da cor entrar --
-     ver o bug de contraste ja corrigido uma vez no commit "rotulos e botao
-     do login ilegiveis" antes de baixar mais que isso. */
-  /* 25% + blur(40px) foi longe demais: o desfoque apagava os contornos da
-     loja e virava uma mancha de cor sem forma reconhecivel ("parece que
-     ficou estranho"). Descoberto depois que o problema era o BLUR alto,
-     nao a opacidade em si -- com --muted-foreground agora sendo a mesma
-     tinta (nao um tom separado que podia ficar "sujo"), da pra baixar a
-     opacidade de novo sem repetir o problema, desde que o blur fique
-     moderado o suficiente pra loja continuar reconhecivel por tras. */
-  background: color-mix(in oklab, #fbf9f4 20%, transparent);
+  width: 100%;
+  max-width: 26rem;
+  /* Mesma ressalva do bloco --color-* acima (:root resolve os alias uma
+     vez so): sem isto, texto sem classe explicita (o h1 "Abrir a
+     loja"/"Criar a loja") herda a cor de um <html class="dark"> deixado
+     por uma sessao anterior em vez do tema claro fixo do login. */
   color: #1a1916;
-  border: 1px solid rgb(255 255 255 / 0.55);
-  backdrop-filter: blur(24px) saturate(165%);
-  -webkit-backdrop-filter: blur(24px) saturate(165%);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.45),
-    0 1px 2px rgb(0 0 0 / 0.12),
-    0 24px 48px -12px rgb(0 0 0 / 0.35);
-  /* Nesse nivel de transparencia o contraste do texto varia com o trecho
-     da foto atras dele (parte clara do corredor vs roupa escura), entao
-     nao da pra confiar so na cor -- um halo claro por tras do texto
-     escuro garante leitura em qualquer trecho, sem precisar opacificar o
-     vidro de novo. text-shadow herda pros filhos (label, h1, paragrafo,
-     link); atras do texto branco do botao "Entrar" fica imperceptivel, e
-     em cima dos campos (fundo solido) nao faz diferenca visivel -- por
-     isso nao precisa de seletor mais especifico. */
-  /* Halo mais fechado e mais opaco: o anterior era largo e difuso, entao
-     espalhava sem destacar. Um nucleo curto separa a letra da foto. */
-  text-shadow:
-    0 0 2px rgb(255 255 255 / 0.9),
-    0 1px 4px rgb(255 255 255 / 0.85),
-    0 1px 14px rgb(255 255 255 / 0.5);
-}
-
-@media (min-width: 1024px) {
-  .login-card {
-    width: min(100%, 30rem);
-  }
 }
 
 .login-card input {
@@ -1649,17 +1588,6 @@
 
   .login-page {
     position: relative;
-    container-type: inline-size;
-    container-name: login;
-  }
-
-  @container login (min-width: 48rem) {
-    .login-scene {
-      object-position: 55% 30%;
-    }
-    .login-panel {
-      padding: 2.5rem;
-    }
   }
 }
 

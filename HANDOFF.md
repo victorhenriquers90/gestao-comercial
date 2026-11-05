@@ -8369,6 +8369,67 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      2 commits: `478140a` (doc do F10 antigo e os outros achados sem
      código), `d48476a` (fix do pré-preenchimento em si).
 
+165. **Tela de login redesenhada: de foto em tela cheia + cartão de vidro
+     fosco por cima, para tela dividida (foto de um lado, formulário limpo
+     do outro) — o padrão usado por TOTVS/Linx e pedido explicitamente pelo
+     dono da loja ("não estou feliz com a imagem da tela de login").**
+
+     **Antes**: `.login-photo` cobria a tela inteira (`position: fixed;
+     inset: 0`) com `public/login-store.jpg` (foto gerada por IA de uma
+     loja de roupas fictícia "VESTI SHOPPING" — nunca foi a loja real de
+     ninguém), escurecida por um gradiente radial, com `.login-card`
+     flutuando por cima em vidro fosco (`backdrop-filter: blur(24px)`,
+     fundo 20% opaco) e um `text-shadow` em halo só pra garantir contraste
+     de texto sobre qualquer trecho da foto por baixo — tratamento caro de
+     manter (3 blocos de comentário só documentando ajustes de opacidade/
+     blur ao longo da sessão) e, no fim, o problema real era a própria
+     escolha da foto, não o enquadramento.
+
+     **Depois**: `src/routes/app/login.tsx` virou um grid de 2 colunas a
+     partir de `lg` (1024px) — `.login-hero` (imagem + `BrandMark` +
+     frase, ancorados embaixo com `.login-hero-overlay`, um gradiente
+     linear só na base da foto, não mais a tela toda) à esquerda,
+     `.login-form-panel` (fundo sólido `var(--background)`, sem blur) à
+     direita. Abaixo de `lg`, `.login-hero` vira `hidden` e só sobra o
+     formulário, centralizado, com o `BrandMark`+nome do app que antes só
+     aparecia uma vez agora reaparece ali (`lg:hidden`) já que a versão da
+     esquerda sumiu. A tela de carregamento (`isPending`, antes também
+     full-bleed com a foto) virou só o spinner num fundo limpo — não tinha
+     motivo pra carregar a foto só pra essa transição rápida.
+
+     **A foto atual é só placeholder.** O dono da loja vai mandar uma
+     imagem nova pra substituir `public/login-store.jpg`; o
+     `object-position: 50% 30%` em `.login-hero-img` é um corte provisório
+     — precisa reajustar quando a imagem real chegar (mesmo processo já
+     documentado no histórico antigo deste arquivo pra object-position).
+
+     **Bug pego na própria verificação**: tirar o vidro fosco também tirou
+     o `color: #1a1916` que vinha junto em `.login-card` — sem ele, o `h1`
+     ("Abrir a loja"/"Criar a loja", sem classe de cor explícita) herdava
+     a cor errada quando a última sessão no navegador tinha ficado em dark
+     mode (mesma causa-raiz já documentada no bloco `--color-*` logo
+     acima no CSS: os alias de tema só resolvem uma vez, no `:root`/
+     `<html>`, então um `<html class="dark">` residual vaza pra qualquer
+     elemento sem classe de cor própria). Reposto o `color: #1a1916` em
+     `.login-card`, agora com comentário explicando o porquê.
+
+     CSS: removidas `.login-photo`/`.login-scene`/`.login-photo::after`/
+     `.login-panel` e o bloco de `@container login` que reajustava corte/
+     padding por largura (não faz mais sentido — a divisão de tela agora
+     é resolvida pelo grid, não por crop dinâmico da mesma foto plena);
+     adicionadas `.login-hero`/`.login-hero-img`/`.login-hero-overlay`/
+     `.login-form-panel`; `.login-card` simplificado pra só largura + cor.
+
+     **Verificação**: `typecheck`/`lint` limpos (únicos avisos do lint são
+     pré-existentes, em arquivos não tocados aqui). Visual ao vivo no
+     servidor de dev local (ainda não é produção — a imagem definitiva
+     ainda não chegou, então não faz sentido publicar o placeholder):
+     1120px (desktop, foto+formulário lado a lado, `h1` legível depois do
+     fix de cor), 820px (tablet, abaixo de `lg`: foto some, formulário
+     central com a marca própria), 375px (celular: igual ao tablet). Sem
+     deploy ainda — próximo passo é trocar a foto quando o dono da loja
+     mandar, reajustar o `object-position`, e aí sim publicar.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
