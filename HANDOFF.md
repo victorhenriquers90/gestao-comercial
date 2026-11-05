@@ -8258,6 +8258,56 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      estado, sem regressão (fecha a confirmação, carrinho intacto).
      Carrinho de teste cancelado ao final.
 
+163. **Pedido do usuário: testar o crediário ao vivo. Caminho completo
+     testado contra o banco de produção de verdade (não só leitura de
+     código) — bloqueio de limite, venda de verdade, parcelas na
+     carteira, cancelamento revertendo tudo. Nada quebrado.**
+
+     **Preparo**: `ZZTESTE Calca QA` estava com estoque 0 (limpeza de
+     testes anteriores) — sem estoque, o checkout bloqueia ANTES de
+     chegar na checagem de limite de crédito, então nenhum teste de
+     crediário real era possível sem repor. Ajuste temporário de
+     Entrada +10 (loja Centro), revertido com Saída -10 ao final
+     (estoque de volta a 0, mesmo baseline de sempre).
+
+     **1 — bloqueio de limite, testado primeiro por ser seguro (não
+     grava nada se funcionar certo)**: `ZZTESTE Cliente QA` tinha
+     limite R$1.000 e R$300 já em aberto (room R$700). Venda de 5×
+     `ZZTESTE Calca QA` (R$750, crediário) foi recusada no F10 com
+     `"Limite de crédito excedido. Disponível: R$ 700,00 (limite
+     R$ 1.000,00, em aberto R$ 300,00)."` — carrinho e diálogo de
+     pagamento intactos, nada gravado.
+
+     **2 — venda de verdade dentro do limite**: reduzida pra 1× R$150,
+     parcelado (testado em 3x de R$50 e depois voltado pra parcela
+     única antes de finalizar). Venda nº 40 concluída, recibo mostrou
+     "Crediário R$ 150,00" corretamente. Financeiro → Cobrança: carteira
+     foi de R$300 (1 parcela) pra R$450 (2 parcelas) — "Ver parcelas"
+     listou as duas, venda 35 (R$300, vence 02/12) e a nova venda 40
+     (R$150, vence 05/12 — 30 dias da venda), cada uma com botão
+     "Receber" próprio.
+
+     **3 — cancelamento reverte tudo**: `vendas.tsx` exige motivo (campo
+     obrigatório, só então habilita "Cancelar venda") → `ConfirmBar`
+     (o mesmo `AlertDialog` corrigido no item 159, testado de novo aqui
+     num terceiro call-site) → venda nº 40 virou "Cancelada". Conferido:
+     Cobrança voltou a R$300 (a parcela nova sumiu da carteira),
+     estoque do produto voltou de 9 pra 10 (a baixa da venda foi
+     revertida, sobre o +10 do preparo).
+
+     **Achado de ferramental, não do produto**: clicar "Imprimir" no
+     recibo chama `window.print()`, que trava TODO o resto da aba
+     (JS, navegação, screenshot) até o diálogo nativo do SO ser
+     resolvido — comportamento padrão do navegador, não um bug deste
+     código, mas travou a aba de teste no meio da verificação. Contornado
+     abrindo uma aba nova e fechando a travada depois. Registrado só
+     pra quem for repetir este tipo de teste automatizado saber o motivo
+     se a aba "parar de responder" depois de clicar Imprimir.
+
+     **Verificação**: nenhuma mudança de código neste item — só teste.
+     Dado de teste limpo ao final: venda cancelada, parcela extra fora
+     da carteira, estoque de volta a 0.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
