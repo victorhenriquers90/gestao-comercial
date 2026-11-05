@@ -2,7 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { num } from "@/lib/utils";
-import { assertFreeDocument, assertOwned, assertStoreOptional, audit, auditUpdate, requireTenant } from "./context";
+import {
+  assertFreeDocument,
+  assertOwned,
+  assertStoreOptional,
+  audit,
+  auditUpdate,
+  requireTenant,
+} from "./context";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
 import { parseBrDocument, parseCnpj, sellerDocKind, onlyDigits } from "@/lib/document";
@@ -100,7 +107,9 @@ const CUSTOMER_SORT_COLUMNS = {
   total_bought: "coalesce(sv.total_bought, 0)",
   open_balance: "coalesce(ar.open_balance, 0)",
 } as const;
-const CUSTOMER_SORT_KEYS = Object.keys(CUSTOMER_SORT_COLUMNS) as (keyof typeof CUSTOMER_SORT_COLUMNS)[];
+const CUSTOMER_SORT_KEYS = Object.keys(
+  CUSTOMER_SORT_COLUMNS,
+) as (keyof typeof CUSTOMER_SORT_COLUMNS)[];
 
 export const listCustomersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -320,14 +329,36 @@ export const getCustomerFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "customers.read");
-    const [customer] = await sql<Row>`select * from customers where id = ${data.id} and company_id = ${tenant.companyId}`;
+    const [customer] =
+      await sql<Row>`select * from customers where id = ${data.id} and company_id = ${tenant.companyId}`;
     if (!customer) throw new Error("Cliente não encontrado.");
-    const sales = await sql<Row>`
+    /*
+      `customers.read` sozinho so dava direito ao cadastro basico (nome,
+      documento, telefone, limite de credito -- o que o balcao precisa pra
+      vender). Historico de venda/mix, titulos a receber e notas/tarefas de
+      CRM saiam JUNTO pra qualquer papel com customers.read, inclusive
+      "pdv" -- que o proprio HANDOFF descreve como "sem vendas, sem
+      financeiro, nem no servidor". `pdv` tem customers.read (precisa achar
+      o cliente no checkout) e "Clientes" aparece no menu dele por causa
+      disso (nav.ts usa o mesmo perm), entao nao era so acessivel por
+      chamada direta ao servidor -- o proprio CustomerPanel renderizava
+      isto pro operador de PDV normalmente. Cada secao agora usa o MESMO
+      perm que ja guarda a tela equivalente (Vendas = sales.read,
+      Financeiro = finance.read, CRM = crm.write) -- sem permissao, nem
+      consulta: array vazio/zero, nao "tentou e filtrou depois".
+    */
+    const podeVerVendas = can(tenant.role, "sales.read");
+    const podeVerFinanceiro = can(tenant.role, "finance.read");
+    const podeVerCrm = can(tenant.role, "crm.write");
+    const sales = podeVerVendas
+      ? await sql<Row>`
       select id, number, total, sold_at, status from sales
       where customer_id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
       order by sold_at desc limit 50
-    `;
-    const products = await sql<Row>`
+    `
+      : [];
+    const products = podeVerVendas
+      ? await sql<Row>`
       select si.description,
              sum(si.quantity - coalesce(ret.returned_qty,0)) as qty,
              sum(si.total - coalesce(ret.returned_amount,0)) as total
@@ -347,19 +378,27 @@ export const getCustomerFn = createServerFn({ method: "POST" })
       group by si.description
       order by total desc
       limit 20
-    `;
-    const receivables = await sql<Row>`
+    `
+      : [];
+    const receivables = podeVerFinanceiro
+      ? await sql<Row>`
       select * from accounts_receivable
       where customer_id = ${data.id} and company_id = ${tenant.companyId} and deleted_at is null
       order by due_date
-    `;
-    const notes = await sql<Row>`
-      select * from customer_notes where customer_id = ${data.id} order by created_at desc limit 30
-    `;
-    const tasks = await sql<Row>`
-      select * from crm_tasks where customer_id = ${data.id} order by created_at desc
-    `;
-    const stats = await sql<{ total: string | number; n: number; avg: string | number }>`
+    `
+      : [];
+    const notes = podeVerCrm
+      ? await sql<Row>`
+      select * from customer_notes where customer_id = ${data.id} and company_id = ${tenant.companyId} order by created_at desc limit 30
+    `
+      : [];
+    const tasks = podeVerCrm
+      ? await sql<Row>`
+      select * from crm_tasks where customer_id = ${data.id} and company_id = ${tenant.companyId} order by created_at desc
+    `
+      : [];
+    const stats = podeVerVendas
+      ? await sql<{ total: string | number; n: number; avg: string | number }>`
       select coalesce(sum(sales.total - coalesce(ret.returned_revenue,0)),0) as total,
              count(*)::int as n,
              coalesce(avg(sales.total - coalesce(ret.returned_revenue,0)),0) as avg
@@ -372,7 +411,8 @@ export const getCustomerFn = createServerFn({ method: "POST" })
       ) ret on true
       where customer_id = ${data.id} and company_id = ${tenant.companyId}
         and status in ('finalizada','devolvida_parcial') and deleted_at is null
-    `;
+    `
+      : [];
     return dump({
       customer: {
         id: num(customer.id),
@@ -465,8 +505,15 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       // manda o registro inteiro) sem telefone/e-mail apagava os dois.
       tradeName: d.tradeName === undefined ? undefined : optionalLine(d.tradeName),
       document:
-        d.document === undefined ? undefined : parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf"),
-      birthDate: d.birthDate === undefined ? undefined : d.birthDate === null ? null : parseBirthDate(d.birthDate),
+        d.document === undefined
+          ? undefined
+          : parseBrDocument(d.document, d.kind === "pj" ? "cnpj" : "cpf"),
+      birthDate:
+        d.birthDate === undefined
+          ? undefined
+          : d.birthDate === null
+            ? null
+            : parseBirthDate(d.birthDate),
       ie: d.ie === undefined ? undefined : sanitizeCode(d.ie, 32),
       rg: d.rg === undefined ? undefined : sanitizeCode(d.rg, 32),
       email: d.email === undefined ? undefined : optionalLine(d.email, 120),
@@ -477,7 +524,9 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
       state: d.state === undefined ? undefined : (parseUf(d.state) ?? null),
       zip: d.zip === undefined ? undefined : sanitizeCode(d.zip, 16),
       creditLimit:
-        d.creditLimit === undefined ? undefined : requireRange(d.creditLimit, "Limite de crédito", 0, 999_999_999),
+        d.creditLimit === undefined
+          ? undefined
+          : requireRange(d.creditLimit, "Limite de crédito", 0, 999_999_999),
       notes: d.notes === undefined ? undefined : sanitizeMultiline(d.notes),
       crmStage: parseCrmStage(d.crmStage),
     }),
@@ -486,7 +535,14 @@ export const saveCustomerFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "customers.write");
     await assertOwned(sql, tenant.companyId, "sellers", data.sellerId);
-    await assertFreeDocument(sql, "customers", tenant.companyId, data.document, data.id, "um cliente");
+    await assertFreeDocument(
+      sql,
+      "customers",
+      tenant.companyId,
+      data.document,
+      data.id,
+      "um cliente",
+    );
     if (data.id) {
       const [cur] = await sql<Row>`
         select * from customers
@@ -712,12 +768,16 @@ export const moveCrmFn = createServerFn({ method: "POST" })
 
 const SUPPLIER_SORT_COLUMNS = {
   name: "s.legal_name",
-  total_bought: "(select sum(p.total) from purchases p where p.supplier_id = s.id and p.status = 'recebido')",
-  orders: "(select count(*) from purchases p where p.supplier_id = s.id and p.status not in ('orcamento','cancelado'))",
+  total_bought:
+    "(select sum(p.total) from purchases p where p.supplier_id = s.id and p.status = 'recebido')",
+  orders:
+    "(select count(*) from purchases p where p.supplier_id = s.id and p.status not in ('orcamento','cancelado'))",
   open_balance:
     "(select sum(ap.amount - ap.paid_amount) from accounts_payable ap where ap.supplier_id = s.id and ap.status in ('pendente','parcial','vencido'))",
 } as const;
-const SUPPLIER_SORT_KEYS = Object.keys(SUPPLIER_SORT_COLUMNS) as (keyof typeof SUPPLIER_SORT_COLUMNS)[];
+const SUPPLIER_SORT_KEYS = Object.keys(
+  SUPPLIER_SORT_COLUMNS,
+) as (keyof typeof SUPPLIER_SORT_COLUMNS)[];
 
 export const listSuppliersFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -759,7 +819,14 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
           )
         order by ${SUPPLIER_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, s.id ${data.order.dir}
         limit $5 offset $6`,
-      [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*", data.page.limit, data.page.offset],
+      [
+        tenant.companyId,
+        raw || null,
+        raw ? prefixLike(raw) : null,
+        raw ? ftsPrefix(raw) : "__none__:*",
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     // KPIs do filtro atual (mesma busca, sem paginacao) -- mesma lacuna de
     // Vendas/Clientes/Produtos/Estoque, achada revisando com o usuario.
@@ -784,7 +851,12 @@ export const listSuppliersFn = createServerFn({ method: "POST" })
             or to_tsvector('simple', coalesce(s.legal_name,'') || ' ' || coalesce(s.trade_name,'')) @@ to_tsquery('simple', $4)
             or s.legal_name ilike ('%' || $2 || '%') or s.trade_name ilike ('%' || $2 || '%')
           )`,
-      [tenant.companyId, raw || null, raw ? prefixLike(raw) : null, raw ? ftsPrefix(raw) : "__none__:*"],
+      [
+        tenant.companyId,
+        raw || null,
+        raw ? prefixLike(raw) : null,
+        raw ? ftsPrefix(raw) : "__none__:*",
+      ],
     );
     const kpis = {
       supplierCount: num(kpiRow?.supplier_count ?? 0),
@@ -819,7 +891,8 @@ export const getSupplierFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.read");
-    const [supplier] = await sql<Row>`select * from suppliers where id = ${data.id} and company_id = ${tenant.companyId}`;
+    const [supplier] =
+      await sql<Row>`select * from suppliers where id = ${data.id} and company_id = ${tenant.companyId}`;
     if (!supplier) throw new Error("Fornecedor não encontrado.");
     const purchases = await sql<Row>`
       select id, number, status, total, created_at, expected_at, received_at
@@ -944,7 +1017,14 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "suppliers.write");
-    await assertFreeDocument(sql, "suppliers", tenant.companyId, data.document, data.id, "um fornecedor");
+    await assertFreeDocument(
+      sql,
+      "suppliers",
+      tenant.companyId,
+      data.document,
+      data.id,
+      "um fornecedor",
+    );
     if (data.id) {
       const [cur] = await sql<Row>`
         select * from suppliers
@@ -960,7 +1040,8 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
       const city = data.city === undefined ? (cur.city ?? null) : data.city;
       const state = data.state === undefined ? (cur.state ?? null) : data.state;
       const zip = data.zip === undefined ? (cur.zip ?? null) : data.zip;
-      const representative = data.representative === undefined ? (cur.representative ?? null) : data.representative;
+      const representative =
+        data.representative === undefined ? (cur.representative ?? null) : data.representative;
       const notes = data.notes === undefined ? (cur.notes ?? null) : data.notes;
       await sql`
         update suppliers set legal_name = ${data.legalName}, trade_name = ${tradeName},
@@ -986,7 +1067,17 @@ export const saveSupplierFn = createServerFn({ method: "POST" })
           city: cur.city ?? null,
           state: cur.state ?? null,
         },
-        { name: data.legalName, tradeName, document, email, phone, representative, address, city, state },
+        {
+          name: data.legalName,
+          tradeName,
+          document,
+          email,
+          phone,
+          representative,
+          address,
+          city,
+          state,
+        },
       );
       return { id: data.id };
     }
@@ -1120,19 +1211,32 @@ export const saveSellerFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sellers.write");
     await assertStoreOptional(sql, tenant, data.storeId);
-    await assertFreeDocument(sql, "sellers", tenant.companyId, data.document, data.id, "um vendedor");
-    const taxRegime = data.taxRegime && ["none", "clt", "autonomo", "mei", "pj"].includes(data.taxRegime)
-      ? data.taxRegime
-      : "none";
+    await assertFreeDocument(
+      sql,
+      "sellers",
+      tenant.companyId,
+      data.document,
+      data.id,
+      "um vendedor",
+    );
+    const taxRegime =
+      data.taxRegime && ["none", "clt", "autonomo", "mei", "pj"].includes(data.taxRegime)
+        ? data.taxRegime
+        : "none";
     // Math.max(0, Number(x) || 0) deixava passar Infinity (Number("1e999")
     // e truthy) e qualquer numero gigante digitado por engano -- o valor vai
     // direto pra base do calculo de INSS/IRRF da comissao, entao um erro de
     // digitacao aqui distorce o liquido de TODA comissao do vendedor, calado.
     // `dependents` tinha exatamente o mesmo padrao logo abaixo do comentario
     // que o descreve -- corrigido pra fazer igual ao salario.
-    const monthlySalary = data.monthlySalary == null ? 0 : requireRange(data.monthlySalary, "Salário mensal", 0, 999_999_999);
-    const dependents = data.dependents == null ? 0 : Math.floor(requireRange(data.dependents, "Dependentes", 0, 30));
-    const issRate = data.issRate == null || data.issRate === undefined ? null : clampIss(data.issRate);
+    const monthlySalary =
+      data.monthlySalary == null
+        ? 0
+        : requireRange(data.monthlySalary, "Salário mensal", 0, 999_999_999);
+    const dependents =
+      data.dependents == null ? 0 : Math.floor(requireRange(data.dependents, "Dependentes", 0, 30));
+    const issRate =
+      data.issRate == null || data.issRate === undefined ? null : clampIss(data.issRate);
     const document = data.document ?? null;
     const storeName = async (id: unknown) => {
       if (id == null) return null;

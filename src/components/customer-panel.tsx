@@ -8,10 +8,16 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KpiCard } from "@/components/shared";
-import { ACCOUNT_STATUS_LABELS, CRM_STAGE_LABELS, CRM_STAGES, SALE_STATUS_LABELS } from "@/lib/constants";
+import {
+  ACCOUNT_STATUS_LABELS,
+  CRM_STAGE_LABELS,
+  CRM_STAGES,
+  SALE_STATUS_LABELS,
+} from "@/lib/constants";
 import { maskCnpj, maskCpf } from "@/lib/document";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate, formatDateTime, formatDoc, formatQty } from "@/lib/format";
+import { can } from "@/lib/permissions";
 import {
   addCustomerNoteFn,
   getCustomerFn,
@@ -20,6 +26,7 @@ import {
   saveCustomerFn,
   toggleCrmTaskFn,
 } from "@/lib/server/party";
+import { getTenantFn } from "@/lib/server/session";
 
 export function CustomerPanel({
   customerId,
@@ -50,6 +57,21 @@ export function CustomerPanel({
     queryFn: () => getCustomerFn({ data: { id: customerId! } }),
     enabled: open && customerId != null,
   });
+  // Mesma chave de `use-pdv-sale.ts`: cache compartilhado, sem round-trip
+  // extra se outra tela ja carregou o tenant nesta sessao.
+  const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
+  /*
+    `getCustomerFn` ja filtra vendas/financeiro/CRM por permissao (sem
+    sales.read/finance.read/crm.write, o array vem vazio) -- aqui e so pra
+    NAO MOSTRAR a aba como "vazia" pra quem na verdade so nao tem acesso,
+    o que pareceria um cliente sem historico nenhum. Antes de `tenant`
+    carregar, assume que NAO pode: more falso-vazio momentaneo, nao um
+    flash de aba que ela mesma vai sumir.
+  */
+  const role = tenant.data?.role;
+  const podeVerVendas = role ? can(role, "sales.read") : false;
+  const podeVerFinanceiro = role ? can(role, "finance.read") : false;
+  const podeVerCrm = role ? can(role, "crm.write") : false;
 
   const c = detail.data?.customer;
   useEffect(() => {
@@ -65,7 +87,19 @@ export function CustomerPanel({
       address: c.address ?? "",
       notes: c.notes ?? "",
     });
-  }, [c?.id, c?.name, c?.kind, c?.document, c?.phone, c?.email, c?.creditLimit, c?.city, c?.state, c?.address, c?.notes]);
+  }, [
+    c?.id,
+    c?.name,
+    c?.kind,
+    c?.document,
+    c?.phone,
+    c?.email,
+    c?.creditLimit,
+    c?.city,
+    c?.state,
+    c?.address,
+    c?.notes,
+  ]);
 
   async function refresh() {
     void qc.invalidateQueries({ queryKey: ["customer", customerId] });
@@ -97,17 +131,25 @@ export function CustomerPanel({
               {formatDoc(c.document)} · {c.phone ?? "sem telefone"}
               {c.city ? ` · ${c.city}${c.state ? "/" + c.state : ""}` : ""}
             </p>
-            <div className="kpi-grid">
-              <KpiCard label="Total comprado" value={formatBRL(detail.data.stats.total)} />
-              <KpiCard label="Compras" value={String(detail.data.stats.count)} />
-              <KpiCard label="Ticket" value={formatBRL(detail.data.stats.avg)} />
-              <KpiCard
-                label="Em aberto"
-                value={formatBRL(openRec)}
-                tone={openRec > c.creditLimit && c.creditLimit > 0 ? "danger" : "default"}
-                hint={c.creditLimit ? `limite ${formatBRL(c.creditLimit)}` : undefined}
-              />
-            </div>
+            {podeVerVendas || podeVerFinanceiro ? (
+              <div className="kpi-grid">
+                {podeVerVendas ? (
+                  <>
+                    <KpiCard label="Total comprado" value={formatBRL(detail.data.stats.total)} />
+                    <KpiCard label="Compras" value={String(detail.data.stats.count)} />
+                    <KpiCard label="Ticket" value={formatBRL(detail.data.stats.avg)} />
+                  </>
+                ) : null}
+                {podeVerFinanceiro ? (
+                  <KpiCard
+                    label="Em aberto"
+                    value={formatBRL(openRec)}
+                    tone={openRec > c.creditLimit && c.creditLimit > 0 ? "danger" : "default"}
+                    hint={c.creditLimit ? `limite ${formatBRL(c.creditLimit)}` : undefined}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             <Field label="Estágio no funil">
               <Select
                 value={c.crmStage}
@@ -131,10 +173,10 @@ export function CustomerPanel({
             <Tabs defaultValue="dados">
               <TabsList className="flex-wrap">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
-                <TabsTrigger value="crm">CRM</TabsTrigger>
-                <TabsTrigger value="compras">Compras</TabsTrigger>
-                <TabsTrigger value="mix">Mix</TabsTrigger>
-                <TabsTrigger value="fin">Financeiro</TabsTrigger>
+                {podeVerCrm ? <TabsTrigger value="crm">CRM</TabsTrigger> : null}
+                {podeVerVendas ? <TabsTrigger value="compras">Compras</TabsTrigger> : null}
+                {podeVerVendas ? <TabsTrigger value="mix">Mix</TabsTrigger> : null}
+                {podeVerFinanceiro ? <TabsTrigger value="fin">Financeiro</TabsTrigger> : null}
               </TabsList>
               <TabsContent value="dados" className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -151,7 +193,8 @@ export function CustomerPanel({
                       onChange={(e) =>
                         setEdit({
                           ...edit,
-                          document: c.kind === "pj" ? maskCnpj(e.target.value) : maskCpf(e.target.value),
+                          document:
+                            c.kind === "pj" ? maskCnpj(e.target.value) : maskCpf(e.target.value),
                         })
                       }
                     />
@@ -239,165 +282,185 @@ export function CustomerPanel({
                   Salvar dados
                 </Button>
               </TabsContent>
-              <TabsContent value="crm" className="space-y-4">
-                <div>
-                  <p className="mb-2 ed-title">Tarefas</p>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    <Input
-                      placeholder="Follow-up"
-                      value={task}
-                      onChange={(e) => setTask(e.target.value)}
+              {podeVerCrm ? (
+                <TabsContent value="crm" className="space-y-4">
+                  <div>
+                    <p className="mb-2 ed-title">Tarefas</p>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      <Input
+                        placeholder="Follow-up"
+                        value={task}
+                        onChange={(e) => setTask(e.target.value)}
+                      />
+                      <Input
+                        type="date"
+                        className="w-40"
+                        value={due}
+                        onChange={(e) => setDue(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!task.trim()) return;
+                          try {
+                            await saveCrmTaskFn({
+                              data: {
+                                customerId: c.id,
+                                title: task.trim(),
+                                dueAt: due ? `${due}T12:00:00` : null,
+                              },
+                            });
+                            setTask("");
+                            setDue("");
+                            toast.success("Tarefa criada.");
+                            await refresh();
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Falha");
+                          }
+                        }}
+                      >
+                        Agendar
+                      </Button>
+                    </div>
+                    <ul className="space-y-2">
+                      {detail.data.tasks.length === 0 ? (
+                        <li className="text-sm text-muted-foreground">Nenhuma tarefa.</li>
+                      ) : (
+                        detail.data.tasks.map((t) => (
+                          <li key={t.id} className="flex items-start gap-2 text-sm">
+                            <NativeCheckbox
+                              className="mt-0.5"
+                              checked={Boolean(t.doneAt)}
+                              onChange={async (e) => {
+                                const ok = await runAction(
+                                  () =>
+                                    toggleCrmTaskFn({ data: { id: t.id, done: e.target.checked } }),
+                                  { erro: "Não foi possível atualizar a tarefa." },
+                                );
+                                if (!ok) return;
+                                await refresh();
+                              }}
+                            />
+                            <span className={t.doneAt ? "text-muted-foreground line-through" : ""}>
+                              {t.title}
+                              {t.dueAt ? (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  {formatDate(t.dueAt)}
+                                </span>
+                              ) : null}
+                            </span>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="mb-2 ed-title">Anotações</p>
+                    <Textarea
+                      placeholder="Registrar conversa, visita ou acordo"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
                     />
-                    <Input type="date" className="w-40" value={due} onChange={(e) => setDue(e.target.value)} />
                     <Button
+                      className="mt-2"
                       size="sm"
+                      variant="outline"
                       onClick={async () => {
-                        if (!task.trim()) return;
-                        try {
-                          await saveCrmTaskFn({
-                            data: {
-                              customerId: c.id,
-                              title: task.trim(),
-                              dueAt: due ? `${due}T12:00:00` : null,
-                            },
-                          });
-                          setTask("");
-                          setDue("");
-                          toast.success("Tarefa criada.");
-                          await refresh();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Falha");
-                        }
+                        if (!note.trim()) return;
+                        const ok = await runAction(
+                          () =>
+                            addCustomerNoteFn({ data: { customerId: c.id, body: note.trim() } }),
+                          { sucesso: "Nota salva.", erro: "Não foi possível salvar a nota." },
+                        );
+                        // O campo so e limpo quando a nota REALMENTE foi salva:
+                        // limpar antes perderia o texto que a pessoa escreveu.
+                        if (!ok) return;
+                        setNote("");
+                        await refresh();
                       }}
                     >
-                      Agendar
+                      Salvar nota
                     </Button>
+                    <div className="mt-3 space-y-2">
+                      {detail.data.notes.map((n) => (
+                        <div
+                          key={n.id}
+                          className="rounded-lg border border-border px-3 py-2 text-sm"
+                        >
+                          <p>{n.body}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(n.createdAt)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <ul className="space-y-2">
-                    {detail.data.tasks.length === 0 ? (
-                      <li className="text-sm text-muted-foreground">Nenhuma tarefa.</li>
-                    ) : (
-                      detail.data.tasks.map((t) => (
-                        <li key={t.id} className="flex items-start gap-2 text-sm">
-                          <NativeCheckbox
-                            className="mt-0.5"
-                            checked={Boolean(t.doneAt)}
-                            onChange={async (e) => {
-                              const ok = await runAction(
-                                () => toggleCrmTaskFn({ data: { id: t.id, done: e.target.checked } }),
-                                { erro: "Não foi possível atualizar a tarefa." },
-                              );
-                              if (!ok) return;
-                              await refresh();
-                            }}
-                          />
-                          <span className={t.doneAt ? "text-muted-foreground line-through" : ""}>
-                            {t.title}
-                            {t.dueAt ? (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                {formatDate(t.dueAt)}
-                              </span>
-                            ) : null}
+                </TabsContent>
+              ) : null}
+              {podeVerVendas ? (
+                <TabsContent value="compras">
+                  {detail.data.sales.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem compras registradas.</p>
+                  ) : (
+                    <ul className="divide-y divide-border text-sm">
+                      {detail.data.sales.map((s) => (
+                        <li key={s.id} className="flex justify-between py-2">
+                          <span>
+                            nº {s.number} · {formatDateTime(s.soldAt)}
+                          </span>
+                          <span className="tabular">
+                            {formatBRL(s.total)}{" "}
+                            <Badge variant={statusBadgeVariant(s.status)}>
+                              {SALE_STATUS_LABELS[s.status] ?? s.status}
+                            </Badge>
                           </span>
                         </li>
-                      ))
-                    )}
-                  </ul>
-                </div>
-                <div>
-                  <p className="mb-2 ed-title">Anotações</p>
-                  <Textarea
-                    placeholder="Registrar conversa, visita ou acordo"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      if (!note.trim()) return;
-                      const ok = await runAction(
-                        () => addCustomerNoteFn({ data: { customerId: c.id, body: note.trim() } }),
-                        { sucesso: "Nota salva.", erro: "Não foi possível salvar a nota." },
-                      );
-                      // O campo so e limpo quando a nota REALMENTE foi salva:
-                      // limpar antes perderia o texto que a pessoa escreveu.
-                      if (!ok) return;
-                      setNote("");
-                      await refresh();
-                    }}
-                  >
-                    Salvar nota
-                  </Button>
-                  <div className="mt-3 space-y-2">
-                    {detail.data.notes.map((n) => (
-                      <div key={n.id} className="rounded-lg border border-border px-3 py-2 text-sm">
-                        <p>{n.body}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </TabsContent>
-              <TabsContent value="compras">
-                {detail.data.sales.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sem compras registradas.</p>
-                ) : (
-                  <ul className="divide-y divide-border text-sm">
-                    {detail.data.sales.map((s) => (
-                      <li key={s.id} className="flex justify-between py-2">
-                        <span>
-                          nº {s.number} · {formatDateTime(s.soldAt)}
-                        </span>
-                        <span className="tabular">
-                          {formatBRL(s.total)}{" "}
-                          <Badge variant={statusBadgeVariant(s.status)}>
-                            {SALE_STATUS_LABELS[s.status] ?? s.status}
-                          </Badge>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </TabsContent>
-              <TabsContent value="mix">
-                {detail.data.products.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Ainda sem mix comprado.</p>
-                ) : (
-                  <ul className="divide-y divide-border text-sm">
-                    {detail.data.products.map((p) => (
-                      <li key={p.description} className="flex justify-between py-2">
-                        <span>
-                          {p.description} · {formatQty(p.qty)}
-                        </span>
-                        <span className="tabular">{formatBRL(p.total)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </TabsContent>
-              <TabsContent value="fin">
-                {detail.data.receivables.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum título a receber.</p>
-                ) : (
-                  <ul className="divide-y divide-border text-sm">
-                    {detail.data.receivables.map((r) => (
-                      <li key={r.id} className="flex justify-between py-2">
-                        <span>
-                          {r.description} · {formatDate(r.dueDate)}
-                        </span>
-                        <span className="tabular">
-                          {formatBRL(r.amount - r.received)}{" "}
-                          <Badge variant={statusBadgeVariant(r.status)}>
-                            {ACCOUNT_STATUS_LABELS[r.status] ?? r.status}
-                          </Badge>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </TabsContent>
+                      ))}
+                    </ul>
+                  )}
+                </TabsContent>
+              ) : null}
+              {podeVerVendas ? (
+                <TabsContent value="mix">
+                  {detail.data.products.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ainda sem mix comprado.</p>
+                  ) : (
+                    <ul className="divide-y divide-border text-sm">
+                      {detail.data.products.map((p) => (
+                        <li key={p.description} className="flex justify-between py-2">
+                          <span>
+                            {p.description} · {formatQty(p.qty)}
+                          </span>
+                          <span className="tabular">{formatBRL(p.total)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </TabsContent>
+              ) : null}
+              {podeVerFinanceiro ? (
+                <TabsContent value="fin">
+                  {detail.data.receivables.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum título a receber.</p>
+                  ) : (
+                    <ul className="divide-y divide-border text-sm">
+                      {detail.data.receivables.map((r) => (
+                        <li key={r.id} className="flex justify-between py-2">
+                          <span>
+                            {r.description} · {formatDate(r.dueDate)}
+                          </span>
+                          <span className="tabular">
+                            {formatBRL(r.amount - r.received)}{" "}
+                            <Badge variant={statusBadgeVariant(r.status)}>
+                              {ACCOUNT_STATUS_LABELS[r.status] ?? r.status}
+                            </Badge>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </TabsContent>
+              ) : null}
             </Tabs>
           </div>
         )}
