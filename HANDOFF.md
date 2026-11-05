@@ -8125,6 +8125,73 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `1d01627`, `714f62c`, `09b8614`, `0860368`, `75bb4c9`, `50a61af`,
      `49fdf05`.
 
+160. **Continuação dos itens 158/159 (revisão completa): os achados
+     Baixos/informativos, a pedido do usuário ("pode seguir com os itens
+     Low também").**
+
+     1. **`src/lib/app-data/` e `src/lib/multiplayer/` apagados** —
+        código morto do scaffold genérico do Grok (conectores Drive/
+        Gmail/Teams e WebRTC/P2P), zero import fora do próprio
+        diretório, confirmado por grep antes de apagar. As skills em
+        `.grok/skills/` que descrevem o padrão continuam lá, como
+        template pra recriar do zero se um dia fizer sentido — não
+        dependiam dos arquivos apagados.
+     2. **`dateOnly` (`utils.ts`) removida** — nunca chamada, e também
+        não seguia o padrão de `local-date.ts` (corta string em vez de
+        ler getters locais).
+     3. **`dump()` (`json.ts`)** — comentário deixa de prometer "preserva
+        o tipo" quando na verdade é um round-trip por JSON que muda a
+        forma de BigInt/Date/undefined/NaN/Infinity; só documentado, sem
+        mudar comportamento (seguro hoje porque `db.ts` já normaliza
+        esses tipos antes).
+     4. **Dialogo de desconto podia mostrar "(0%) passa do limite"** —
+        `operatorDiscountPct` devolve `Infinity` quando a base é zero
+        (carrinho 100% promocional); `formatPct(Infinity)` caía no
+        próprio fallback de não-finito e imprimia "0%", mensagem
+        contraditória. Bloqueio continua certo (servidor faz a mesma
+        conta); só a mensagem passou a cair no texto genérico quando o
+        valor não é finito.
+     5. **`searchPosFn` sem gate nenhum além de pertencer à loja** —
+        qualquer papel da empresa via preço/estoque/código de barras de
+        qualquer produto, inclusive um papel sem `pdv.sell`,
+        `products.read` NEM `stock.read` (ex.: "financeiro"). Gate novo
+        exige pelo menos um dos três.
+     6. **`listPromotionsAdminFn` sem `assertCan`** — só a tela e o menu
+        exigiam `promotions.write`; o servidor deixava passar qualquer
+        papel autenticado. Reusa `promotions.write` (não existe
+        `promotions.read` nesta base).
+     7. **Geração de imagem (xAI) sem limite de tamanho nem de
+        frequência** — `imageDataUrl` sem teto (prompt já tinha
+        `.slice(400)`, o campo de imagem não); nada impedia duplo clique
+        ou retry batendo várias vezes seguidas, cada uma uma cobrança de
+        verdade. Teto de ~11MB + cooldown de 3s por empresa E por função
+        (expand/generate com chaves separadas, pro fluxo normal
+        "Enriquecer" → "Gerar" não ser bloqueado) — documentado como
+        limite por PROCESSO, não distribuído (zera a cada cold start,
+        não é um rate limit de verdade pra produção serverless).
+
+     **Verificação**: `typecheck`/`lint` limpos; `test` 522 (540 − 18 de
+     `app-data.test.ts`, removido junto com o módulo morto). Deploy
+     `8a0d516` "Ready". Ao vivo, regressão confirmada sem quebra: busca
+     do PDV (`searchPosFn`) continua achando `ZZTESTE`; Promoções
+     (`listPromotionsAdminFn`) continua carregando KPIs e lista reais
+     pro papel admin. Não testado ao vivo: a geração de imagem em si
+     (chamada real na xAI, custa dinheiro) e o bloqueio de fato pros
+     papéis sem permissão em `searchPosFn`/`listPromotionsAdminFn`
+     (precisaria login de teste com papel restrito — mesma limitação já
+     registrada no item 158).
+
+     7 commits: `2028c6c` (app-data/multiplayer/dateOnly, nome só cita
+     dateOnly — um `git rm` já estava staged de antes e entrou junto;
+     commit local, nunca publicado sozinho, conteúdo correto apesar da
+     mensagem incompleta), `f827e2d`, `b0da789`, `8caa4de`, `b9deb93`,
+     `8a0d516`.
+
+     **Revisão completa (itens 158-160) encerrada.** Dos ~30 achados das
+     seis revisões em paralelo: 3 Críticos/Altos corrigidos (158), 10
+     Médios corrigidos (159), 7 Baixos corrigidos (160). Nada ficou
+     pendente da lista original.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
