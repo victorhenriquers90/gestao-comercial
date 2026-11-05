@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
 const fieldClass =
-  "h-12 rounded-lg border-transparent bg-muted px-4 text-base transition-colors focus-visible:border-input focus-visible:bg-card";
+  "h-12 rounded-2xl border-transparent bg-muted px-4 text-base transition-[background-color,border-color,box-shadow] focus-visible:border-input focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-primary/15";
 
 // Better Auth's client returns an error `code` (e.g. "INVALID_EMAIL_OR_PASSWORD")
 // alongside its own English `message` — key off `code` so this never depends on
@@ -222,13 +222,13 @@ function LoginPage() {
         </div>
       </div>
       <section className="login-form-panel flex items-center justify-center px-6 py-10">
-        <div className="login-card animate-in fade-in-0 duration-300">
+        <div className="login-card animate-in fade-in-0 duration-300 p-7 sm:p-9">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
               <BrandMark className="size-10" />
               <p className="ed-label">{APP_NAME}</p>
             </div>
 
-            <h1 className="font-display text-3xl font-semibold tracking-tight">
+            <h1 className="font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-[2.75rem]">
               {signingUp ? "Criar a loja" : "Abrir a loja"}
             </h1>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
@@ -239,7 +239,7 @@ function LoginPage() {
                   : "Acesse o PDV, a folha e o caixa da operação."}
             </p>
             {conviteErro && !user ? (
-              <p className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {conviteErro}
               </p>
             ) : null}
@@ -303,7 +303,7 @@ function LoginPage() {
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-lg text-muted-foreground hover:text-foreground"
+                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-2xl text-muted-foreground hover:text-foreground"
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     onClick={() => setShowPassword((v) => !v)}
                   >
@@ -312,11 +312,11 @@ function LoginPage() {
                 </div>
               </div>
               {error ? (
-                <p className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p className="rounded-2xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {error}
                 </p>
               ) : null}
-              <Button type="submit" size="lg" className="mt-1 w-full rounded-lg" disabled={busy}>
+              <Button type="submit" size="lg" className="mt-1 w-full rounded-2xl" disabled={busy}>
                 {busy ? "Aguarde…" : signingUp ? "Criar conta" : "Entrar"}
               </Button>
             </form>

@@ -314,17 +314,70 @@
 }
 
 .login-form-panel {
+  position: relative;
+  overflow: hidden;
   background: var(--background);
 }
 
+/* Duas manchas de cor desfocadas atras do cartao -- o lado do formulario
+   e so texto sobre fundo liso (a foto/marca ficam do outro lado), e sem
+   isto o vazio em volta do cartao (bem visivel em telas altas, onde o
+   `justify-center` sobra bastante espaco acima/abaixo) lia como "sem
+   acabamento". As cores saem dos tokens de grafico (--chart-1/--chart-3)
+   que a dashboard ja usa, entao nao introduz cor nova no sistema. */
+.login-form-panel::before,
+.login-form-panel::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  border-radius: 9999px;
+  filter: blur(90px);
+}
+.login-form-panel::before {
+  top: -9rem;
+  right: -7rem;
+  width: 24rem;
+  height: 24rem;
+  background: var(--chart-1);
+  opacity: 0.35;
+}
+.login-form-panel::after {
+  bottom: -8rem;
+  left: -8rem;
+  width: 20rem;
+  height: 20rem;
+  background: var(--chart-3);
+  opacity: 0.3;
+}
+
 .login-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 26rem;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 1px 2px rgb(26 25 22 / 0.04),
+    0 24px 48px -16px rgb(26 25 22 / 0.18);
   /* Mesma ressalva do bloco --color-* acima (:root resolve os alias uma
      vez so): sem isto, texto sem classe explicita (o h1 "Abrir a
      loja"/"Criar a loja") herda a cor de um <html class="dark"> deixado
      por uma sessao anterior em vez do tema claro fixo do login. */
   color: #1a1916;
+}
+
+/* Barra gradiente no topo do cartao -- o toque de "personalidade de
+   marca" pedido (visual mais arrojado, tipo Notion/Framer) sem reservar
+   espaco proprio de layout: `overflow: hidden` do cartao corta os cantos
+   quadrados dela contra o raio arredondado do cartao. */
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 0.3rem;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--chart-3) 100%);
 }
 
 .login-card input {

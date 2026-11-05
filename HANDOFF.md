@@ -8475,6 +8475,53 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      rosto, crop conferido por cálculo (acima) batendo com a composição
      pretendida. Deploy Vercel "Ready", confirmado ao vivo em produção.
 
+167. **Formulário do login (itens 165-166): visual "mais arrojado" a
+     pedido do dono da loja, que mandou um print só do lado do formulário
+     ("essa parte precisa modernizar") — card chapado sobre fundo liso
+     virou card com elevação de verdade, duas manchas de cor desfocadas
+     atrás, barra gradiente no topo, tipografia e cantos maiores.**
+
+     Perguntado antes de mexer (`AskUserQuestion`, 4 direções possíveis:
+     polimento sutil, mais conteúdo preenchendo o vazio, visual arrojado
+     tipo Notion/Framer, ou protótipos pra comparar) — escolheu "visual
+     mais arrojado", o que define as mudanças abaixo (não são a única
+     leitura válida de "modernizar").
+
+     - `.login-form-panel::before`/`::after` (novo): duas manchas
+       circulares desfocadas (`filter: blur(90px)`), cores vindas de
+       `--chart-1` (verde-menta) e `--chart-3` (terracota/areia) — os
+       mesmos tokens que os gráficos do dashboard já usam, não cor nova
+       no sistema. Preenchem o vazio em volta do cartão que sobrava em
+       telas altas (`justify-center` centralizando um bloco curto numa
+       coluna cheia).
+     - `.login-card`: ganhou fundo (`var(--card)`), borda, sombra e
+       `overflow: hidden` — antes era só texto flutuando direto no fundo
+       do painel, sem nenhuma superfície própria.
+     - `.login-card::before` (novo): barra de 0.3rem gradiente
+       (`--primary` → `--chart-3`) no topo do cartão, cortada pelos
+       cantos arredondados via o `overflow: hidden` do próprio cartão.
+     - `h1` (`"Abrir a loja"`/`"Criar a loja"`): `text-3xl font-semibold`
+       → `text-4xl sm:text-[2.75rem] font-bold leading-[1.05]` — tipo
+       maior e mais apertado, lendo como manchete, não como rótulo de
+       campo grande.
+     - Campos (`fieldClass` em `login.tsx`) e botão de entrar: cantos
+       `rounded-lg` → `rounded-2xl` (mais arredondado, convenção comum em
+       interface "moderna" atual) e um anel de foco mais perceptível
+       (`focus-visible:ring-4 focus-visible:ring-primary/15`, antes sem
+       anel de cor própria). Botão olho-de-senha (`rounded-r-lg` →
+       `rounded-r-2xl`) e as duas caixas de erro acompanharam o mesmo
+       raio pra não destoar.
+
+     **Verificação**: `typecheck`/`lint` limpos (mesmos avisos
+     pré-existentes). Visual no servidor de dev: 1100px (desktop, manchas
+     visíveis atrás do cartão — conferido também via
+     `getComputedStyle(panel, '::after')` porque a mancha de baixo, mais
+     próxima da cor do fundo, é discreta o bastante pra não aparecer bem
+     num screenshot pequeno), 375px (celular, as duas manchas bem
+     visíveis, cartão e campos não cortam), e o formulário de cadastro
+     (`/login?cadastro`, 3 campos) pra garantir que o card mais alto não
+     quebra nada. Deploy Vercel "Ready", confirmado ao vivo em produção.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
