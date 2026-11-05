@@ -84,7 +84,9 @@ export function nfceBlockers(input: ReadinessInput): Blocker[] {
     grupo ICMS00); sem isso a nota sai incompleta e a SEFAZ recusa -- ou,
     pior, alguem preenche esses campos errado depois e a nota AUTORIZA com
     ICMS zerado. Bloquear aqui, antes do balcao, e o mesmo raciocinio do
-    bloqueio de NCM acima.
+    bloqueio de NCM acima -- e `validateNfceReadiness` (nfce.ts) repete o
+    MESMO bloqueio na emissao de verdade, pra quem nunca viu este painel
+    (ou mudou o regime depois) nao conseguir emitir mesmo assim.
   */
   if (crtForRegime(input.regime) === 3) {
     out.push({

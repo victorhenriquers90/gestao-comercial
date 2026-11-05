@@ -86,8 +86,7 @@ export type NfceEnv = "homologacao" | "producao";
  *
  * De quebra, o nome real do cliente não viaja para um ambiente de teste.
  */
-export const HOMOLOGATION_BUYER_NAME =
-  "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
+export const HOMOLOGATION_BUYER_NAME = "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
 
 /**
  * Referência única enviada à Focus NFe (idempotência do lado deles).
@@ -207,6 +206,21 @@ export function validateNfceReadiness(input: BuildNfceInput): string[] {
   const errors: string[] = [];
   if (!input.emitter.cnpj) errors.push("Configure o CNPJ da empresa em Configurações.");
   if (!input.emitter.ie) errors.push("Configure a Inscrição Estadual da empresa em Configurações.");
+  /*
+    Mesmo bloqueio de `nfceBlockers` (nfce-readiness.ts, id "regime-icms"),
+    repetido AQUI de proposito: aquele so roda no painel consultivo
+    ("pronto pra emitir?"), nunca na emissao de verdade -- uma loja que
+    muda pra Presumido/Real sem ver o painel (ou ve e ignora) emitia a
+    nota mesmo assim, com ICMS zerado (buildNfcePayload nunca monta
+    base/aliquota/valor por item pra CRT 3, so CSOSN "102" do Simples).
+    Autorizar assim e pior que recusar: a nota sai valida pro cliente com
+    o imposto errado, risco fiscal de verdade pro lojista.
+  */
+  if (crtForRegime(input.emitter.regime) === 3) {
+    errors.push(
+      "Regime tributário (Lucro Presumido/Real) ainda não calcula ICMS por item neste sistema — fale com quem mantém o sistema antes de emitir.",
+    );
+  }
   if (!input.items.length) errors.push("Venda sem itens.");
   for (const item of input.items) {
     if (!item.ncm) errors.push(`Produto "${item.description}" sem NCM cadastrado.`);
@@ -236,9 +250,8 @@ export function buildNfcePayload(input: BuildNfceInput): Record<string, unknown>
           ...(input.buyer.document.length > 11
             ? { cnpj_destinatario: input.buyer.document }
             : { cpf_destinatario: input.buyer.document }),
-          nome_destinatario: input.env === "homologacao"
-            ? HOMOLOGATION_BUYER_NAME
-            : (input.buyer.name ?? undefined),
+          nome_destinatario:
+            input.env === "homologacao" ? HOMOLOGATION_BUYER_NAME : (input.buyer.name ?? undefined),
         }
       : {}),
     items: input.items.map((item, i) => ({

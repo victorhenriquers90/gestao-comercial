@@ -117,13 +117,41 @@ describe("validateNfceReadiness", () => {
     assert.deepEqual(validateNfceReadiness(baseInput({ items: [] })), ["Venda sem itens."]);
   });
 
+  it("bloqueia emissao em Presumido/Real -- buildNfcePayload nunca monta ICMS por item pra esse regime", () => {
+    const presumido = validateNfceReadiness(
+      baseInput({ emitter: { ...baseInput().emitter, regime: "presumido" } }),
+    );
+    assert.equal(presumido.length, 1);
+    assert.match(presumido[0]!, /Lucro Presumido\/Real/);
+    const real = validateNfceReadiness(
+      baseInput({ emitter: { ...baseInput().emitter, regime: "real" } }),
+    );
+    assert.equal(real.length, 1);
+    assert.match(real[0]!, /Lucro Presumido\/Real/);
+  });
+
+  it("Simples e MEI continuam liberados (so Presumido/Real bloqueiam)", () => {
+    assert.deepEqual(
+      validateNfceReadiness(baseInput({ emitter: { ...baseInput().emitter, regime: "mei" } })),
+      [],
+    );
+    assert.deepEqual(
+      validateNfceReadiness(baseInput({ emitter: { ...baseInput().emitter, regime: "simples" } })),
+      [],
+    );
+  });
+
   it("acusa total dos itens divergente do total pago", () => {
-    const errors = validateNfceReadiness(baseInput({ payments: [{ method: "dinheiro", amount: 50 }] }));
+    const errors = validateNfceReadiness(
+      baseInput({ payments: [{ method: "dinheiro", amount: 50 }] }),
+    );
     assert.deepEqual(errors, ["Total dos itens não bate com o total dos pagamentos."]);
   });
 
   it("tolera diferença de arredondamento até 5 centavos", () => {
-    const errors = validateNfceReadiness(baseInput({ payments: [{ method: "dinheiro", amount: 79.94 }] }));
+    const errors = validateNfceReadiness(
+      baseInput({ payments: [{ method: "dinheiro", amount: 79.94 }] }),
+    );
     assert.deepEqual(errors, []);
   });
 
@@ -135,14 +163,25 @@ describe("validateNfceReadiness", () => {
     // (R$69,90) e esta checagem recusava toda venda com desconto de
     // fechamento -- o tipo de desconto mais comum do sistema.
     const items = allocateHeaderDiscount(baseInput().items, 10);
-    const errors = validateNfceReadiness(baseInput({ items, payments: [{ method: "dinheiro", amount: 69.9 }] }));
+    const errors = validateNfceReadiness(
+      baseInput({ items, payments: [{ method: "dinheiro", amount: 69.9 }] }),
+    );
     assert.deepEqual(errors, []);
   });
 });
 
 describe("allocateHeaderDiscount", () => {
   function item(total: number, discount = 0): NfceItemInput {
-    return { description: "Item", ncm: "61091000", cfop: "5102", unit: "UN", quantity: 1, unitPrice: total, discount, total };
+    return {
+      description: "Item",
+      ncm: "61091000",
+      cfop: "5102",
+      unit: "UN",
+      quantity: 1,
+      unitPrice: total,
+      discount,
+      total,
+    };
   }
 
   it("sem desconto de cabeçalho, devolve os itens sem tocar em nada", () => {
@@ -238,7 +277,9 @@ describe("buildNfcePayload", () => {
   });
 
   it("roteia o documento do comprador por CPF ou CNPJ pelo tamanho", () => {
-    const cpf = buildNfcePayload(baseInput({ buyer: { document: "52998224725", name: "Ana" } })) as Record<string, any>;
+    const cpf = buildNfcePayload(
+      baseInput({ buyer: { document: "52998224725", name: "Ana" } }),
+    ) as Record<string, any>;
     assert.equal(cpf.cpf_destinatario, "52998224725");
     assert.equal("cnpj_destinatario" in cpf, false);
 
