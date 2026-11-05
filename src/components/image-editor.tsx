@@ -47,7 +47,10 @@ function loadShots(): PromptShot[] {
 }
 
 function saveShot(note: string, brief: string) {
-  const next: PromptShot[] = [{ note: note.slice(0, 180), brief: brief.slice(0, 280) }, ...loadShots().filter((s) => s.brief !== brief)].slice(0, 3);
+  const next: PromptShot[] = [
+    { note: note.slice(0, 180), brief: brief.slice(0, 280) },
+    ...loadShots().filter((s) => s.brief !== brief),
+  ].slice(0, 3);
   localStorage.setItem(SHOT_KEY, JSON.stringify(next));
 }
 
@@ -93,7 +96,8 @@ export function ImageField({
             {value ? "Alterar recorte" : "Foto ou gerar com IA"}
           </span>
           <span className="block text-xs text-muted-foreground">
-            {hint ?? "Envie um arquivo ou descreva o item. O recorte prioriza a parte de cima — rostos não saem do quadro."}
+            {hint ??
+              "Envie um arquivo ou descreva o item. O recorte prioriza a parte de cima — rostos não saem do quadro."}
           </span>
         </span>
       </button>
@@ -183,7 +187,9 @@ function ImageEditorDialog({
     setShots(loadShots());
     setLockSeed(false);
     setSeed(null);
-    void aiImageStatusFn().then((s) => setAiOn(s.available)).catch(() => setAiOn(false));
+    void aiImageStatusFn()
+      .then((s) => setAiOn(s.available))
+      .catch(() => setAiOn(false));
   }, [open, value, initialAspect, suggest]);
 
   useEffect(() => {
@@ -595,7 +601,12 @@ function ImageEditorDialog({
                     {busy ? "Difundindo…" : "Gerar foto"}
                   </Button>
                   {kind === "product" ? (
-                    <Button type="button" variant="outline" onClick={() => void compareLooks()} disabled={busy}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void compareLooks()}
+                      disabled={busy}
+                    >
                       {look === "editorial" ? "Vs. foto real" : "Vs. editorial"}
                     </Button>
                   ) : (
@@ -639,7 +650,8 @@ function ImageEditorDialog({
               <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-primary/40" />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Arraste para enquadrar. O recorte prioriza a parte de cima — cabelo e rosto ficam dentro.
+              Arraste para enquadrar. O recorte prioriza a parte de cima — cabelo e rosto ficam
+              dentro.
             </p>
             {pair && pair.length > 1 ? (
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -659,7 +671,11 @@ function ImageEditorDialog({
                       look === p.id ? "border-primary ring-2 ring-primary/30" : "border-border",
                     )}
                   >
-                    <img src={p.dataUrl} alt="" className="aspect-square w-full object-cover object-top" />
+                    <img
+                      src={p.dataUrl}
+                      alt=""
+                      className="aspect-square w-full object-cover object-top"
+                    />
                     <span className="block px-2 py-1 text-xs">
                       {IMAGE_LOOKS.find((L) => L.id === p.id)?.label}
                     </span>
@@ -679,7 +695,9 @@ function ImageEditorDialog({
                   }}
                   className={cn(
                     "h-8 rounded-md px-2.5 text-xs",
-                    aspect === a.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
+                    aspect === a.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {a.label}
@@ -732,19 +750,42 @@ function ImageEditorDialog({
                 }}
                 className="h-10 flex-1 accent-primary"
               />
-              <Button type="button" variant="outline" size="icon" onClick={() => setRot((r) => r + 90)} aria-label="Girar">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setRot((r) => r + 90)}
+                aria-label="Girar"
+              >
                 <RotateCw className="size-4" />
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+              >
                 Trocar
               </Button>
               {aiOn ? (
                 <>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void generate(false)} disabled={busy}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void generate(false)}
+                    disabled={busy}
+                  >
                     <Sparkles className="size-3.5" />
                     {busy ? "Difundindo…" : "Outra versão"}
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void generate(true)} disabled={busy}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void generate(true)}
+                    disabled={busy}
+                  >
                     {busy ? "Refinando…" : "Refinar esta"}
                   </Button>
                 </>
@@ -756,8 +797,17 @@ function ImageEditorDialog({
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button type="button" onClick={apply} disabled={!src}>
-            Usar recorte
+          {/*
+            `!src` ficava satisfeito assim que o arquivo era lido (sincrono),
+            mas `rotated` (o que `apply()` de fato usa) so existe depois do
+            `loadImage` assincrono terminar -- numa foto grande, num tablet
+            mais lento, o botao aparecia liberado nesse intervalo, e um toque
+            rapido chamava `apply()` com `rotated` ainda nulo: `onApply("")`,
+            foto apagada sem aviso. `!rotated` cobre os dois casos (sem
+            imagem, ou imagem ainda carregando).
+          */}
+          <Button type="button" onClick={apply} disabled={!rotated}>
+            {src && !rotated ? "Carregando…" : "Usar recorte"}
           </Button>
         </div>
       </DialogContent>
