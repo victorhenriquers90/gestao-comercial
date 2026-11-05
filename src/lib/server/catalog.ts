@@ -540,6 +540,21 @@ export const searchPosFn = createServerFn({ method: "POST" })
     const { sql, tenant } = await requireTenant(context.userId);
     await assertStore(sql, tenant, data.storeId);
     /*
+      Sem gate nenhum antes alem de pertencer a loja -- um papel sem
+      pdv.sell/products.read/stock.read (ex.: "financeiro") conseguia
+      chamar direto e ver preco/estoque/codigo de barras de qualquer
+      produto, mesmo sem acesso a PDV, Produtos nem Estoque. Os tres
+      consumidores de verdade desta busca (PDV no checkout, Produtos ao
+      vincular item, contagem de estoque) ja exigem um destes tres.
+    */
+    if (
+      !can(tenant.role, "pdv.sell") &&
+      !can(tenant.role, "products.read") &&
+      !can(tenant.role, "stock.read")
+    ) {
+      throw new Error("Sem permissão para esta ação.");
+    }
+    /*
       O custo so vai pra quem ja pode ve-lo em outro lugar do sistema (a tela
       de Produtos mostra custo e margem sob products.read).
 
