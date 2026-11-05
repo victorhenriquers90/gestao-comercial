@@ -32,6 +32,34 @@ export function BackupStatusCard() {
   });
 
   const dados = status.data;
+  /*
+    `status.isError` tinha o MESMO resultado de "instalacao sem backup pra
+    cobrar" (os dois deixam `dados` undefined) -- justo neste cartao, cujo
+    motivo de existir e o contrario: nao deixar uma falha silenciosa passar
+    batido ("nao deu erro" e exatamente como o silencio se parece, texto
+    acima). Uma falha em CARREGAR o proprio status nao pode sumir da tela
+    igual a "nada a avisar".
+  */
+  if (status.isError) {
+    return (
+      <Card
+        role="status"
+        className="mb-block flex items-start gap-3 border-destructive/50 bg-destructive/5 p-4"
+      >
+        <ShieldQuestion className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">
+            Não foi possível verificar o backup
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {status.error instanceof Error
+              ? status.error.message
+              : "Tente novamente em alguns minutos; se persistir, confira o log do servidor."}
+          </p>
+        </div>
+      </Card>
+    );
+  }
   // Fora de uma instalacao de loja (desenvolvimento, preview) nao ha backup
   // pra cobrar -- e o aviso que aparece onde nao deveria e o que treina as
   // pessoas a ignorar o aviso.
@@ -71,23 +99,23 @@ export function BackupStatusCard() {
 
   return (
     <>
-    <Card
-      role="status"
-      className={`mb-block flex items-start gap-3 p-4 ${
-        critico || desconhecido ? "border-destructive/50 bg-destructive/5" : "border-primary/40"
-      }`}
-    >
-      <Icone
-        className={`mt-0.5 size-5 shrink-0 ${critico || desconhecido ? "text-destructive" : "text-primary"}`}
-        aria-hidden
-      />
-      <div className="space-y-1">
-        <p className="text-sm font-semibold text-foreground">{titulo}</p>
-        <p className="text-sm text-muted-foreground">{explicacao}</p>
-        <p className="text-xs text-muted-foreground">
-          Verifique o log em {dados.backupDir.replace(/backups$/, "logs")}\backup.log e a tarefa
-          &ldquo;GestaoComercial-Backup&rdquo; no Agendador de Tarefas do Windows.
-        </p>
+      <Card
+        role="status"
+        className={`mb-block flex items-start gap-3 p-4 ${
+          critico || desconhecido ? "border-destructive/50 bg-destructive/5" : "border-primary/40"
+        }`}
+      >
+        <Icone
+          className={`mt-0.5 size-5 shrink-0 ${critico || desconhecido ? "text-destructive" : "text-primary"}`}
+          aria-hidden
+        />
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">{titulo}</p>
+          <p className="text-sm text-muted-foreground">{explicacao}</p>
+          <p className="text-xs text-muted-foreground">
+            Verifique o log em {dados.backupDir.replace(/backups$/, "logs")}\backup.log e a tarefa
+            &ldquo;GestaoComercial-Backup&rdquo; no Agendador de Tarefas do Windows.
+          </p>
         </div>
       </Card>
       <CopiaExterna s={dados.secondary} dir={dados.backupDir} />
@@ -141,9 +169,7 @@ function CopiaExterna({ s, dir }: { s: SecondaryStatus; dir: string }) {
           O backup diário continua salvando em {dir}, no mesmo disco do banco — mas o destino
           externo ({s.dir}) está fora de alcance. Se este disco falhar, não há para onde voltar.
         </p>
-        {s.error ? (
-          <p className="text-xs text-muted-foreground">Último erro: {s.error}</p>
-        ) : null}
+        {s.error ? <p className="text-xs text-muted-foreground">Último erro: {s.error}</p> : null}
       </div>
     </Card>
   );

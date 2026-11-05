@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { QueryError } from "@/components/shared";
 import { nfceReadinessFn } from "@/lib/server/nfce";
 
 /**
@@ -16,6 +17,19 @@ export function NfceReadinessPanel() {
   const r = useQuery({ queryKey: ["nfce-readiness"], queryFn: () => nfceReadinessFn() });
 
   if (r.isPending) return null;
+  // Sem isto, uma falha de carregamento sumia da tela igual a "sem
+  // pendencia nenhuma" (os dois casos deixam `r.data` undefined) --
+  // justamente o painel que avisa ANTES de uma nota sair errada.
+  if (r.isError) {
+    return (
+      <Card className="mt-4 max-w-xl p-5">
+        <QueryError
+          error={r.error}
+          fallback="Erro ao verificar se a loja está pronta para emitir NFC-e."
+        />
+      </Card>
+    );
+  }
   if (!r.data) return null;
   const d = r.data;
   const dentro = d.blockers.filter((b) => b.scope === "sistema");
