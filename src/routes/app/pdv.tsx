@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { CartTable } from "@/components/pdv/cart-table";
 import { CustomerDialog } from "@/components/pdv/customer-dialog";
 import { DiscountDialog } from "@/components/pdv/discount-dialog";
@@ -98,6 +98,22 @@ function PdvPage() {
   const [lineDiscountFor, setLineDiscountFor] = useState<number | null>(null);
   const [lineDiscountOpen, setLineDiscountOpen] = useState(false);
   const lineDiscountTarget = priced.find((l) => l.variantId === lineDiscountFor) ?? null;
+
+  /*
+    Fechou o ultimo dialogo: foco volta pra busca, pronto pro proximo bipe.
+    O Radix devolve o foco ao botao que ABRIU o dialogo (DialogTrigger), e
+    aqui eles abrem por atalho (F4/F6/F8/%) ou por botao comum -- sem
+    trigger, o foco caia no <body> e o proximo codigo lido pelo leitor de
+    barras se perdia. So no desktop: no tablet, focar a busca abriria o
+    teclado da tela a cada dialogo fechado.
+  */
+  const algumDialogo =
+    custOpen || discOpen || lineDiscountOpen || payOpen || heldOpen || (receiptOpen && lastSale != null);
+  const tinhaDialogo = useRef(false);
+  useEffect(() => {
+    if (tinhaDialogo.current && !algumDialogo) searchRef.current?.focus();
+    tinhaDialogo.current = algumDialogo;
+  }, [algumDialogo, searchRef]);
 
   /** Teclas com a busca vazia: o cupom responde ao teclado. */
   function onCartKey(e: ReactKeyboardEvent<HTMLInputElement>) {
