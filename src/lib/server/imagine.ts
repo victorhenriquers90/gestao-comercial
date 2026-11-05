@@ -29,9 +29,24 @@ export const IMAGE_LOOKS = [
 ] as const;
 
 export const IMAGE_ENGINES = [
-  { id: "rapido", label: "Rápido", hint: "Rascunho para achar o enquadramento", model: "grok-imagine-image" },
-  { id: "equilibrio", label: "Equilíbrio", hint: "O motor do catálogo no dia a dia", model: "grok-imagine-image-2.0" },
-  { id: "detalhe", label: "Detalhe", hint: "Tecido, costura e brilho mais nítidos", model: "grok-imagine-image-quality" },
+  {
+    id: "rapido",
+    label: "Rápido",
+    hint: "Rascunho para achar o enquadramento",
+    model: "grok-imagine-image",
+  },
+  {
+    id: "equilibrio",
+    label: "Equilíbrio",
+    hint: "O motor do catálogo no dia a dia",
+    model: "grok-imagine-image-2.0",
+  },
+  {
+    id: "detalhe",
+    label: "Detalhe",
+    hint: "Tecido, costura e brilho mais nítidos",
+    model: "grok-imagine-image-quality",
+  },
 ] as const;
 
 export const PROMPT_FRAMEWORKS = [
@@ -61,12 +76,24 @@ export const PROMPT_FRAMEWORKS = [
 export const PROMPT_CHIPS = [
   { id: "malha", label: "Malha", text: "malha de algodão, nervura visível, caimento natural" },
   { id: "couro", label: "Couro", text: "couro com poros e brilho suave" },
-  { id: "close", label: "Close", text: "enquadramento próximo, a peça preenche o quadro, topo visível" },
+  {
+    id: "close",
+    label: "Close",
+    text: "enquadramento próximo, a peça preenche o quadro, topo visível",
+  },
   { id: "tres", label: "3/4", text: "ângulo 3/4, câmera um pouco acima" },
-  { id: "janela", label: "Luz de janela", text: "luz lateral de janela, sombra suave no lado oposto" },
+  {
+    id: "janela",
+    label: "Luz de janela",
+    text: "luz lateral de janela, sombra suave no lado oposto",
+  },
   { id: "soft", label: "Luz de estúdio", text: "luz de estúdio uniforme, sem sombra dura" },
   { id: "cabide", label: "Cabide", text: "pendurada em cabide de madeira claro" },
-  { id: "mesa", label: "Sobre o balcão", text: "apoiada no balcão de madeira, loja ao fundo desfocada" },
+  {
+    id: "mesa",
+    label: "Sobre o balcão",
+    text: "apoiada no balcão de madeira, loja ao fundo desfocada",
+  },
 ] as const;
 
 export const SHOT_EXAMPLES = [
@@ -108,6 +135,30 @@ export const aiImageStatusFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => ({ available: Boolean(process.env.XAI_API_KEY) }));
 
+/*
+  Limite simples, por PROCESSO -- nao e um rate limit de verdade (em
+  producao serverless varias instancias podem rodar em paralelo, cada
+  uma com o proprio mapa; e zera num cold start). Mas cobre o caso mais
+  comum que motivou isto: duplo clique ou um loop de retry no cliente
+  batendo aqui sem parar -- cada chamada e uma cobranca de verdade na
+  xAI, sem teto nenhum antes disto.
+
+  Chave inclui a FUNCAO, nao so a empresa: o fluxo normal e "Enriquecer"
+  (texto, barato) seguido de "Gerar" (imagem, caro) em sequencia rapida
+  -- um cooldown compartilhado bloquearia esse uso comum, achando que
+  era retry.
+*/
+const ultimaChamadaIA = new Map<string, number>();
+const COOLDOWN_IA_MS = 3000;
+function respeitaCooldownIA(fn: string, companyId: number): boolean {
+  const chave = `${fn}:${companyId}`;
+  const agora = Date.now();
+  const ultima = ultimaChamadaIA.get(chave) ?? 0;
+  if (agora - ultima < COOLDOWN_IA_MS) return false;
+  ultimaChamadaIA.set(chave, agora);
+  return true;
+}
+
 export const expandCatalogPromptFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -123,11 +174,15 @@ export const expandCatalogPromptFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, data.kind === "logo" ? "settings.write" : "products.write");
+    if (!respeitaCooldownIA("expand", tenant.companyId)) {
+      return { ok: false as const, error: "Aguarde um instante antes de tentar de novo." };
+    }
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return { ok: false as const, error: "Enriquecer texto indisponível agora." };
     const look = IMAGE_LOOKS.find((L) => L.id === (data.look ?? "realista"));
     const style = IMAGE_STYLES.find((s) => s.id === (data.style ?? "catalogo"));
-    const frame = PROMPT_FRAMEWORKS.find((f) => f.id === (data.framework ?? "shot")) ?? PROMPT_FRAMEWORKS[0];
+    const frame =
+      PROMPT_FRAMEWORKS.find((f) => f.id === (data.framework ?? "shot")) ?? PROMPT_FRAMEWORKS[0];
     const shots = (data.shots ?? []).slice(0, 3);
     const examples = shots.flatMap((s) => [
       {
@@ -184,11 +239,24 @@ export const generateCatalogImageFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, data.kind === "logo" ? "settings.write" : "products.write");
+    if (!respeitaCooldownIA("generate", tenant.companyId)) {
+      return { ok: false as const, error: "Aguarde um instante antes de gerar outra imagem." };
+    }
+    // `prompt` sempre passa por .slice(400) antes de compor (composePrompt/
+    // composeEditPrompt), mas `imageDataUrl` ia cru pro corpo da requisicao
+    // -- sem teto, igual ao corte de 8MB que o CLIENTE ja aplica no arquivo
+    // (image-edit.ts) antes de virar base64 (~4/3 do tamanho original; o
+    // teto aqui e generoso o bastante pra nunca pegar um upload legitimo).
+    if (data.imageDataUrl && data.imageDataUrl.length > 11_000_000) {
+      return { ok: false as const, error: "Imagem grande demais para editar." };
+    }
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) {
       return { ok: false as const, error: "Geração de imagem indisponível neste ambiente." };
     }
-    const seed = Number.isFinite(data.seed) ? Math.floor(data.seed as number) : Math.floor(Math.random() * 1_000_000_000);
+    const seed = Number.isFinite(data.seed)
+      ? Math.floor(data.seed as number)
+      : Math.floor(Math.random() * 1_000_000_000);
     const model = engineModel(data.engine);
     if (data.imageDataUrl) {
       const edited = await requestEdit(
@@ -270,7 +338,9 @@ function composePrompt(
     .slice(0, 3)
     .map((s, i) => `Example ${i + 1}: ${s.brief.slice(0, 180)}`)
     .join(" ");
-  return examples ? `${frame.join(" ")} Match this shop's catalog language. ${examples}` : frame.join(" ");
+  return examples
+    ? `${frame.join(" ")} Match this shop's catalog language. ${examples}`
+    : frame.join(" ");
 }
 
 function composeEditPrompt(
@@ -315,9 +385,12 @@ function lookLine(look: ImageLookId): string {
 }
 
 function sceneLine(style: ImageStyleId): string {
-  if (style === "branco") return "isolated packshot on a pure white seamless background, even studio light";
-  if (style === "vitrine") return "sitting on a wooden boutique counter in a Brazilian clothing shop, warm ambient light, blurred shop interior";
-  if (style === "look") return "lifestyle fashion photograph, subject fully in frame, headroom above hair if a person appears, natural window light";
+  if (style === "branco")
+    return "isolated packshot on a pure white seamless background, even studio light";
+  if (style === "vitrine")
+    return "sitting on a wooden boutique counter in a Brazilian clothing shop, warm ambient light, blurred shop interior";
+  if (style === "look")
+    return "lifestyle fashion photograph, subject fully in frame, headroom above hair if a person appears, natural window light";
   return "commercial e-commerce catalog photo, soft studio lighting, light gray seamless, centered";
 }
 
@@ -387,7 +460,10 @@ async function readImageResponse(
     return {
       ok: false,
       status: res.status,
-      error: res.status === 429 ? "Fila da geração cheia. Tente de novo em instantes." : "Não foi possível gerar a imagem.",
+      error:
+        res.status === 429
+          ? "Fila da geração cheia. Tente de novo em instantes."
+          : "Não foi possível gerar a imagem.",
     };
   }
   const body = (await res.json()) as {
@@ -401,7 +477,8 @@ async function readImageResponse(
   const url = item?.url ?? body.url;
   if (!url) return { ok: false, status: 502, error: "A geração não devolveu a foto." };
   const img = await fetch(url);
-  if (!img.ok) return { ok: false, status: img.status, error: "Não foi possível baixar a foto gerada." };
+  if (!img.ok)
+    return { ok: false, status: img.status, error: "Não foi possível baixar a foto gerada." };
   const mime = img.headers.get("content-type")?.split(";")[0] || "image/jpeg";
   const buf = Buffer.from(await img.arrayBuffer());
   return { ok: true, dataUrl: `data:${mime};base64,${buf.toString("base64")}` };
