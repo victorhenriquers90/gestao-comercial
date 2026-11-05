@@ -8233,6 +8233,31 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      ela mesmo assim. Não corrigido agora porque é um achado diferente do
      que foi pedido (Escape) — avisar o usuário antes de mexer.
 
+162. **Continuação do item 161: F10 finalizava a venda por baixo da
+     confirmação "Cancelar venda?" — achado no mesmo teste, corrigido a
+     pedido do usuário.**
+
+     **Achado**: o handler de atalhos do PDV desktop (`pdv.tsx`) só
+     suspendia F2/F4/F6/F8/F9/F10 quando achava
+     `[role="dialog"][data-state="open"]` na tela. "Cancelar venda?"
+     (`sale-panel.tsx`) usa `role="alertdialog"` — categoria ARIA
+     diferente, nunca detectada pela checagem. Resultado: com a pergunta
+     "Cancelar esta venda?" aberta, um F10 por reflexo finalizava a
+     venda mesmo assim, por baixo da confirmação.
+
+     **Fix**: `dialogoAberto` agora cobre os dois casos — `[role="dialog"]
+     [data-state="open"]` (Radix: fica montado, só troca o atributo) OU
+     qualquer `[role="alertdialog"]` presente (o bloco do SalePanel é
+     condicional, só existe no DOM quando a confirmação está mesmo
+     aberta, sem precisar checar `data-state`).
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy
+     `2758b57` "Ready". Ao vivo: abrir "Cancelar venda?", disparar F10 —
+     confirmação continua na tela, carrinho intacto, nenhum toast de
+     venda concluída, sem navegação. Escape testado em seguida no mesmo
+     estado, sem regressão (fecha a confirmação, carrinho intacto).
+     Carrinho de teste cancelado ao final.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
