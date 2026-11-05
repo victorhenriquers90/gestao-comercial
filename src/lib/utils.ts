@@ -29,12 +29,6 @@ export function iso(value: unknown): string | null {
   return String(value);
 }
 
-export function dateOnly(value: unknown): string | null {
-  if (value == null) return null;
-  const s = String(value);
-  return s.slice(0, 10);
-}
-
 export function bool(value: unknown): boolean {
   return value === true || value === "t" || value === "true" || value === 1;
 }
