@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState } from "@/components/shared";
+import { EmptyState, QueryError } from "@/components/shared";
 import { formatNcm } from "@/lib/ncm";
 import { runAction } from "@/lib/run-action";
 import { applyNcmFn, listNcmPendingFn } from "@/lib/server/catalog";
@@ -31,6 +31,16 @@ export function NcmBulkPanel() {
   const dados = useQuery({ queryKey: ["ncm-pending"], queryFn: () => listNcmPendingFn() });
 
   if (dados.isPending) return <p className="text-sm text-muted-foreground">Carregando…</p>;
+  /*
+    Sem isto, uma consulta que falhou caia no MESMO branch de "nenhuma
+    pendencia" logo abaixo (`dados.data` fica undefined nos dois casos) --
+    a tela dizia "Todos os produtos tem NCM" quando na verdade a checagem
+    nem rodou, justamente o painel que serve pra avisar antes da emissao
+    de verdade (ver nfce-readiness.ts).
+  */
+  if (dados.isError) {
+    return <QueryError error={dados.error} fallback="Erro ao verificar a classificação fiscal." />;
+  }
   if (!dados.data?.categorias.length) {
     return (
       <EmptyState
@@ -107,9 +117,7 @@ export function NcmBulkPanel() {
                   void qc.invalidateQueries({ queryKey: ["nfce-readiness"] });
                 }}
               >
-                {ocupado === chave
-                  ? "Aplicando…"
-                  : `Aplicar a ${selecionados.length} produto(s)`}
+                {ocupado === chave ? "Aplicando…" : `Aplicar a ${selecionados.length} produto(s)`}
               </Button>
               <Button
                 variant="outline"
