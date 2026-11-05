@@ -7968,6 +7968,91 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      conferido depois de cada passo, sem single-tick de folga). Carrinho
      de teste cancelado.
 
+158. **Pedido do usuário: "revisão completa em todas as linhas de código,
+     atuando como analista de desenvolvimento sênior." Seis revisões em
+     paralelo (money/checkout, auth/tenant, estoque/relatórios/NFC-e,
+     telas de back-office, componentes/UI kit, infra auxiliar) sobre os
+     ~44 mil linhas de `src/`. Os três achados mais graves, confirmados
+     lendo o código diretamente (não só o relato do agente) e corrigidos
+     na hora, com autorização explícita do usuário.**
+
+     **1. CRÍTICO — Configurações podia apagar dados reais da empresa com
+     uma falha de rede comum.** `settings.isPending` era a única
+     checagem; sem `settings.error`, uma falha transitória (rede, cold
+     start do Neon) deixava o formulário de Empresa em branco, sem aviso
+     nenhum. QUALQUER botão Salvar da tela (Empresa, Modelo de impressão,
+     Impostos — todos usam o mesmo `companyPayload()`) grava um UPDATE
+     incondicional (`saveCompanyFn`, decisão documentada: form sempre
+     manda tudo, pra permitir limpar campo de propósito) que apagaria
+     CNPJ, telefone, endereço, IE etc. de verdade. **Fix**: mesmo padrão
+     `QueryError` que toda tela irmã já usa, logo depois do `isPending`.
+
+     **2. CRÍTICO — NFC-e emitia nota com ICMS zerado em Presumido/Lucro
+     Real.** O bloqueio "regime-icms" (`nfce-readiness.ts`, com comentário
+     já explicando o risco: "seria recusado no SEFAZ ou saída com ICMS
+     zerado") só rodava no painel consultivo. A emissão de verdade
+     (`emitNfceFn`/`emitNfceAfterCheckoutFn` → `loadEmitInput` →
+     `validateNfceReadiness`) nunca checava regime/CRT, só CNPJ/IE/
+     NCM/totais — e `buildNfcePayload` nunca monta base/alíquota/valor de
+     ICMS por item fora do Simples/MEI (só CSOSN "102"). **Fix**: mesmo
+     bloqueio dentro de `validateNfceReadiness`, a função que a emissão
+     de verdade de fato chama. 2 testes novos em `nfce.test.ts` (bloqueia
+     presumido/real, libera simples/mei) — não deu pra testar ao vivo:
+     emissão está desligada no piloto, sem `FOCUS_NFE_TOKEN` configurado
+     (mesma limitação já registrada em outro bug de NFC-e desta base).
+
+     **3. ALTO — `getCustomerFn` vazava vendas/financeiro/CRM pro papel
+     `pdv`.** `customers.read` sozinho liberava histórico de venda, mix
+     comprado, TODO título a receber e notas/tarefas de CRM — inclusive
+     pro papel `pdv`, que o próprio HANDOFF descreve como "sem vendas,
+     sem financeiro, nem no servidor". `pdv` tem `customers.read`
+     (precisa achar cliente no checkout) e por isso "Clientes" aparece no
+     menu dele (`nav.ts` usa o mesmo perm) — não era só uma chamada
+     direta ao servidor, o `CustomerPanel` renderizava isto pro operador
+     de PDV na tela normal, navegando pelo menu. **Fix**: cada seção
+     passou a usar o MESMO perm que já guarda a tela equivalente (Vendas
+     = `sales.read`, Financeiro = `finance.read`, CRM = `crm.write`) —
+     sem a permissão, nem consulta ao banco: array vazio, não "busca e
+     filtra depois". `customer_notes`/`crm_tasks` ganharam o filtro de
+     `company_id` que faltava (seguro hoje só por `customer_id` já
+     validado contra o tenant, mas inconsistente com o resto da mesma
+     função — corrigido de qualquer forma). `CustomerPanel` esconde as
+     ABAS que a permissão não cobre, em vez de mostrar "nenhuma
+     venda"/"nenhum título" pra quem só não tem acesso — isso pareceria
+     cliente sem histórico, não acesso negado.
+
+     **Verificação**: `typecheck`/`lint` limpos; `test` 536 (534 + 2
+     novos de NFC-e). Deploy `8663c18` "Ready". Ao vivo (papel admin,
+     sem regressão): `ZZTESTE Cliente QA` continua mostrando as 5 abas
+     com dado real (Compras: vendas nº 38/37/35/32; Mix: Calça×3 +
+     Camiseta×1; Financeiro: 3 crediários; CRM: tarefa e nota já
+     cadastradas) — cliques nas abas via sequência real de ponteiro
+     (Radix Tabs não reage a `.click()` puro, mesma observação de antes
+     nesta sessão). **Não verificado ao vivo**: o BLOQUEIO em si pro
+     papel `pdv` — exigiria um login de teste com esse papel, e criar
+     login/credencial por conta própria é limite que não cruzo sozinho
+     (ver instrução permanente desta conta); a garantia aqui vem de ler
+     o código (`can(tenant.role, perm)`, mesmo padrão já usado em toda
+     tela do app) e do `typecheck` limpo, não de clicar a tela logado
+     como `pdv`. Se o usuário quiser esse teste ao vivo, precisa criar
+     (ou indicar) um usuário com papel `pdv`/`caixa` de teste.
+
+     3 commits (um por achado): `68726ef`, `1efbc34`, `8663c18`.
+
+     **Outros achados da revisão, não corrigidos ainda (relatados ao
+     usuário, aguardando prioridade)**: trava `FOR UPDATE` sem escopo em
+     `loadPendingCommissions` (paga 1 comissão trava TODAS as pendentes
+     da empresa); filtro de vendedor (`sellerId`, diferente de `storeId`)
+     nunca se corrige ao trocar de empresa no mesmo navegador — Dashboard
+     e Relatórios ficam silenciosamente vazios; classe Tailwind sem
+     espaço (`dark:bg-black/60data-[state=open]:animate-in`) tira a
+     animação de abertura de TODO `<Dialog>` do app; `adjustStockFn`
+     ignora "permitir estoque negativo" fora do PDV; busca global (Ctrl
+     K) sem guarda de corrida; `ConfirmBar` sem semântica de diálogo
+     (sem Escape, sem focus trap); e mais uma dúzia de itens médios/
+     baixos — lista completa na resposta ao usuário desta conversa, não
+     duplicada aqui por brevidade.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
