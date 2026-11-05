@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConfirmBar, PageHeader, PageSkeleton } from "@/components/shared";
+import { ConfirmBar, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { can, ROLE_LABELS, ROLES } from "@/lib/permissions";
 import {
   closeStoreFn,
@@ -33,7 +33,15 @@ import { parseCnpj, maskCnpj } from "@/lib/document";
 import { clampIss, ISS_DEFAULT } from "@/lib/tax";
 import { isTaxRegime, TAX_REGIME_LABELS, type TaxRegime } from "@/lib/nfce";
 
-const CONFIG_TABS = ["empresa", "lojas", "equipe", "print", "impostos", "cartoes", "audit"] as const;
+const CONFIG_TABS = [
+  "empresa",
+  "lojas",
+  "equipe",
+  "print",
+  "impostos",
+  "cartoes",
+  "audit",
+] as const;
 type ConfigTab = (typeof CONFIG_TABS)[number];
 
 function isConfigTab(v: string | null | undefined): v is ConfigTab {
@@ -148,7 +156,12 @@ function ConfigPage() {
    * sai achando que a NFC-e ficou configurada quando nada foi salvo. Sem
    * trava, os cliques repetidos ainda criavam lojas e convites duplicados.
    */
-  async function salvar(chave: string, acao: () => Promise<unknown>, sucesso: string, depois?: () => void) {
+  async function salvar(
+    chave: string,
+    acao: () => Promise<unknown>,
+    sucesso: string,
+    depois?: () => void,
+  ) {
     if (salvando) return;
     setSalvando(chave);
     try {
@@ -223,10 +236,23 @@ function ConfigPage() {
   }
 
   if (settings.isPending) return <PageSkeleton />;
+  /*
+    Sem isto, uma falha de carregamento (rede instavel, cold start do Neon)
+    deixava o formulario inteiro no estado inicial em branco, sem nenhum
+    aviso -- e salvar DALI em diante grava um UPDATE incondicional (ver
+    saveCompanyFn) que apaga CNPJ, telefone, endereco, IE etc. de verdade,
+    mesmo clicando em "Salvar" de outra aba (modelo de impressao, impostos),
+    todas usando o mesmo companyPayload(). Mesmo padrao de toda tela irma.
+  */
+  if (settings.error)
+    return <QueryError error={settings.error} fallback="Erro ao carregar as configurações." />;
 
   return (
     <div>
-      <PageHeader title="Configurações" description="Empresa, lojas, equipe, ISS, impressão e auditoria." />
+      <PageHeader
+        title="Configurações"
+        description="Empresa, lojas, equipe, ISS, impressão e auditoria."
+      />
       {/* Fora das abas de proposito: quando o backup falha, isso precisa ser
           visto por quem abriu a tela, sem depender de clicar na aba certa. */}
       {podeConfigurar ? <BackupStatusCard /> : null}
@@ -253,10 +279,16 @@ function ConfigPage() {
               hint="Quadrado. Envie um arquivo ou gere a marca com IA."
             />
             <Field label="Razão / nome">
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
             </Field>
             <Field label="Nome fantasia">
-              <Input value={form.tradeName} onChange={(e) => setForm({ ...form, tradeName: e.target.value })} />
+              <Input
+                value={form.tradeName}
+                onChange={(e) => setForm({ ...form, tradeName: e.target.value })}
+              />
             </Field>
             <Field label="CNPJ">
               <Input
@@ -285,24 +317,42 @@ function ConfigPage() {
             </div>
             <div className="field-grid-2 gap-block">
               <Field label="E-mail">
-                <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <Input
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
               </Field>
               <Field label="Telefone">
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
               </Field>
             </div>
             <Field label="Endereço">
-              <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              <Input
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+              />
             </Field>
             <div className="field-grid-3 gap-block">
               <Field label="Cidade">
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                <Input
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                />
               </Field>
               <Field label="UF">
-                <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+                <Input
+                  value={form.state}
+                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                />
               </Field>
               <Field label="CEP">
-                <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
+                <Input
+                  value={form.zip}
+                  onChange={(e) => setForm({ ...form, zip: e.target.value })}
+                />
               </Field>
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -357,14 +407,18 @@ function ConfigPage() {
                           <Field label="Telefone">
                             <Input
                               value={storeForm.phone}
-                              onChange={(e) => setStoreForm({ ...storeForm, phone: e.target.value })}
+                              onChange={(e) =>
+                                setStoreForm({ ...storeForm, phone: e.target.value })
+                              }
                             />
                           </Field>
                         </div>
                         <Field label="Endereço">
                           <Input
                             value={storeForm.address}
-                            onChange={(e) => setStoreForm({ ...storeForm, address: e.target.value })}
+                            onChange={(e) =>
+                              setStoreForm({ ...storeForm, address: e.target.value })
+                            }
                           />
                         </Field>
                         <div className="field-grid-3 gap-block">
@@ -377,7 +431,9 @@ function ConfigPage() {
                           <Field label="UF">
                             <Input
                               value={storeForm.state}
-                              onChange={(e) => setStoreForm({ ...storeForm, state: e.target.value })}
+                              onChange={(e) =>
+                                setStoreForm({ ...storeForm, state: e.target.value })
+                              }
                             />
                           </Field>
                           <Field label="CEP">
@@ -442,7 +498,11 @@ function ConfigPage() {
                             size="sm"
                             variant="ghost"
                             disabled={unicaLoja}
-                            title={unicaLoja ? "A empresa precisa de pelo menos uma loja ativa." : undefined}
+                            title={
+                              unicaLoja
+                                ? "A empresa precisa de pelo menos uma loja ativa."
+                                : undefined
+                            }
                             onClick={() => setFechandoLoja({ id, name: String(s.name ?? "") })}
                           >
                             Fechar loja
@@ -464,11 +524,16 @@ function ConfigPage() {
                   toast.error("Informe o nome da loja.");
                   return;
                 }
-                void salvar("loja", () => saveStoreFn({ data: { name: storeName } }), "Loja criada.", () => {
-                  setStoreName("");
-                  void qc.invalidateQueries({ queryKey: ["settings"] });
-                  void qc.invalidateQueries({ queryKey: ["tenant"] });
-                });
+                void salvar(
+                  "loja",
+                  () => saveStoreFn({ data: { name: storeName } }),
+                  "Loja criada.",
+                  () => {
+                    setStoreName("");
+                    void qc.invalidateQueries({ queryKey: ["settings"] });
+                    void qc.invalidateQueries({ queryKey: ["tenant"] });
+                  },
+                );
               }}
             >
               Adicionar loja
@@ -510,7 +575,9 @@ function ConfigPage() {
                           toast.success("Papel atualizado.");
                           void qc.invalidateQueries({ queryKey: ["settings"] });
                         })
-                        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                        .catch((err: unknown) =>
+                          toast.error(err instanceof Error ? err.message : "Falha"),
+                        );
                     }}
                   >
                     {ROLES.map((r) => (
@@ -528,18 +595,26 @@ function ConfigPage() {
                       const storeId = e.target.value ? Number(e.target.value) : null;
                       void updateMemberFn({ data: { id: m.id, storeId } })
                         .then(() => {
-                          toast.success(storeId == null ? "Acesso liberado para todas as lojas." : "Loja atualizada.");
+                          toast.success(
+                            storeId == null
+                              ? "Acesso liberado para todas as lojas."
+                              : "Loja atualizada.",
+                          );
                           void qc.invalidateQueries({ queryKey: ["settings"] });
                         })
-                        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                        .catch((err: unknown) =>
+                          toast.error(err instanceof Error ? err.message : "Falha"),
+                        );
                     }}
                   >
                     <option value="">Todas as lojas</option>
-                    {((settings.data?.stores as Record<string, unknown>[] | undefined) ?? []).map((s) => (
-                      <option key={Number(s.id)} value={Number(s.id)}>
-                        {String(s.name)}
-                      </option>
-                    ))}
+                    {((settings.data?.stores as Record<string, unknown>[] | undefined) ?? []).map(
+                      (s) => (
+                        <option key={Number(s.id)} value={Number(s.id)}>
+                          {String(s.name)}
+                        </option>
+                      ),
+                    )}
                   </Select>
                   {papel && can(papel, "users.write") && m.user_id !== tenant.data?.userId ? (
                     <Button
@@ -555,7 +630,9 @@ function ConfigPage() {
                             toast.success(`${m.name || m.email || "Usuário"} reativado.`);
                             void qc.invalidateQueries({ queryKey: ["settings"] });
                           })
-                          .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Falha"));
+                          .catch((err: unknown) =>
+                            toast.error(err instanceof Error ? err.message : "Falha"),
+                          );
                       }}
                     >
                       {m.is_active ? "Desativar" : "Reativar"}
@@ -566,8 +643,14 @@ function ConfigPage() {
             ))}
             {papel && can(papel, "users.write") ? (
               <InvitePanel
-                convites={(settings.data?.invites ?? []) as unknown as Parameters<typeof InvitePanel>[0]["convites"]}
-                stores={((settings.data?.stores as Record<string, unknown>[] | undefined) ?? []).map((s) => ({
+                convites={
+                  (settings.data?.invites ?? []) as unknown as Parameters<
+                    typeof InvitePanel
+                  >[0]["convites"]
+                }
+                stores={(
+                  (settings.data?.stores as Record<string, unknown>[] | undefined) ?? []
+                ).map((s) => ({
                   id: Number(s.id),
                   name: String(s.name),
                 }))}
@@ -578,18 +661,31 @@ function ConfigPage() {
         <TabsContent value="print">
           <Card className="max-w-xl space-y-block p-5">
             <Field label="Cabeçalho do comprovante">
-              <Input value={form.printHeader} onChange={(e) => setForm({ ...form, printHeader: e.target.value })} />
+              <Input
+                value={form.printHeader}
+                onChange={(e) => setForm({ ...form, printHeader: e.target.value })}
+              />
             </Field>
             <Field label="Rodapé">
-              <Input value={form.printFooter} onChange={(e) => setForm({ ...form, printFooter: e.target.value })} />
+              <Input
+                value={form.printFooter}
+                onChange={(e) => setForm({ ...form, printFooter: e.target.value })}
+              />
             </Field>
             <Field label="Mensagem da nota">
-              <Textarea value={form.receiptMessage} onChange={(e) => setForm({ ...form, receiptMessage: e.target.value })} />
+              <Textarea
+                value={form.receiptMessage}
+                onChange={(e) => setForm({ ...form, receiptMessage: e.target.value })}
+              />
             </Field>
             <Button
               disabled={salvando === "impressao"}
               onClick={() =>
-                void salvar("impressao", () => saveCompanyFn({ data: companyPayload() }), "Modelo de impressão salvo.")
+                void salvar(
+                  "impressao",
+                  () => saveCompanyFn({ data: companyPayload() }),
+                  "Modelo de impressão salvo.",
+                )
               }
             >
               Salvar impressão
@@ -619,7 +715,8 @@ function ConfigPage() {
               {nfceStatus.data?.available ? (
                 <>
                   Configurada, ambiente{" "}
-                  <strong>{nfceStatus.data.env === "producao" ? "produção" : "homologação"}</strong>.
+                  <strong>{nfceStatus.data.env === "producao" ? "produção" : "homologação"}</strong>
+                  .
                 </>
               ) : (
                 "Nenhuma credencial configurada no servidor (FOCUS_NFE_TOKEN) — a emissão fica indisponível até isso ser feito."
@@ -668,7 +765,11 @@ function ConfigPage() {
                 </Select>
               </Field>
               <Field label="De" className="w-36">
-                <Input type="date" value={auditFrom} onChange={(e) => setAuditFrom(e.target.value)} />
+                <Input
+                  type="date"
+                  value={auditFrom}
+                  onChange={(e) => setAuditFrom(e.target.value)}
+                />
               </Field>
               <Field label="Até" className="w-36">
                 <Input type="date" value={auditTo} onChange={(e) => setAuditTo(e.target.value)} />
@@ -702,21 +803,32 @@ function ConfigPage() {
               {auditRows.map((a) => {
                 const mudancas = auditChanges(a);
                 return (
-                  <div key={a.id} className="flex justify-between gap-3 border-b border-border py-2 last:border-0">
+                  <div
+                    key={a.id}
+                    className="flex justify-between gap-3 border-b border-border py-2 last:border-0"
+                  >
                     <span>
                       {auditTitle(a)}
                       {mudancas.length > 0 && (
-                        <span className="block text-xs text-muted-foreground">{mudancas.join(" · ")}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {mudancas.join(" · ")}
+                        </span>
                       )}
                     </span>
-                    <span className="shrink-0 text-muted-foreground">{formatDateTime(a.created_at)}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatDateTime(a.created_at)}
+                    </span>
                   </div>
                 );
               })}
             </div>
             {audit.hasNextPage ? (
               <div className="mt-3 flex justify-center">
-                <Button variant="outline" disabled={audit.isFetchingNextPage} onClick={() => audit.fetchNextPage()}>
+                <Button
+                  variant="outline"
+                  disabled={audit.isFetchingNextPage}
+                  onClick={() => audit.fetchNextPage()}
+                >
                   {audit.isFetchingNextPage ? "Carregando..." : "Carregar mais"}
                 </Button>
               </div>
@@ -730,8 +842,9 @@ function ConfigPage() {
             <DialogTitle>Fechar loja</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Fechar “{fechandoLoja?.name}”? Ela some do seletor de loja e de todo formulário novo (PDV, Compras,
-            Metas...), mas vendas, estoque e caixas antigos continuam no histórico normalmente.
+            Fechar “{fechandoLoja?.name}”? Ela some do seletor de loja e de todo formulário novo
+            (PDV, Compras, Metas...), mas vendas, estoque e caixas antigos continuam no histórico
+            normalmente.
           </p>
           <div className="mt-4 flex gap-2">
             <Button
