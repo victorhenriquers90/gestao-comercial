@@ -171,7 +171,9 @@ export function usePdvSale() {
     if (!activeStore) return;
     if (lojaRef.current != null && lojaRef.current !== activeStore && cart.length > 0) {
       novaVenda();
-      toast.error("Loja trocada: a venda em andamento foi cancelada — preço e estoque são por loja.");
+      toast.error(
+        "Loja trocada: a venda em andamento foi cancelada — preço e estoque são por loja.",
+      );
     }
     lojaRef.current = activeStore;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- so deve disparar quando a LOJA muda; cart/novaVenda sao lidos no instante, nao devem re-rodar o efeito sozinhos
@@ -383,7 +385,9 @@ export function usePdvSale() {
    * (lineDiscountWithExtra).
    */
   function setLineDiscount(variantId: number, amount: number) {
-    setCart((c) => c.map((x) => (x.variantId === variantId ? { ...x, manualDiscount: amount } : x)));
+    setCart((c) =>
+      c.map((x) => (x.variantId === variantId ? { ...x, manualDiscount: amount } : x)),
+    );
   }
 
   function remove(variantId: number) {
@@ -604,7 +608,18 @@ export function usePdvSale() {
       });
     }
     if (pays.length === 0) {
-      setPayOpen(true);
+      /*
+        openPay(), nao setPayOpen(true) puro: os OUTROS retornos deste
+        bloco (valor/recebido invalido, pagamento incompleto) preservam o
+        que o operador ja digitou de proposito -- auto-preencher ali
+        apagaria o erro que ele precisa corrigir. Mas aqui NADA foi
+        digitado ainda (nenhuma forma de pagamento com valor), e e
+        justamente o caso que openPay() resolve: F8/"Informar" sempre
+        abrem com Dinheiro ja no valor exato da venda. Um F10 por reflexo
+        sem nunca ter aberto o pagamento caia num formulario vazio em vez
+        dessa mesma conveniencia.
+      */
+      openPay();
       toast.error("Informe a forma de pagamento antes de finalizar.");
       return;
     }
