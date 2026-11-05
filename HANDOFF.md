@@ -8314,6 +8314,61 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      Dado de teste limpo ao final: venda cancelada, parcela extra fora
      da carteira, estoque de volta a 0.
 
+164. **Continuação do teste ao vivo do PDV (itens 161-163): o resto das
+     telas/fluxos que ainda não tinham sido exercitados ao vivo. Um achado
+     real (F10 sem pagamento abria o diálogo vazio em vez de pré-preenchido),
+     corrigido; um texto desatualizado no HANDOFF, corrigido.**
+
+     **Testado sem problema**:
+     - Estoque insuficiente bloqueia no F10 (client-side, antes de abrir
+       qualquer diálogo), com a mensagem certa, nomeando o produto.
+     - Troco calculado certo em Dinheiro (recebido − total).
+     - Débito/Crédito mostram Bandeira + NSU/Autorização; Crédito soma
+       também Parcelas. PIX só Valor.
+     - Pagamento incompleto: o próprio botão "Finalizar venda" vira
+       "Faltam R$ X,XX" e fica desabilitado — bloqueio pró-ativo, não só
+       recusa depois do clique.
+     - `HeldSalesDialog`: "Descartar" pede confirmação inline
+       ("Descartar? Sim/Não") antes de remover; lista volta ao estado
+       vazio certo depois.
+     - Trocar de loja com carrinho não-vazio cancela a venda com o toast
+       documentado; com carrinho vazio não faz nada (sem toast à toa).
+     - "Ver última venda" (SaleBar) reabre o recibo certo depois de
+       finalizar.
+
+     **Achado — F10 sem NENHUM pagamento informado abria o diálogo
+     vazio**: `finish()` tem 4 pontos que reabrem o pagamento numa
+     recusa, todos com `setPayOpen(true)` puro. Em 3 deles (valor
+     inválido, recebido inválido, pagamento incompleto) isso é CERTO — o
+     operador já digitou algo, preencher por cima apagaria o erro que
+     precisa corrigir. Mas "nenhuma forma de pagamento com valor" é
+     exatamente o caso que `openPay()` existe pra resolver (mesma
+     conveniência de F8/"Informar": Dinheiro já no valor exato da
+     venda) — um F10 por reflexo sem nunca ter aberto o pagamento caía
+     num formulário vazio em vez disso. **Fix**: só este ponto trocado
+     pra `openPay()`; os outros três continuam preservando o que foi
+     digitado. `src/components/pdv/use-pdv-sale.ts`.
+
+     **Achado — "Domínio rápido" descrevia o F10 antigo**: o texto dizia
+     "sem pagamento informado = dinheiro, valor exato" — comportamento
+     já trocado antes nesta sessão (forma de pagamento é obrigatória,
+     decisão do dono da loja), só o HANDOFF que ficou pra trás.
+     Corrigido, e aproveitado pra registrar também o atalho `%` (item),
+     o limite de crédito na venda inteira e a troca de loja cancelando
+     o carrinho — coisas já verdadeiras no código, só não documentadas
+     ali.
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy
+     `d48476a` "Ready". Ao vivo: reproduzido o bug (F10 sem F8 antes →
+     Recebido R$0,00) e confirmado o fix no mesmo fluxo (F10 sem F8
+     antes → Recebido R$50,00, Falta R$0,00, igual ao F8 direto) —
+     finalizei a venda de verdade pra garantir o caminho inteiro, e
+     cancelei depois. Estoque de `ZZTESTE Camiseta QA` (ajustado +5 pra
+     este teste) revertido a 0 ao final.
+
+     2 commits: `478140a` (doc do F10 antigo e os outros achados sem
+     código), `d48476a` (fix do pré-preenchimento em si).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
