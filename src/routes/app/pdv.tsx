@@ -108,7 +108,12 @@ function PdvPage() {
     teclado da tela a cada dialogo fechado.
   */
   const algumDialogo =
-    custOpen || discOpen || lineDiscountOpen || payOpen || heldOpen || (receiptOpen && lastSale != null);
+    custOpen ||
+    discOpen ||
+    lineDiscountOpen ||
+    payOpen ||
+    heldOpen ||
+    (receiptOpen && lastSale != null);
   const tinhaDialogo = useRef(false);
   useEffect(() => {
     if (tinhaDialogo.current && !algumDialogo) searchRef.current?.focus();
@@ -149,7 +154,17 @@ function PdvPage() {
       // de acao ficam suspensos enquanto houver dialogo aberto. Sem isto o
       // handler escuta no window inteiro e dispara POR TRAS do modal: um F10
       // por reflexo FINALIZAVA a venda com o pedido de CPF aberto.
-      const dialogoAberto = document.querySelector('[role="dialog"][data-state="open"]') !== null;
+      //
+      // `[role="alertdialog"]` sem `[data-state="open"]` de proposito: e o
+      // "Cancelar venda?" do SalePanel (sale-panel.tsx), um <div> condicional
+      // que so existe no DOM enquanto a confirmacao esta mesmo aberta (ao
+      // contrario de um Dialog/AlertDialog do Radix, que fica montado e so
+      // troca `data-state`). Sem isto, F10 continuava funcionando por baixo
+      // da pergunta "Cancelar esta venda?" -- um reflexo finalizava a venda
+      // que o operador estava no meio de desistir.
+      const dialogoAberto =
+        document.querySelector('[role="dialog"][data-state="open"]') !== null ||
+        document.querySelector('[role="alertdialog"]') !== null;
       if (dialogoAberto && e.key !== "Escape") return;
       // Tecla segurada repete a cada ~30ms: F10 um pouco mais longo
       // finalizava a mesma venda varias vezes antes da primeira voltar.
@@ -326,7 +341,8 @@ function PdvPage() {
         onOpenChange={setLineDiscountOpen}
         subtotal={
           lineDiscountTarget
-            ? lineDiscountTarget.sellPrice * lineDiscountTarget.qty - lineDiscountTarget.promoDiscount
+            ? lineDiscountTarget.sellPrice * lineDiscountTarget.qty -
+              lineDiscountTarget.promoDiscount
             : 0
         }
         limitPct={tenantDiscountLimit}
