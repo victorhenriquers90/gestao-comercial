@@ -9,7 +9,13 @@ import { useSelection } from "@/hooks/use-selection";
 import { PAYMENT_LABELS, type PaymentMethod } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
-import { paymentStatus, summarizeSale, valorDigitado } from "@/lib/pdv-sale";
+import {
+  lineDiscountWithExtra,
+  operatorPctOf,
+  paymentStatus,
+  summarizeSale,
+  valorDigitado,
+} from "@/lib/pdv-sale";
 import { bestPromo } from "@/lib/promo";
 import { runAction } from "@/lib/run-action";
 import {
@@ -194,20 +200,33 @@ export function usePdvSale() {
       sellPrice,
     );
     const promoDiscount = hit?.discount ?? 0;
-    /*
-      Mesma regra do checkoutFn (commerce.ts): manual e promocao NAO somam,
-      vale o maior -- um operador que decide dar mais desconto numa peca ja
-      promocionada substitui a promocao, nao empilha em cima dela. Sem o
-      Math.min no bruto da linha, um manual digitado maior que o proprio
-      preco deixaria a linha com total negativo na TELA (o servidor ja
-      limitava isto, mas so descobria depois do F10).
-    */
     const lineGross = Number((sellPrice * l.qty).toFixed(2));
-    const lineDiscount = Math.min(lineGross, Math.max(l.manualDiscount ?? 0, promoDiscount));
+    const lineDiscount = lineDiscountWithExtra(lineGross, promoDiscount, l.manualDiscount ?? 0);
     return { ...l, sellPrice, lineDiscount, promoDiscount, promoName: hit?.name ?? null };
   });
   const summary = summarizeSale(priced, headerDisc);
   const { subtotal, total } = summary;
+  /** O que o F6 abate: subtotal ja sem os descontos por item. */
+  const headerBase = subtotal - (summary.manual - headerDisc);
+  /** % do operador na venda inteira se o cabecalho passar a ser `value`. */
+  const operatorPctWithHeader = (value: number) => operatorPctOf(priced, value);
+  /** % do operador na venda inteira se o extra da linha passar a ser `extra`. */
+  const operatorPctWithLine = (variantId: number, extra: number) =>
+    operatorPctOf(
+      priced.map((l) =>
+        l.variantId === variantId
+          ? {
+              ...l,
+              lineDiscount: lineDiscountWithExtra(
+                Number((l.sellPrice * l.qty).toFixed(2)),
+                l.promoDiscount,
+                extra,
+              ),
+            }
+          : l,
+      ),
+      headerDisc,
+    );
   const discount = headerDisc;
   const pay = paymentStatus(payments, total);
   const primaryPay = payments.reduce(
@@ -360,8 +379,8 @@ export function usePdvSale() {
   /**
    * Desconto manual por linha -- mesma ideia do F6, so que escopo item (ex.:
    * uma peça com defeito leve, sem precisar descontar o carrinho inteiro).
-   * `priced` acima já pisa no de promoção quando este é maior (Math.max,
-   * igual ao checkoutFn) -- aqui só grava o que o operador digitou.
+   * `amount` é o EXTRA por cima da promoção; `priced` soma os dois
+   * (lineDiscountWithExtra).
    */
   function setLineDiscount(variantId: number, amount: number) {
     setCart((c) => c.map((x) => (x.variantId === variantId ? { ...x, manualDiscount: amount } : x)));
@@ -764,6 +783,9 @@ export function usePdvSale() {
     discount,
     headerDisc,
     setHeaderDisc,
+    headerBase,
+    operatorPctWithHeader,
+    operatorPctWithLine,
 
     payments,
     setPayments,

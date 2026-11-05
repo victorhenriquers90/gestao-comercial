@@ -1,3 +1,4 @@
+import { operatorDiscountPct } from "./discount.ts";
 import { parseMoneyInput } from "./money-input.ts";
 
 /*
@@ -19,7 +20,7 @@ export function valorDigitado(texto: string): number {
 export type SaleLineLike = {
   qty: number;
   sellPrice: number;
-  /** Desconto EFETIVO da linha: o maior entre promoção e manual (nunca soma os dois). */
+  /** Desconto EFETIVO da linha: promoção + extra manual, até o bruto (ver lineDiscountWithExtra). */
   lineDiscount: number;
   /**
    * Só a parte de promoção, pra separar de um desconto manual por item
@@ -71,6 +72,39 @@ export function summarizeSale(lines: readonly SaleLineLike[], headerDiscount: nu
     pieces,
     lines: lines.length,
   };
+}
+
+/**
+ * Desconto efetivo da linha: a promoção MAIS o extra que o operador deu por
+ * cima dela, nunca passando do bruto. O extra é o que se digita no diálogo
+ * do item, a partir do preço já promocional que aparece no carrinho.
+ *
+ * O checkoutFn faz `max(item.discount, promoção)` -- como o PDV manda
+ * promoção + extra, o max devolve esse mesmo valor e só o extra conta
+ * contra o limite do papel. Guardar o EXTRA (e não promoção + extra) na
+ * linha importa: a promoção muda com a quantidade ("leve 3"), e o extra
+ * do operador tem que continuar por cima dela.
+ */
+export function lineDiscountWithExtra(lineGross: number, promo: number, extra: number): number {
+  return Math.min(lineGross, promo + Math.max(0, extra));
+}
+
+/**
+ * Percentual de desconto que conta contra o limite do papel, na venda
+ * INTEIRA -- a mesma conta do checkoutFn (`operatorDiscountPct`). Os
+ * diálogos de desconto (cabeçalho e item) checam com isto, não com o
+ * percentual só do escopo deles: checar cada um sozinho deixava passar
+ * 10% no item + 10% no cabeçalho num limite de 10% (recusado só no F10) e
+ * barrava 50% num item barato que mal mexe no total.
+ */
+export function operatorPctOf(lines: readonly SaleLineLike[], headerDiscount: number): number {
+  const s = summarizeSale(lines, headerDiscount);
+  const lineManual = s.manual - headerDiscount;
+  return operatorDiscountPct({
+    subtotal: s.subtotal - lineManual,
+    lineDiscount: lineManual,
+    headerDiscount,
+  });
 }
 
 export type PaymentLike = { method: string; amount: string; received: string };

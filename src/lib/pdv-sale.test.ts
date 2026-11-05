@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseQuantity, paymentStatus, stepQty, summarizeSale, valorDigitado } from "./pdv-sale.ts";
+import {
+  lineDiscountWithExtra,
+  operatorPctOf,
+  parseQuantity,
+  paymentStatus,
+  stepQty,
+  summarizeSale,
+  valorDigitado,
+} from "./pdv-sale.ts";
 
 describe("summarizeSale", () => {
   const linhas = [
@@ -50,20 +58,16 @@ describe("summarizeSale", () => {
     assert.equal(s.total, 85);
   });
 
-  it("manual por linha MAIOR que a promocao: so a diferenca conta pro manual (nao soma os dois)", () => {
-    // Promocao ja tirava R$10; operador decidiu dar R$18 (substitui, nao
-    // soma) -- igual ao checkoutFn (Math.max, nao +), que e quem de fato
-    // grava a venda. So os R$8 a mais contam pro limite do papel.
+  it("linha com promocao e extra: so o que passa da promocao conta como manual", () => {
+    // Promocao tira R$10, o efetivo da linha e R$18 (lineDiscountWithExtra
+    // com extra de R$8). So os R$8 contam pro limite do papel.
     const s = summarizeSale([{ qty: 1, sellPrice: 100, lineDiscount: 18, promoDiscount: 10 }], 0);
     assert.equal(s.promo, 10);
     assert.equal(s.manual, 8);
     assert.equal(s.total, 82);
   });
 
-  it("manual por linha MENOR que a promocao vigente: promocao continua valendo, manual nao soma nada", () => {
-    // O operador "tentou" dar R$5 numa linha que a promocao ja reduz em
-    // R$10 -- o maior dos dois e o que vale (lineDiscount já vem assim de
-    // quem monta a linha), entao o manual efetivo e zero.
+  it("linha so com promocao (extra zero): manual zero", () => {
     const s = summarizeSale([{ qty: 1, sellPrice: 100, lineDiscount: 10, promoDiscount: 10 }], 0);
     assert.equal(s.promo, 10);
     assert.equal(s.manual, 0);
@@ -80,6 +84,57 @@ describe("summarizeSale", () => {
     assert.equal(s.manual, 25);
     assert.equal(s.promo, 0);
     assert.equal(s.total, 125);
+  });
+});
+
+describe("lineDiscountWithExtra", () => {
+  it("extra do operador soma POR CIMA da promocao", () => {
+    // R$100 com promocao de R$10: o operador ve R$90 e da mais R$5 -> R$85.
+    assert.equal(lineDiscountWithExtra(100, 10, 5), 15);
+  });
+
+  it("sem promocao o extra e o desconto inteiro", () => {
+    assert.equal(lineDiscountWithExtra(100, 0, 30), 30);
+  });
+
+  it("nunca passa do bruto da linha", () => {
+    assert.equal(lineDiscountWithExtra(100, 10, 500), 100);
+  });
+
+  it("extra negativo nao devolve promocao", () => {
+    assert.equal(lineDiscountWithExtra(100, 10, -5), 10);
+  });
+});
+
+describe("operatorPctOf -- mesma conta do limite no checkoutFn", () => {
+  const item = (sellPrice: number, promo: number, extra: number, qty = 1) => ({
+    qty,
+    sellPrice,
+    promoDiscount: promo,
+    lineDiscount: lineDiscountWithExtra(sellPrice * qty, promo, extra),
+  });
+
+  it("so cabecalho: desconto sobre o subtotal", () => {
+    assert.equal(operatorPctOf([item(100, 0, 0)], 10), 10);
+  });
+
+  it("item + cabecalho SOMAM -- 10% + 10% passa do limite de 10%", () => {
+    // R$10 no item, R$9 no cabecalho (10% do que sobrou): 19% da venda.
+    assert.equal(operatorPctOf([item(100, 0, 10)], 9), 19);
+  });
+
+  it("50% num item barato e pouco na venda inteira", () => {
+    const pct = operatorPctOf([item(100, 0, 50), item(900, 0, 0)], 0);
+    assert.equal(pct, 5);
+  });
+
+  it("promocao nao consome limite, so o extra -- base e o preco ja promocional", () => {
+    assert.equal(operatorPctOf([item(100, 10, 0)], 0), 0);
+    assert.equal(operatorPctOf([item(100, 10, 9)], 0), 10);
+  });
+
+  it("venda sem base com desconto e infinito, igual ao servidor", () => {
+    assert.equal(operatorPctOf([item(100, 100, 0)], 5), Infinity);
   });
 });
 

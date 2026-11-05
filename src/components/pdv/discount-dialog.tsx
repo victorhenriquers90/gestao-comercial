@@ -3,16 +3,22 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatPct } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Base do desconto: subtotal ja com as promocoes (venda) ou bruto da linha (item). */
+  /** Base do desconto: o que o F6 abate (venda) ou o total da linha ja com promocao (item). */
   subtotal: number;
   limitPct: number;
+  /**
+   * % do operador na venda INTEIRA se `value` for aplicado -- a mesma conta
+   * do limite no checkoutFn (ver operatorPctOf). Nao da pra checar so o %
+   * do proprio escopo: o servidor soma item e cabecalho.
+   */
+  operatorPct: (value: number) => number;
   onApply: (value: number) => void;
   /** Titulo do dialogo. Default: "Desconto na venda" (F6, escopo cabecalho). */
   title?: string;
@@ -22,6 +28,8 @@ type Props = {
   initialValue?: number;
   /** Com desconto ja concedido (initialValue > 0), mostra "Remover desconto" junto do botao principal. */
   onRemove?: () => void;
+  /** Linha extra abaixo do limite (ex.: item ja em promocao). */
+  note?: string;
 };
 
 /**
@@ -47,14 +55,20 @@ export function DiscountDialog(p: Props) {
   const n = parseMoneyInput(input);
   const valido = input.trim() !== "" && Number.isFinite(n) && n >= 0;
   const valor = !valido ? 0 : mode === "pct" ? Number(((p.subtotal * n) / 100).toFixed(2)) : n;
-  const pct = mode === "pct" ? n : p.subtotal ? (n / p.subtotal) * 100 : 0;
-  const acimaDoLimite = valido && pct > p.limitPct + 0.05;
+  const acimaDoLimite = valido && p.operatorPct(valor) > p.limitPct + 0.05;
+  // Desconto do operador no RESTO da venda (este escopo zerado): e o que
+  // explica um 5% recusado num limite de 10%.
+  const outros = p.operatorPct(0);
+  const motivo =
+    outros > 0.005
+      ? `Somado aos outros descontos desta venda (${formatPct(outros)}), passa do limite de ${p.limitPct}% do seu perfil.`
+      : `Acima do limite de ${p.limitPct}% do seu perfil.`;
 
   function aplicar(e: FormEvent) {
     e.preventDefault();
     if (!valido) return;
     if (acimaDoLimite) {
-      toast.error(`Desconto acima do limite (${p.limitPct}%).`);
+      toast.error(motivo);
       return;
     }
     p.onApply(valor);
@@ -66,7 +80,10 @@ export function DiscountDialog(p: Props) {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{p.title ?? "Desconto na venda"}</DialogTitle>
-          <DialogDescription>Limite do seu perfil: {p.limitPct}%.</DialogDescription>
+          <DialogDescription>
+            Limite do seu perfil: {p.limitPct}% da venda.
+            {p.note ? <span className="mt-1 block">{p.note}</span> : null}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={aplicar}>
           <div className="grid grid-cols-2 gap-1 rounded-sm bg-muted p-1" role="radiogroup" aria-label="Tipo de desconto">
@@ -114,7 +131,7 @@ export function DiscountDialog(p: Props) {
             </span>
           </div>
           {acimaDoLimite ? (
-            <p className="mt-1 text-xs text-destructive">Acima do limite de {p.limitPct}% do seu perfil.</p>
+            <p className="mt-1 text-xs text-destructive">{motivo}</p>
           ) : null}
           <div className="mt-5 flex gap-2">
             {p.onRemove && p.initialValue ? (

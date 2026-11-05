@@ -16,6 +16,7 @@ import { Receipt } from "@/components/receipt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { formatBRL } from "@/lib/format";
 
 export const Route = createFileRoute("/app/pdv")({ component: PdvPage });
 
@@ -46,9 +47,11 @@ function PdvPage() {
     notes,
     setNotes,
     summary,
-    subtotal,
     total,
     setHeaderDisc,
+    headerBase,
+    operatorPctWithHeader,
+    operatorPctWithLine,
     payments,
     setPayments,
     pay,
@@ -284,8 +287,9 @@ function PdvPage() {
       <DiscountDialog
         open={discOpen}
         onOpenChange={setDiscOpen}
-        subtotal={subtotal}
+        subtotal={headerBase}
         limitPct={tenantDiscountLimit}
+        operatorPct={operatorPctWithHeader}
         onApply={setHeaderDisc}
       />
 
@@ -300,7 +304,13 @@ function PdvPage() {
             : 0
         }
         limitPct={tenantDiscountLimit}
+        operatorPct={(v) => (lineDiscountFor != null ? operatorPctWithLine(lineDiscountFor, v) : 0)}
         title={lineDiscountTarget ? `Desconto em ${lineDiscountTarget.label}` : "Desconto no item"}
+        note={
+          lineDiscountTarget?.promoDiscount
+            ? `Já com ${lineDiscountTarget.promoName ?? "promoção"} (− ${formatBRL(lineDiscountTarget.promoDiscount)}); este desconto é a mais.`
+            : undefined
+        }
         totalLabel="Novo total do item"
         initialValue={lineDiscountTarget?.manualDiscount ?? 0}
         onApply={(value) => {

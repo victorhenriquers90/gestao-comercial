@@ -21,7 +21,7 @@ export type Hit =Awaited<ReturnType<typeof searchPosFn>>[number];
 export type Line = Hit & {
   qty: number;
   lineDiscount: number;
-  /** Desconto manual por linha (R$), concedido pelo operador -- igual ao F6, so que escopo item. */
+  /** Desconto manual por linha (R$): o EXTRA que o operador deu por cima da promocao. */
   manualDiscount?: number;
   override?: number;
   promoName?: string | null;
@@ -29,7 +29,7 @@ export type Line = Hit & {
 export type PricedLine = Line & {
   sellPrice: number;
   lineDiscount: number;
-  /** So a parte de promocao, separada do manual -- ver summarizeSale (pdv-sale.ts). */
+  /** So a parte de promocao; `lineDiscount` = promocao + extra manual (ver lineDiscountWithExtra). */
   promoDiscount: number;
   promoName: string | null;
 };
