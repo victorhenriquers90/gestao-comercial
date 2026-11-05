@@ -7,7 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
+import {
+  DataTable,
+  EmptyState,
+  KpiCard,
+  PageHeader,
+  Pager,
+  PageSkeleton,
+  QueryError,
+  Td,
+  Th,
+  toggleSort,
+  type SortState,
+} from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
@@ -52,7 +64,10 @@ function DevolucoesPage() {
   const [listPage, setListPage] = useState(0);
   const LIST_PAGE_SIZE = 100;
   const listTermo = useDebounced(listQ.trim(), 250);
-  const [sort, setSort] = useState<SortState<"date" | "sale" | "kind" | "total">>({ key: "date", dir: "desc" });
+  const [sort, setSort] = useState<SortState<"date" | "sale" | "kind" | "total">>({
+    key: "date",
+    dir: "desc",
+  });
   function onSort(key: typeof sort.key) {
     setSort((s) => toggleSort(s, key));
     setListPage(0);
@@ -118,7 +133,9 @@ function DevolucoesPage() {
       // devolucao processada contra a venda ERRADA, silenciosamente. So
       // aceita match exato no numero; sem isso, e erro, nao chute.
       const { items: sales } = await listSalesFn({ data: { q: saleNumber.trim(), limit: 50 } });
-      const match = sales.find((s) => String((s as { number?: number }).number) === saleNumber.trim());
+      const match = sales.find(
+        (s) => String((s as { number?: number }).number) === saleNumber.trim(),
+      );
       if (!match) throw new Error("Venda não encontrada com esse número.");
       const s = match as { id: number; number: number; customer_name?: string };
       await loadSaleById(num(s.id), `nº ${s.number} · ${s.customer_name ?? "Consumidor"}`);
@@ -160,35 +177,58 @@ function DevolucoesPage() {
       />
       {!returnItems.length ? (
         <EmptyState
-          title={listTermo ? `Nenhuma devolução encontrada para “${listTermo}”.` : "Nenhuma devolução registrada."}
+          title={
+            listTermo
+              ? `Nenhuma devolução encontrada para “${listTermo}”.`
+              : "Nenhuma devolução registrada."
+          }
           description={listTermo ? undefined : "As devoluções do PDV e das vendas aparecem aqui."}
         />
       ) : (
-        <DataTable
-          headers={
-            <tr>
-              <Th sortKey="date" sort={sort} onSort={onSort}>Data</Th>
-              <Th sortKey="sale" sort={sort} onSort={onSort}>Venda</Th>
-              <Th sortKey="kind" sort={sort} onSort={onSort}>Tipo</Th>
-              <Th className="col-num" sortKey="total" sort={sort} onSort={onSort}>Valor</Th>
-              <Th>Motivo</Th>
-            </tr>
-          }
+        <div
+          className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+          aria-busy={list.isPlaceholderData}
         >
-          {(returnItems as Record<string, unknown>[]).map((r) => (
-            <tr key={String(r.id)} className="border-b border-border last:border-0">
-              <Td>{formatDateTime(String(r.created_at))}</Td>
-              <Td>nº {String(r.sale_number)}</Td>
-              <Td>
-                <Badge>{RETURN_KIND_LABELS[String(r.kind)] ?? String(r.kind)}</Badge>
-              </Td>
-              <Td className="tabular col-num">{formatBRL(num(r.total))}</Td>
-              <Td>{String(r.reason)}</Td>
-            </tr>
-          ))}
-        </DataTable>
+          <DataTable
+            headers={
+              <tr>
+                <Th sortKey="date" sort={sort} onSort={onSort}>
+                  Data
+                </Th>
+                <Th sortKey="sale" sort={sort} onSort={onSort}>
+                  Venda
+                </Th>
+                <Th sortKey="kind" sort={sort} onSort={onSort}>
+                  Tipo
+                </Th>
+                <Th className="col-num" sortKey="total" sort={sort} onSort={onSort}>
+                  Valor
+                </Th>
+                <Th>Motivo</Th>
+              </tr>
+            }
+          >
+            {(returnItems as Record<string, unknown>[]).map((r) => (
+              <tr key={String(r.id)} className="border-b border-border last:border-0">
+                <Td>{formatDateTime(String(r.created_at))}</Td>
+                <Td>nº {String(r.sale_number)}</Td>
+                <Td>
+                  <Badge>{RETURN_KIND_LABELS[String(r.kind)] ?? String(r.kind)}</Badge>
+                </Td>
+                <Td className="tabular col-num">{formatBRL(num(r.total))}</Td>
+                <Td>{String(r.reason)}</Td>
+              </tr>
+            ))}
+          </DataTable>
+        </div>
       )}
-      <Pager page={listPage} pageSize={LIST_PAGE_SIZE} shown={returnItems.length} total={returnsTotal} onPage={setListPage} />
+      <Pager
+        page={listPage}
+        pageSize={LIST_PAGE_SIZE}
+        shown={returnItems.length}
+        total={returnsTotal}
+        onPage={setListPage}
+      />
       <Dialog
         open={open}
         onOpenChange={(v) => {
@@ -250,7 +290,9 @@ function DevolucoesPage() {
               {lines.map((l) => (
                 <div key={l.saleItemId} className="flex items-center gap-2 text-sm">
                   <span className="min-w-0 flex-1 truncate">{l.description}</span>
-                  <span className="text-xs text-muted-foreground">até {formatQty(l.remaining)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    até {formatQty(l.remaining)}
+                  </span>
                   <Input
                     className="h-8 w-20"
                     type="number"
@@ -260,7 +302,9 @@ function DevolucoesPage() {
                     value={l.qty}
                     onChange={(e) => {
                       const qty = Math.min(l.remaining, Math.max(0, Number(e.target.value)));
-                      setLines((prev) => prev.map((x) => (x.saleItemId === l.saleItemId ? { ...x, qty } : x)));
+                      setLines((prev) =>
+                        prev.map((x) => (x.saleItemId === l.saleItemId ? { ...x, qty } : x)),
+                      );
                     }}
                   />
                 </div>

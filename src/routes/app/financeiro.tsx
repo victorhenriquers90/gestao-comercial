@@ -4,12 +4,30 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CustomerPicker, type PickedCustomer } from "@/components/customer-picker";
-import { DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
+import {
+  DataTable,
+  EmptyState,
+  KpiCard,
+  Pager,
+  PageHeader,
+  PageSkeleton,
+  QueryError,
+  Td,
+  Th,
+  toggleSort,
+  type SortState,
+} from "@/components/shared";
 import { type PickedSupplier, SupplierPicker } from "@/components/supplier-picker";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
@@ -178,7 +196,8 @@ function FinanceiroPage() {
   });
   const payItems = pay.data?.items ?? [];
   const payTotal = pay.data?.total ?? 0;
-  const payPaginaVazia = !pay.isPlaceholderData && pay.data != null && payItems.length === 0 && payPage > 0;
+  const payPaginaVazia =
+    !pay.isPlaceholderData && pay.data != null && payItems.length === 0 && payPage > 0;
   useEffect(() => {
     if (payPaginaVazia) setPayPage(0);
   }, [payPaginaVazia]);
@@ -212,13 +231,15 @@ function FinanceiroPage() {
   });
   const recItems = rec.data?.items ?? [];
   const recTotal = rec.data?.total ?? 0;
-  const recPaginaVazia = !rec.isPlaceholderData && rec.data != null && recItems.length === 0 && recPage > 0;
+  const recPaginaVazia =
+    !rec.isPlaceholderData && rec.data != null && recItems.length === 0 && recPage > 0;
   useEffect(() => {
     if (recPaginaVazia) setRecPage(0);
   }, [recPaginaVazia]);
   const flow = useQuery({
     queryKey: ["flow", storeId, range.from, range.to],
-    queryFn: () => cashflowFn({ data: { from: range.from, to: range.to, storeId: storeId ?? undefined } }),
+    queryFn: () =>
+      cashflowFn({ data: { from: range.from, to: range.to, storeId: storeId ?? undefined } }),
   });
   const [expensesPage, setExpensesPage] = useState(0);
   const EXPENSES_PAGE_SIZE = 100;
@@ -226,14 +247,21 @@ function FinanceiroPage() {
     queryKey: ["expenses", storeId, expensesPage],
     queryFn: () =>
       listExpensesFn({
-        data: { storeId: storeId ?? undefined, limit: EXPENSES_PAGE_SIZE, offset: expensesPage * EXPENSES_PAGE_SIZE },
+        data: {
+          storeId: storeId ?? undefined,
+          limit: EXPENSES_PAGE_SIZE,
+          offset: expensesPage * EXPENSES_PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
   const expenseItems = expenses.data?.items ?? [];
   const expensesTotal = expenses.data?.total ?? 0;
   const expensesPaginaVazia =
-    !expenses.isPlaceholderData && expenses.data != null && expenseItems.length === 0 && expensesPage > 0;
+    !expenses.isPlaceholderData &&
+    expenses.data != null &&
+    expenseItems.length === 0 &&
+    expensesPage > 0;
   useEffect(() => {
     if (expensesPaginaVazia) setExpensesPage(0);
   }, [expensesPaginaVazia]);
@@ -362,7 +390,11 @@ function FinanceiroPage() {
           />
           {!payItems.length ? (
             <EmptyState
-              title={payTermo ? `Nenhuma conta a pagar encontrada para “${payTermo}”.` : "Nenhuma conta a pagar cadastrada."}
+              title={
+                payTermo
+                  ? `Nenhuma conta a pagar encontrada para “${payTermo}”.`
+                  : "Nenhuma conta a pagar cadastrada."
+              }
               description={
                 payTermo
                   ? undefined
@@ -377,143 +409,178 @@ function FinanceiroPage() {
               }
             />
           ) : (
-          <DataTable
-            headers={
-              <tr>
-                <Th sortKey="description" sort={paySort} onSort={onPaySort}>Descrição</Th>
-                <Th sortKey="supplier" sort={paySort} onSort={onPaySort}>Fornecedor</Th>
-                <Th sortKey="due" sort={paySort} onSort={onPaySort}>Vencimento</Th>
-                <Th className="col-num" sortKey="amount" sort={paySort} onSort={onPaySort}>Valor</Th>
-                <Th>Status</Th>
-                <Th></Th>
-              </tr>
-            }
-          >
-            {payItems.map((r: Record<string, unknown>) => {
-              const late = String(r.status) === "vencido";
-              return (
-                <tr
-                  key={String(r.id)}
-                  className={cn(
-                    "border-b border-border last:border-0",
-                    late && "bg-destructive/10",
-                  )}
-                >
-                  <Td>{String(r.description)}</Td>
-                  <Td>{String(r.supplier_name ?? "—")}</Td>
-                  <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
-                  <Td>
-                    <Badge variant={statusBadgeVariant(String(r.status))}>
-                      {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                    {r.status !== "pago" && r.status !== "cancelado" ? (
-                      pagandoId === num(r.id) ? (
-                        // Mesma pergunta do recebimento: em dinheiro (comum
-                        // quando o entregador cobra na hora) sai do caixa
-                        // aberto da loja; antes a baixa nao lancava nada e a
-                        // gaveta fechava com SOBRA sem explicacao.
+            <div
+              className={pay.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+              aria-busy={pay.isPlaceholderData}
+            >
+              <DataTable
+                headers={
+                  <tr>
+                    <Th sortKey="description" sort={paySort} onSort={onPaySort}>
+                      Descrição
+                    </Th>
+                    <Th sortKey="supplier" sort={paySort} onSort={onPaySort}>
+                      Fornecedor
+                    </Th>
+                    <Th sortKey="due" sort={paySort} onSort={onPaySort}>
+                      Vencimento
+                    </Th>
+                    <Th className="col-num" sortKey="amount" sort={paySort} onSort={onPaySort}>
+                      Valor
+                    </Th>
+                    <Th>Status</Th>
+                    <Th></Th>
+                  </tr>
+                }
+              >
+                {payItems.map((r: Record<string, unknown>) => {
+                  const late = String(r.status) === "vencido";
+                  return (
+                    <tr
+                      key={String(r.id)}
+                      className={cn(
+                        "border-b border-border last:border-0",
+                        late && "bg-destructive/10",
+                      )}
+                    >
+                      <Td>{String(r.description)}</Td>
+                      <Td>{String(r.supplier_name ?? "—")}</Td>
+                      <Td className={late ? "text-destructive" : undefined}>
+                        {formatDate(String(r.due_date))}
+                      </Td>
+                      <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
+                      <Td>
+                        <Badge variant={statusBadgeVariant(String(r.status))}>
+                          {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
+                        </Badge>
+                      </Td>
+                      <Td>
                         <div className="flex items-center gap-2">
-                          <Select
-                            className="h-8 w-40"
-                            aria-label="Forma de pagamento"
-                            value={formaPag}
-                            onChange={(e) => setFormaPag(e.target.value as ReceiptMethod | "")}
-                          >
-                            <option value="">Como pagou?</option>
-                            {RECEIPT_METHODS.map((m) => (
-                              <option key={m} value={m}>
-                                {RECEIPT_METHOD_LABELS[m]}
-                              </option>
-                            ))}
-                          </Select>
-                          <Button
-                            size="sm"
-                            disabled={!formaPag || confirmandoPagamento}
-                            onClick={async () => {
-                              if (!formaPag || confirmandoPagamento) return;
-                              setConfirmandoPagamento(true);
-                              try {
-                                const ok = await runAction(
-                                  () =>
-                                    settlePayableFn({
-                                      data: {
-                                        id: num(r.id),
-                                        amount: num(r.amount) - num(r.paid_amount),
-                                        method: formaPag,
-                                        storeId: storeId ?? null,
-                                      },
-                                    }),
-                                  { sucesso: "Baixa registrada." },
-                                );
-                                if (!ok) return;
-                                setPagandoId(null);
-                                void qc.invalidateQueries({ queryKey: ["ap"] });
-                                void qc.invalidateQueries({ queryKey: ["register"] });
-                              } finally {
-                                setConfirmandoPagamento(false);
+                          {r.status !== "pago" && r.status !== "cancelado" ? (
+                            pagandoId === num(r.id) ? (
+                              // Mesma pergunta do recebimento: em dinheiro (comum
+                              // quando o entregador cobra na hora) sai do caixa
+                              // aberto da loja; antes a baixa nao lancava nada e a
+                              // gaveta fechava com SOBRA sem explicacao.
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  className="h-8 w-40"
+                                  aria-label="Forma de pagamento"
+                                  value={formaPag}
+                                  onChange={(e) =>
+                                    setFormaPag(e.target.value as ReceiptMethod | "")
+                                  }
+                                >
+                                  <option value="">Como pagou?</option>
+                                  {RECEIPT_METHODS.map((m) => (
+                                    <option key={m} value={m}>
+                                      {RECEIPT_METHOD_LABELS[m]}
+                                    </option>
+                                  ))}
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  disabled={!formaPag || confirmandoPagamento}
+                                  onClick={async () => {
+                                    if (!formaPag || confirmandoPagamento) return;
+                                    setConfirmandoPagamento(true);
+                                    try {
+                                      const ok = await runAction(
+                                        () =>
+                                          settlePayableFn({
+                                            data: {
+                                              id: num(r.id),
+                                              amount: num(r.amount) - num(r.paid_amount),
+                                              method: formaPag,
+                                              storeId: storeId ?? null,
+                                            },
+                                          }),
+                                        { sucesso: "Baixa registrada." },
+                                      );
+                                      if (!ok) return;
+                                      setPagandoId(null);
+                                      void qc.invalidateQueries({ queryKey: ["ap"] });
+                                      void qc.invalidateQueries({ queryKey: ["register"] });
+                                    } finally {
+                                      setConfirmandoPagamento(false);
+                                    }
+                                  }}
+                                >
+                                  {confirmandoPagamento ? "Confirmando…" : "Confirmar"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setPagandoId(null)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setPagandoId(num(r.id));
+                                  setFormaPag("");
+                                }}
+                              >
+                                Pagar
+                              </Button>
+                            )
+                          ) : null}
+                          {pagandoId !== num(r.id) &&
+                          r.last_settlement_amount != null &&
+                          r.status !== "cancelado" ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                pedirCancelamento({
+                                  kind: "estorno-pagar",
+                                  id: num(r.id),
+                                  label: String(r.description),
+                                  dinheiro: String(r.last_settlement_method) === "dinheiro",
+                                  valor: num(r.last_settlement_amount),
+                                })
                               }
-                            }}
-                          >
-                            {confirmandoPagamento ? "Confirmando…" : "Confirmar"}
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setPagandoId(null)}>
-                            Cancelar
-                          </Button>
+                            >
+                              Estornar último pagamento
+                            </Button>
+                          ) : null}
+                          {pagandoId !== num(r.id) &&
+                          num(r.paid_amount) < 0.01 &&
+                          (r.status === "pendente" || r.status === "vencido") &&
+                          r.purchase_id == null ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                pedirCancelamento({
+                                  kind: "pagar",
+                                  id: num(r.id),
+                                  label: String(r.description),
+                                })
+                              }
+                            >
+                              Cancelar conta
+                            </Button>
+                          ) : null}
                         </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setPagandoId(num(r.id));
-                            setFormaPag("");
-                          }}
-                        >
-                          Pagar
-                        </Button>
-                      )
-                    ) : null}
-                    {pagandoId !== num(r.id) && r.last_settlement_amount != null && r.status !== "cancelado" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          pedirCancelamento({
-                            kind: "estorno-pagar",
-                            id: num(r.id),
-                            label: String(r.description),
-                            dinheiro: String(r.last_settlement_method) === "dinheiro",
-                            valor: num(r.last_settlement_amount),
-                          })
-                        }
-                      >
-                        Estornar último pagamento
-                      </Button>
-                    ) : null}
-                    {pagandoId !== num(r.id) &&
-                    num(r.paid_amount) < 0.01 &&
-                    (r.status === "pendente" || r.status === "vencido") &&
-                    r.purchase_id == null ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => pedirCancelamento({ kind: "pagar", id: num(r.id), label: String(r.description) })}
-                      >
-                        Cancelar conta
-                      </Button>
-                    ) : null}
-                    </div>
-                  </Td>
-                </tr>
-              );
-            })}
-          </DataTable>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </DataTable>
+            </div>
           )}
-          <Pager page={payPage} pageSize={PAY_PAGE_SIZE} shown={payItems.length} total={payTotal} onPage={setPayPage} />
+          <Pager
+            page={payPage}
+            pageSize={PAY_PAGE_SIZE}
+            shown={payItems.length}
+            total={payTotal}
+            onPage={setPayPage}
+          />
         </TabsContent>
         <TabsContent value="cartoes">
           <CardSettlementPanel storeId={storeId ?? null} />
@@ -547,9 +614,15 @@ function FinanceiroPage() {
           />
           {!recItems.length ? (
             <EmptyState
-              title={recTermo ? `Nenhuma conta a receber encontrada para “${recTermo}”.` : "Nenhuma conta a receber cadastrada."}
+              title={
+                recTermo
+                  ? `Nenhuma conta a receber encontrada para “${recTermo}”.`
+                  : "Nenhuma conta a receber cadastrada."
+              }
               description={
-                recTermo ? undefined : "Lance o primeiro título ou venda a prazo para gerar automaticamente."
+                recTermo
+                  ? undefined
+                  : "Lance o primeiro título ou venda a prazo para gerar automaticamente."
               }
               action={
                 recTermo ? undefined : (
@@ -560,150 +633,190 @@ function FinanceiroPage() {
               }
             />
           ) : (
-          <DataTable
-            headers={
-              <tr>
-                <Th sortKey="description" sort={recSort} onSort={onRecSort}>Descrição</Th>
-                <Th sortKey="customer" sort={recSort} onSort={onRecSort}>Cliente</Th>
-                <Th sortKey="due" sort={recSort} onSort={onRecSort}>Vencimento</Th>
-                <Th className="col-num" sortKey="amount" sort={recSort} onSort={onRecSort}>Valor</Th>
-                <Th>Status</Th>
-                <Th></Th>
-              </tr>
-            }
-          >
-            {recItems.map((r: Record<string, unknown>) => {
-              const late = String(r.status) === "vencido";
-              return (
-                <tr
-                  key={String(r.id)}
-                  className={cn(
-                    "border-b border-border last:border-0",
-                    late && "bg-destructive/10",
-                  )}
-                >
-                  <Td>{String(r.description)}</Td>
-                  <Td>{String(r.customer_name ?? "—")}</Td>
-                  <Td className={late ? "text-destructive" : undefined}>{formatDate(String(r.due_date))}</Td>
-                  <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
-                  <Td>
-                    <Badge variant={statusBadgeVariant(String(r.status))}>
-                      {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                    {r.status !== "pago" && r.status !== "cancelado" ? (
-                      recebendoId === num(r.id) ? (
-                        // Pergunta COMO foi pago antes de dar baixa: em dinheiro
-                        // o valor entra no caixa aberto; antes a baixa nao
-                        // lancava nada e a gaveta fechava com sobra.
+            <div
+              className={rec.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+              aria-busy={rec.isPlaceholderData}
+            >
+              <DataTable
+                headers={
+                  <tr>
+                    <Th sortKey="description" sort={recSort} onSort={onRecSort}>
+                      Descrição
+                    </Th>
+                    <Th sortKey="customer" sort={recSort} onSort={onRecSort}>
+                      Cliente
+                    </Th>
+                    <Th sortKey="due" sort={recSort} onSort={onRecSort}>
+                      Vencimento
+                    </Th>
+                    <Th className="col-num" sortKey="amount" sort={recSort} onSort={onRecSort}>
+                      Valor
+                    </Th>
+                    <Th>Status</Th>
+                    <Th></Th>
+                  </tr>
+                }
+              >
+                {recItems.map((r: Record<string, unknown>) => {
+                  const late = String(r.status) === "vencido";
+                  return (
+                    <tr
+                      key={String(r.id)}
+                      className={cn(
+                        "border-b border-border last:border-0",
+                        late && "bg-destructive/10",
+                      )}
+                    >
+                      <Td>{String(r.description)}</Td>
+                      <Td>{String(r.customer_name ?? "—")}</Td>
+                      <Td className={late ? "text-destructive" : undefined}>
+                        {formatDate(String(r.due_date))}
+                      </Td>
+                      <Td className="tabular col-num">{formatBRL(num(r.amount))}</Td>
+                      <Td>
+                        <Badge variant={statusBadgeVariant(String(r.status))}>
+                          {ACCOUNT_STATUS_LABELS[String(r.status)] ?? String(r.status)}
+                        </Badge>
+                      </Td>
+                      <Td>
                         <div className="flex items-center gap-2">
-                          <Select
-                            className="h-8 w-40"
-                            aria-label="Forma de recebimento"
-                            value={formaRec}
-                            onChange={(e) => setFormaRec(e.target.value as ReceiptMethod | "")}
-                          >
-                            <option value="">Como pagou?</option>
-                            {RECEIPT_METHODS.map((m) => (
-                              <option key={m} value={m}>
-                                {RECEIPT_METHOD_LABELS[m]}
-                              </option>
-                            ))}
-                          </Select>
-                          <Button
-                            size="sm"
-                            disabled={!formaRec || confirmandoRecebimento}
-                            onClick={async () => {
-                              if (!formaRec || confirmandoRecebimento) return;
-                              setConfirmandoRecebimento(true);
-                              try {
-                                const ok = await runAction(
-                                  () =>
-                                    settleReceivableFn({
-                                      data: {
-                                        id: num(r.id),
-                                        amount: num(r.amount) - num(r.received_amount),
-                                        method: formaRec,
-                                        storeId: storeId ?? null,
-                                      },
-                                    }),
-                                  { sucesso: "Recebimento registrado." },
-                                );
-                                if (!ok) return;
-                                setRecebendoId(null);
-                                void qc.invalidateQueries({ queryKey: ["ar"] });
-                                void qc.invalidateQueries({ queryKey: ["register"] });
-                              } finally {
-                                setConfirmandoRecebimento(false);
+                          {r.status !== "pago" && r.status !== "cancelado" ? (
+                            recebendoId === num(r.id) ? (
+                              // Pergunta COMO foi pago antes de dar baixa: em dinheiro
+                              // o valor entra no caixa aberto; antes a baixa nao
+                              // lancava nada e a gaveta fechava com sobra.
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  className="h-8 w-40"
+                                  aria-label="Forma de recebimento"
+                                  value={formaRec}
+                                  onChange={(e) =>
+                                    setFormaRec(e.target.value as ReceiptMethod | "")
+                                  }
+                                >
+                                  <option value="">Como pagou?</option>
+                                  {RECEIPT_METHODS.map((m) => (
+                                    <option key={m} value={m}>
+                                      {RECEIPT_METHOD_LABELS[m]}
+                                    </option>
+                                  ))}
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  disabled={!formaRec || confirmandoRecebimento}
+                                  onClick={async () => {
+                                    if (!formaRec || confirmandoRecebimento) return;
+                                    setConfirmandoRecebimento(true);
+                                    try {
+                                      const ok = await runAction(
+                                        () =>
+                                          settleReceivableFn({
+                                            data: {
+                                              id: num(r.id),
+                                              amount: num(r.amount) - num(r.received_amount),
+                                              method: formaRec,
+                                              storeId: storeId ?? null,
+                                            },
+                                          }),
+                                        { sucesso: "Recebimento registrado." },
+                                      );
+                                      if (!ok) return;
+                                      setRecebendoId(null);
+                                      void qc.invalidateQueries({ queryKey: ["ar"] });
+                                      void qc.invalidateQueries({ queryKey: ["register"] });
+                                    } finally {
+                                      setConfirmandoRecebimento(false);
+                                    }
+                                  }}
+                                >
+                                  {confirmandoRecebimento ? "Confirmando…" : "Confirmar"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setRecebendoId(null)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setRecebendoId(num(r.id));
+                                  setFormaRec("");
+                                }}
+                              >
+                                Receber
+                              </Button>
+                            )
+                          ) : null}
+                          {recebendoId !== num(r.id) &&
+                          r.last_settlement_amount != null &&
+                          r.status !== "cancelado" ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                pedirCancelamento({
+                                  kind: "estorno-receber",
+                                  id: num(r.id),
+                                  label: String(r.description),
+                                  dinheiro: String(r.last_settlement_method) === "dinheiro",
+                                  valor: num(r.last_settlement_amount),
+                                })
                               }
-                            }}
-                          >
-                            {confirmandoRecebimento ? "Confirmando…" : "Confirmar"}
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setRecebendoId(null)}>
-                            Cancelar
-                          </Button>
+                            >
+                              Estornar último recebimento
+                            </Button>
+                          ) : null}
+                          {recebendoId !== num(r.id) &&
+                          num(r.received_amount) < 0.01 &&
+                          (r.status === "pendente" || r.status === "vencido") &&
+                          r.origin === "manual" ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                pedirCancelamento({
+                                  kind: "receber",
+                                  id: num(r.id),
+                                  label: String(r.description),
+                                })
+                              }
+                            >
+                              Cancelar conta
+                            </Button>
+                          ) : null}
                         </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setRecebendoId(num(r.id));
-                            setFormaRec("");
-                          }}
-                        >
-                          Receber
-                        </Button>
-                      )
-                    ) : null}
-                    {recebendoId !== num(r.id) && r.last_settlement_amount != null && r.status !== "cancelado" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          pedirCancelamento({
-                            kind: "estorno-receber",
-                            id: num(r.id),
-                            label: String(r.description),
-                            dinheiro: String(r.last_settlement_method) === "dinheiro",
-                            valor: num(r.last_settlement_amount),
-                          })
-                        }
-                      >
-                        Estornar último recebimento
-                      </Button>
-                    ) : null}
-                    {recebendoId !== num(r.id) &&
-                    num(r.received_amount) < 0.01 &&
-                    (r.status === "pendente" || r.status === "vencido") &&
-                    r.origin === "manual" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          pedirCancelamento({ kind: "receber", id: num(r.id), label: String(r.description) })
-                        }
-                      >
-                        Cancelar conta
-                      </Button>
-                    ) : null}
-                    </div>
-                  </Td>
-                </tr>
-              );
-            })}
-          </DataTable>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </DataTable>
+            </div>
           )}
-          <Pager page={recPage} pageSize={REC_PAGE_SIZE} shown={recItems.length} total={recTotal} onPage={setRecPage} />
+          <Pager
+            page={recPage}
+            pageSize={REC_PAGE_SIZE}
+            shown={recItems.length}
+            total={recTotal}
+            onPage={setRecPage}
+          />
         </TabsContent>
         <TabsContent value="fluxo">
           <div className="space-y-2 text-sm">
             {(flow.data?.inflows ?? []).map((i) => (
-              <div key={i.method} className="flex justify-between rounded-lg border border-border bg-card px-4 py-3">
-                <span>{PAYMENT_LABELS[i.method as keyof typeof PAYMENT_LABELS] ?? CASH_ACCOUNT_LABELS[i.method] ?? i.method}</span>
+              <div
+                key={i.method}
+                className="flex justify-between rounded-lg border border-border bg-card px-4 py-3"
+              >
+                <span>
+                  {PAYMENT_LABELS[i.method as keyof typeof PAYMENT_LABELS] ??
+                    CASH_ACCOUNT_LABELS[i.method] ??
+                    i.method}
+                </span>
                 <span className="tabular">{formatBRL(i.total)}</span>
               </div>
             ))}
@@ -793,7 +906,12 @@ function FinanceiroPage() {
                   className="pl-9"
                   aria-invalid={amountError != null}
                   onChange={(e) => {
-                    if (amountError && Number.isFinite(Number(e.target.value)) && Number(e.target.value) > 0) setAmountError(null);
+                    if (
+                      amountError &&
+                      Number.isFinite(Number(e.target.value)) &&
+                      Number(e.target.value) > 0
+                    )
+                      setAmountError(null);
                   }}
                   onBlur={(e) => validateAmount(e.target.value)}
                 />
@@ -829,45 +947,54 @@ function FinanceiroPage() {
               description="Use o formulário acima para lançar a primeira despesa (aluguel, energia, marketing…)."
             />
           ) : (
-          <div className={expenses.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={expenses.isPlaceholderData}>
-          <DataTable
-            headers={
-              <tr>
-                <Th>Data</Th>
-                <Th>Descrição</Th>
-                <Th>Categoria</Th>
-                <Th className="col-num">Valor</Th>
-                <Th></Th>
-              </tr>
-            }
-          >
-            {(expenseItems as Record<string, unknown>[]).map((e) => (
-              <tr key={String(e.id)} className="border-b border-border last:border-0">
-                <Td>{formatDate(String(e.spent_at))}</Td>
-                <Td>{String(e.description)}</Td>
-                <Td>{String(e.category ?? "—")}</Td>
-                <Td className="tabular col-num">{formatBRL(num(e.amount))}</Td>
-                <Td>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      pedirCancelamento({
-                        kind: "despesa",
-                        id: num(e.id),
-                        label: String(e.description),
-                        dinheiro: e.cash_movement_id != null,
-                      })
-                    }
-                  >
-                    Cancelar despesa
-                  </Button>
-                </Td>
-              </tr>
-            ))}
-          </DataTable>
-          <Pager page={expensesPage} pageSize={EXPENSES_PAGE_SIZE} shown={expenseItems.length} total={expensesTotal} onPage={setExpensesPage} />
-          </div>
+            <div
+              className={expenses.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+              aria-busy={expenses.isPlaceholderData}
+            >
+              <DataTable
+                headers={
+                  <tr>
+                    <Th>Data</Th>
+                    <Th>Descrição</Th>
+                    <Th>Categoria</Th>
+                    <Th className="col-num">Valor</Th>
+                    <Th></Th>
+                  </tr>
+                }
+              >
+                {(expenseItems as Record<string, unknown>[]).map((e) => (
+                  <tr key={String(e.id)} className="border-b border-border last:border-0">
+                    <Td>{formatDate(String(e.spent_at))}</Td>
+                    <Td>{String(e.description)}</Td>
+                    <Td>{String(e.category ?? "—")}</Td>
+                    <Td className="tabular col-num">{formatBRL(num(e.amount))}</Td>
+                    <Td>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          pedirCancelamento({
+                            kind: "despesa",
+                            id: num(e.id),
+                            label: String(e.description),
+                            dinheiro: e.cash_movement_id != null,
+                          })
+                        }
+                      >
+                        Cancelar despesa
+                      </Button>
+                    </Td>
+                  </tr>
+                ))}
+              </DataTable>
+              <Pager
+                page={expensesPage}
+                pageSize={EXPENSES_PAGE_SIZE}
+                shown={expenseItems.length}
+                total={expensesTotal}
+                onPage={setExpensesPage}
+              />
+            </div>
           )}
         </TabsContent>
       </Tabs>
@@ -900,7 +1027,10 @@ function FinanceiroPage() {
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          <Field label={ehEstorno ? "Motivo do estorno" : "Motivo do cancelamento"} error={motivoError ?? undefined}>
+          <Field
+            label={ehEstorno ? "Motivo do estorno" : "Motivo do cancelamento"}
+            error={motivoError ?? undefined}
+          >
             <Input
               value={motivo}
               maxLength={200}
@@ -1016,7 +1146,11 @@ function FinanceiroPage() {
             <DialogTitle>Conta a receber</DialogTitle>
           </DialogHeader>
           <Field label="Cliente">
-            <CustomerPicker placeholder="Sem cliente (opcional) — digite para buscar" value={recCustomer} onChange={setRecCustomer} />
+            <CustomerPicker
+              placeholder="Sem cliente (opcional) — digite para buscar"
+              value={recCustomer}
+              onChange={setRecCustomer}
+            />
           </Field>
           <Field label="Descrição" className="mt-block">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} />

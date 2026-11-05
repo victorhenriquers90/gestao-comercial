@@ -8,12 +8,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
-import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
+import {
+  DataTable,
+  EmptyState,
+  KpiCard,
+  PageHeader,
+  Pager,
+  PageSkeleton,
+  QueryError,
+  Td,
+  Th,
+  toggleSort,
+  type SortState,
+} from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { PROMO_KIND_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { listCategoriesFn } from "@/lib/server/catalog";
-import { listPromotionsAdminFn, savePromotionFn, setPromotionActiveFn } from "@/lib/server/commerce";
+import {
+  listPromotionsAdminFn,
+  savePromotionFn,
+  setPromotionActiveFn,
+} from "@/lib/server/commerce";
 import { isPromoLive, type Promo } from "@/lib/promo";
 import { ymdLocal } from "@/lib/local-date";
 
@@ -60,7 +76,10 @@ function PromocoesPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
   const termo = useDebounced(q.trim(), 250);
-  const [sort, setSort] = useState<SortState<"name" | "kind" | "starts" | "ends">>({ key: "name", dir: "asc" });
+  const [sort, setSort] = useState<SortState<"name" | "kind" | "starts" | "ends">>({
+    key: "name",
+    dir: "asc",
+  });
   function onSort(key: typeof sort.key) {
     setSort((s) => toggleSort(s, key));
     setPage(0);
@@ -69,7 +88,13 @@ function PromocoesPage() {
     queryKey: ["promos", "admin", termo, page, sort],
     queryFn: () =>
       listPromotionsAdminFn({
-        data: { q: termo || undefined, sort: sort.key, dir: sort.dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        data: {
+          q: termo || undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
       }),
     placeholderData: keepPreviousData,
   });
@@ -77,7 +102,8 @@ function PromocoesPage() {
   const promosTotal = list.data?.total ?? 0;
   const kpis = list.data?.kpis;
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
-  const paginaVazia = !list.isPlaceholderData && list.data != null && promos.length === 0 && page > 0;
+  const paginaVazia =
+    !list.isPlaceholderData && list.data != null && promos.length === 0 && page > 0;
   useEffect(() => {
     if (paginaVazia) setPage(0);
   }, [paginaVazia]);
@@ -129,49 +155,73 @@ function PromocoesPage() {
       />
       {!promos.length ? (
         <EmptyState
-          title={termo ? `Nenhuma promoção encontrada para “${termo}”.` : "Você ainda não possui promoções cadastradas."}
-          description={termo ? undefined : "Crie a primeira promoção para aplicar desconto automático no PDV."}
+          title={
+            termo
+              ? `Nenhuma promoção encontrada para “${termo}”.`
+              : "Você ainda não possui promoções cadastradas."
+          }
+          description={
+            termo ? undefined : "Crie a primeira promoção para aplicar desconto automático no PDV."
+          }
           action={termo ? undefined : <Button onClick={() => setOpen(true)}>Nova promoção</Button>}
         />
       ) : (
-        <DataTable
-          headers={
-            <tr>
-              <Th sortKey="name" sort={sort} onSort={onSort}>Nome</Th>
-              <Th sortKey="kind" sort={sort} onSort={onSort}>Tipo</Th>
-              <Th>Aplica a</Th>
-              <Th sortKey="starts" sort={sort} onSort={onSort}>Período</Th>
-              <Th>Status</Th>
-              <Th className="text-right">Ações</Th>
-            </tr>
-          }
+        <div
+          className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}
+          aria-busy={list.isPlaceholderData}
         >
-          {promos.map((p) => (
-            <tr key={p.id} className="border-b border-border last:border-0">
-              <Td className="font-medium">{p.name}</Td>
-              <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
-              <Td>
-                {p.productName ?? (p.categoryName ? `Categoria: ${p.categoryName}` : "Todos os produtos")}
-              </Td>
-              <Td>
-                {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
-              </Td>
-              <Td>{promoStatusBadge(p)}</Td>
-              <Td className="text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={alternando !== null}
-                  onClick={() => void alternar(p.id, !p.isActive)}
-                >
-                  {p.isActive ? "Desativar" : "Ativar"}
-                </Button>
-              </Td>
-            </tr>
-          ))}
-        </DataTable>
+          <DataTable
+            headers={
+              <tr>
+                <Th sortKey="name" sort={sort} onSort={onSort}>
+                  Nome
+                </Th>
+                <Th sortKey="kind" sort={sort} onSort={onSort}>
+                  Tipo
+                </Th>
+                <Th>Aplica a</Th>
+                <Th sortKey="starts" sort={sort} onSort={onSort}>
+                  Período
+                </Th>
+                <Th>Status</Th>
+                <Th className="text-right">Ações</Th>
+              </tr>
+            }
+          >
+            {promos.map((p) => (
+              <tr key={p.id} className="border-b border-border last:border-0">
+                <Td className="font-medium">{p.name}</Td>
+                <Td>{PROMO_KIND_LABELS[p.kind] ?? p.kind}</Td>
+                <Td>
+                  {p.productName ??
+                    (p.categoryName ? `Categoria: ${p.categoryName}` : "Todos os produtos")}
+                </Td>
+                <Td>
+                  {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
+                </Td>
+                <Td>{promoStatusBadge(p)}</Td>
+                <Td className="text-right">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={alternando !== null}
+                    onClick={() => void alternar(p.id, !p.isActive)}
+                  >
+                    {p.isActive ? "Desativar" : "Ativar"}
+                  </Button>
+                </Td>
+              </tr>
+            ))}
+          </DataTable>
+        </div>
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} shown={promos.length} total={promosTotal} onPage={setPage} />
+      <Pager
+        page={page}
+        pageSize={PAGE_SIZE}
+        shown={promos.length}
+        total={promosTotal}
+        onPage={setPage}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -274,7 +324,10 @@ function PromocoesPage() {
           </Field>
           {form.scope === "category" ? (
             <Field label="Categoria" className="mt-block">
-              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+              <Select
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+              >
                 <option value="">Escolha a categoria</option>
                 {(cats.data ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
@@ -286,15 +339,28 @@ function PromocoesPage() {
           ) : null}
           {form.scope === "product" ? (
             <Field label="Produto" className="mt-block">
-              <ProductPicker activeOnly ariaLabel="Produto da promoção" value={product} onChange={setProduct} />
+              <ProductPicker
+                activeOnly
+                ariaLabel="Produto da promoção"
+                value={product}
+                onChange={setProduct}
+              />
             </Field>
           ) : null}
           <div className="field-grid-2 mt-block gap-2">
             <Field label="Início">
-              <Input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
+              <Input
+                type="date"
+                value={form.startsAt}
+                onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
+              />
             </Field>
             <Field label="Fim">
-              <Input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
+              <Input
+                type="date"
+                value={form.endsAt}
+                onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
+              />
             </Field>
           </div>
           {/* Sem try/catch, uma recusa do servidor nao mostrava NADA: nao vinha
@@ -352,7 +418,13 @@ function PromocoesPage() {
               if (form.kind === "bxgy") {
                 buyQty = Number(form.buyQty);
                 payQty = Number(form.payQty);
-                if (!Number.isFinite(buyQty) || !Number.isFinite(payQty) || buyQty < 2 || payQty < 1 || payQty >= buyQty) {
+                if (
+                  !Number.isFinite(buyQty) ||
+                  !Number.isFinite(payQty) ||
+                  buyQty < 2 ||
+                  payQty < 1 ||
+                  payQty >= buyQty
+                ) {
                   toast.error("Informe quantidades válidas: pague menos do que compre.");
                   return;
                 }
