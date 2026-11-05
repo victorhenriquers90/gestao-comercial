@@ -1,8 +1,23 @@
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Inbox, type LucideIcon } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowDownRight,
+  ArrowUp,
+  ArrowUpDown,
+  ArrowUpRight,
+  Inbox,
+  type LucideIcon,
+} from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { pageRangeLabel, type SortDir } from "@/lib/paging";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Skeleton } from "./ui/card";
@@ -58,7 +73,9 @@ export function EmptyState({
       <div>
         <p className="font-display text-xl font-semibold tracking-tight">{title}</p>
         {description ? (
-          <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p>
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
       {action}
@@ -162,19 +179,11 @@ export function clickableRow(onClick: () => void) {
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="enter-fade overflow-x-auto border-y border-border bg-card">
-      {children}
-    </div>
+    <div className="enter-fade overflow-x-auto border-y border-border bg-card">{children}</div>
   );
 }
 
-export function DataTable({
-  headers,
-  children,
-}: {
-  headers: ReactNode;
-  children: ReactNode;
-}) {
+export function DataTable({ headers, children }: { headers: ReactNode; children: ReactNode }) {
   return (
     <TableWrap>
       <table className="data-table w-full min-w-[640px] text-left text-sm print:min-w-0">
@@ -195,9 +204,7 @@ export function DataTable({
           Opaco tambem e melhor de ler: cabecalho fixo translucido por cima
           de linhas rolando embaixo embaralha os dois.
         */}
-        <thead className="sticky top-0 z-10 border-b border-border bg-muted">
-          {headers}
-        </thead>
+        <thead className="sticky top-0 z-10 border-b border-border bg-muted">{headers}</thead>
         <tbody>{children}</tbody>
       </table>
     </TableWrap>
@@ -322,7 +329,12 @@ export function Pager({
     <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
       <span aria-live="polite">{pageRangeLabel(page * pageSize, shown, total)}</span>
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" disabled={page === 0} onClick={() => onPage(Math.max(0, page - 1))}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page === 0}
+          onClick={() => onPage(Math.max(0, page - 1))}
+        >
           Anterior
         </Button>
         <Button
@@ -367,27 +379,36 @@ export function ConfirmBar({
   confirmLabel?: string;
   danger?: boolean;
 }) {
-  if (!open) return null;
-  // Portal pro body, igual o Dialog do Radix (dialog.tsx) faz. Sem isso o
-  // confirm fica preso no contexto de empilhamento de ".page-enter" (a
-  // transição de página aplica `transform`, que por spec cria um novo
-  // contexto mesmo com a matriz identidade) — nenhum z-index escapa dali.
-  // Confirmado ao vivo: com z-[60] mas sem portal, o confirm abria (estado
-  // React certo) só que invisível e inclicável atrás do Dialog de detalhe.
-  return createPortal(
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-foreground/40 p-4">
-      <Card className="w-full max-w-sm rounded-2xl p-6 shadow-pop">
-        <p className="font-display text-lg font-medium tracking-tight">{title}</p>
+  /*
+    Era um <div> portalizado na mao, sem role nem foco gerenciado: Escape
+    nao fechava (todo OUTRO dialogo do app fecha), tab passava por tras
+    pro conteudo da pagina, e leitor de tela nao anunciava nada abrindo --
+    numa confirmacao de acao perigosa (pagar, cancelar, excluir), e
+    justamente onde isso mais falta. AlertDialog do Radix (ja era
+    dependencia instalada, sem uso nenhum) da foco preso, Escape e
+    role="alertdialog" de graca, com o MESMO visual de antes.
+  */
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onCancel();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogTitle>{title}</AlertDialogTitle>
+        <AlertDialogDescription>{title}</AlertDialogDescription>
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel}>
-            Cancelar
-          </Button>
-          <Button variant={danger ? "destructive" : "default"} onClick={onConfirm}>
-            {confirmLabel}
-          </Button>
+          <AlertDialogCancel asChild>
+            <Button variant="outline">Cancelar</Button>
+          </AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button variant={danger ? "destructive" : "default"} onClick={onConfirm}>
+              {confirmLabel}
+            </Button>
+          </AlertDialogAction>
         </div>
-      </Card>
-    </div>,
-    document.body,
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
