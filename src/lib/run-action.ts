@@ -26,7 +26,24 @@ export async function runAction(
     if (opts?.sucesso) toast.success(opts.sucesso);
     return true;
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : (opts?.erro ?? "Não foi possível concluir."));
+    toast.error(mensagemDeErro(e, opts?.erro));
     return false;
   }
+}
+
+/**
+ * `e.message` e confiavel quando vem do SERVIDOR (ja em pt-BR, pensado
+ * pro operador -- "Este titulo ja esta quitado."). Mas `fetch` que nunca
+ * completa (wifi caiu, DNS, CORS, meio de um deploy) tambem rejeita com
+ * um `Error` -- so que `TypeError`, com texto em ingles pro
+ * desenvolvedor ("Failed to fetch", "NetworkError when attempting to
+ * fetch resource."). Mostrar isso pro operador de balcao quebra a regra
+ * do proprio HANDOFF ("toasts e erros para o operador, nao para o
+ * desenvolvedor") bem na hora que mais importa: a rede caiu, nao da pra
+ * saber se o clique pegou ou nao.
+ */
+export function mensagemDeErro(e: unknown, fallback?: string): string {
+  const padrao = fallback ?? "Não foi possível concluir.";
+  if (e instanceof TypeError) return padrao;
+  return e instanceof Error ? e.message : padrao;
 }
