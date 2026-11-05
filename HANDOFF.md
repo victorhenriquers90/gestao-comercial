@@ -8421,14 +8421,15 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `.login-form-panel`; `.login-card` simplificado pra só largura + cor.
 
      **Verificação**: `typecheck`/`lint` limpos (únicos avisos do lint são
-     pré-existentes, em arquivos não tocados aqui). Visual ao vivo no
-     servidor de dev local (ainda não é produção — a imagem definitiva
-     ainda não chegou, então não faz sentido publicar o placeholder):
-     1120px (desktop, foto+formulário lado a lado, `h1` legível depois do
-     fix de cor), 820px (tablet, abaixo de `lg`: foto some, formulário
-     central com a marca própria), 375px (celular: igual ao tablet). Sem
-     deploy ainda — próximo passo é trocar a foto quando o dono da loja
-     mandar, reajustar o `object-position`, e aí sim publicar.
+     pré-existentes, em arquivos não tocados aqui). Visual primeiro no
+     servidor de dev local em 1120px (desktop, foto+formulário lado a
+     lado, `h1` legível depois do fix de cor), 820px (tablet, abaixo de
+     `lg`: foto some, formulário central com a marca própria) e 375px
+     (celular, igual ao tablet). Commit `31f9864`, deploy Vercel "Ready",
+     confirmado ao vivo em produção em 1100px (mesmo layout de duas
+     colunas, texto legível) — a foto placeholder já está no ar, só vai
+     ser trocada quando a definitiva chegar (próximo passo: reajustar
+     `object-position` em `.login-hero-img` pra ela).
 
 ## Como a próxima IA deve trabalhar
 
