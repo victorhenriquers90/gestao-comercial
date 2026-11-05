@@ -98,13 +98,19 @@ Toda mutation de negócio: `requireTenant` → `assertCan` → SQL com
 
 ## Domínio rápido
 
-- **PDV** (`/app/pdv`): F2 busca, F4 documento, F6 desconto, F8 pagamento,
-  F9 guardar, F10 finaliza (sem pagamento informado = dinheiro, valor exato;
-  com pagamento informado, usa o informado mesmo com o F8 fechado). Com a
-  busca vazia: ↑/↓ escolhe item, +/− quantidade, Delete remove. O pedido de
-  CPF é um lembrete no cupom, não um diálogo automático (o diálogo roubava o
-  foco e a próxima bipagem caía no campo de CPF). Crediário exige cliente
-  (CPF na nota cria Consumidor).
+- **PDV** (`/app/pdv`): F2 busca, F4 documento, F6 desconto no cabeçalho
+  (`%` com a busca vazia = desconto na linha selecionada), F8 pagamento,
+  F9 guardar, F10 finaliza. Forma de pagamento é SEMPRE obrigatória — F10
+  sem nenhum valor informado em F8 recusa com "Informe a forma de
+  pagamento antes de finalizar", nunca cai sozinho em dinheiro (decisão
+  do dono da loja; texto antigo deste item dizia o contrário, já corrigido
+  há tempo). Com a busca vazia: ↑/↓ escolhe item, +/− quantidade, Delete
+  remove. O pedido de CPF é um lembrete no cupom, não um diálogo
+  automático (o diálogo roubava o foco e a próxima bipagem caía no campo
+  de CPF). Crediário exige cliente (CPF na nota cria Consumidor) e respeita
+  o limite de crédito do cliente na venda INTEIRA (item + cabeçalho juntos,
+  ver item 156). Trocar de loja com o carrinho não-vazio cancela a venda
+  em andamento (preço/estoque são por loja).
 - **Vendedores:** regime `none|clt|autonomo|mei|pj` define CPF vs CNPJ.
 - **Promoções** entram no preço da linha via `bestPromo`.
 - **Estoque** por variante × loja; `allow_negative_stock` nas settings.
