@@ -1020,7 +1020,7 @@ export const listSalesFn = createServerFn({ method: "POST" })
     // independente do valor real gravado -- a mesma causa do item 78
     // (listPurchasesFn), que este arquivo nao tinha herdado ainda.
     const rows = await sql.query<Row>(
-        `select count(*) over() as row_count,
+      `select count(*) over() as row_count,
               s.id, s.number, s.status, s.total, s.discount, s.sold_at, s.cost_total, s.document,
               c.name as customer_name, sl.name as seller_name, st.name as store_name
          from sales s
@@ -1046,20 +1046,20 @@ export const listSalesFn = createServerFn({ method: "POST" })
         order by coalesce(cast(s.number as text) = $7, false) desc,
                  ${SALE_SORT_COLUMNS[data.order.sort]} ${data.order.dir}, s.id ${data.order.dir}
         limit $10 offset $11`,
-        [
-          tenant.companyId,
-          data.storeId ?? null,
-          data.sellerId ?? null,
-          data.from ?? null,
-          data.to ?? null,
-          data.status ?? null,
-          data.q?.trim() || null,
-          data.q?.trim() ? prefixLike(data.q) : null,
-          data.q?.trim() ? ftsPrefix(data.q) : "__none__:*",
-          data.page.limit,
-          data.page.offset,
-        ],
-      );
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        data.sellerId ?? null,
+        data.from ?? null,
+        data.to ?? null,
+        data.status ?? null,
+        data.q?.trim() || null,
+        data.q?.trim() ? prefixLike(data.q) : null,
+        data.q?.trim() ? ftsPrefix(data.q) : "__none__:*",
+        data.page.limit,
+        data.page.offset,
+      ],
+    );
     const total = rows.length ? num(rows[0]!.row_count) : 0;
     // KPIs do período independentes da paginação -- mesmo motivo do
     // overdueTotal em listPayablesFn/listReceivablesFn: a tela de Vendas
@@ -1074,7 +1074,11 @@ export const listSalesFn = createServerFn({ method: "POST" })
     // versão ignorava devolução parcial por completo (a venda inteira
     // sumia do faturamento, não só a peça devolvida) -- exatamente o bug
     // que o comentário do RETURN_BY_SALE em insight.ts já documentava.
-    const [kpiRow] = await sql.query<{ revenue: string; sales_count: number; cancelled_count: number }>(
+    const [kpiRow] = await sql.query<{
+      revenue: string;
+      sales_count: number;
+      cancelled_count: number;
+    }>(
       `select coalesce(sum(s.total - coalesce(ret.returned_revenue,0)) filter (where s.status in ('finalizada','devolvida_parcial')), 0) as revenue,
               count(*) filter (where s.status in ('finalizada','devolvida_parcial'))::int as sales_count,
               count(*) filter (where s.status = 'cancelada')::int as cancelled_count
@@ -1977,18 +1981,34 @@ export const listPromotionsAdminFn = createServerFn({ method: "POST" })
     page: parsePaging(d),
     order: parseSort(d, PROMO_SORT_KEYS, "name", "asc"),
   }))
-  .handler(async ({
-    context,
-    data,
-  }): Promise<{
-    items: PromoRow[];
-    total: number;
-    kpis: { promoCount: number; liveCount: number; scheduledCount: number; expiredCount: number; inactiveCount: number };
-  }> => {
-    const { sql, tenant } = await requireTenant(context.userId);
-    const termo = data.q?.trim();
-    const rows = await sql.query<Row>(
-      `select count(*) over() as row_count, pr.*, p.name as product_name, c.name as category_name
+  .handler(
+    async ({
+      context,
+      data,
+    }): Promise<{
+      items: PromoRow[];
+      total: number;
+      kpis: {
+        promoCount: number;
+        liveCount: number;
+        scheduledCount: number;
+        expiredCount: number;
+        inactiveCount: number;
+      };
+    }> => {
+      const { sql, tenant } = await requireTenant(context.userId);
+      // Sem gate nenhum antes -- so a TELA (promocoes.tsx) e o menu (nav.ts)
+      // exigiam promotions.write pra chegar aqui; o servidor deixava passar
+      // qualquer papel autenticado. Nao e listPromotionsFn (essa sim e pra
+      // todo mundo, o PDV precisa dela pra calcular preco) -- esta e a lista
+      // ADMIN, com config completa de cada promocao, paginacao e busca.
+      // Reusa promotions.write (nao existe promotions.read nesta base) --
+      // o mesmo perm que ja guarda savePromotionFn/setPromotionActiveFn e o
+      // proprio menu, sem criar uma permissao nova so pra isto.
+      assertCan(tenant.role, "promotions.write");
+      const termo = data.q?.trim();
+      const rows = await sql.query<Row>(
+        `select count(*) over() as row_count, pr.*, p.name as product_name, c.name as category_name
          from promotions pr
          left join products p on p.id = pr.product_id
          left join categories c on c.id = pr.category_id
@@ -1996,21 +2016,21 @@ export const listPromotionsAdminFn = createServerFn({ method: "POST" })
           and ($2::text is null or pr.name ilike $2 or p.name ilike $2 or c.name ilike $2)
         order by ${PROMO_SORT_COLUMNS[data.order.sort]} ${data.order.dir} nulls last, pr.created_at desc, pr.id desc
         limit $3 offset $4`,
-      [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
-    );
-    const total = rows.length ? num(rows[0]!.row_count) : 0;
-    const items = rows.map((r) => ({
-      ...mapPromo(r),
-      productName: r.product_name == null ? null : String(r.product_name),
-      categoryName: r.category_name == null ? null : String(r.category_name),
-    }));
-    // KPIs do filtro atual (mesma busca, sem paginação) -- a tela só tinha
-    // tabela crua, achado revisando com o usuário. Mesma definição de
-    // "ativa agora" que `isPromoLive` (promo.ts) usa pro PDV de verdade
-    // (is_active + dentro do período), pra não arriscar o card discordar
-    // do badge de cada linha, que já usa a mesma função.
-    const [kpiRow] = await sql.query<Row>(
-      `select count(*)::int as promo_count,
+        [tenant.companyId, termo ? `%${termo}%` : null, data.page.limit, data.page.offset],
+      );
+      const total = rows.length ? num(rows[0]!.row_count) : 0;
+      const items = rows.map((r) => ({
+        ...mapPromo(r),
+        productName: r.product_name == null ? null : String(r.product_name),
+        categoryName: r.category_name == null ? null : String(r.category_name),
+      }));
+      // KPIs do filtro atual (mesma busca, sem paginação) -- a tela só tinha
+      // tabela crua, achado revisando com o usuário. Mesma definição de
+      // "ativa agora" que `isPromoLive` (promo.ts) usa pro PDV de verdade
+      // (is_active + dentro do período), pra não arriscar o card discordar
+      // do badge de cada linha, que já usa a mesma função.
+      const [kpiRow] = await sql.query<Row>(
+        `select count(*)::int as promo_count,
               count(*) filter (where pr.is_active and pr.starts_at <= $3::date and pr.ends_at >= $3::date)::int as live_count,
               count(*) filter (where pr.is_active and pr.starts_at > $3::date)::int as scheduled_count,
               count(*) filter (where pr.is_active and pr.ends_at < $3::date)::int as expired_count,
@@ -2020,17 +2040,18 @@ export const listPromotionsAdminFn = createServerFn({ method: "POST" })
          left join categories c on c.id = pr.category_id
         where pr.company_id = $1
           and ($2::text is null or pr.name ilike $2 or p.name ilike $2 or c.name ilike $2)`,
-      [tenant.companyId, termo ? `%${termo}%` : null, ymdLocal()],
-    );
-    const kpis = {
-      promoCount: num(kpiRow?.promo_count ?? 0),
-      liveCount: num(kpiRow?.live_count ?? 0),
-      scheduledCount: num(kpiRow?.scheduled_count ?? 0),
-      expiredCount: num(kpiRow?.expired_count ?? 0),
-      inactiveCount: num(kpiRow?.inactive_count ?? 0),
-    };
-    return { items: dump(items) as PromoRow[], total, kpis };
-  });
+        [tenant.companyId, termo ? `%${termo}%` : null, ymdLocal()],
+      );
+      const kpis = {
+        promoCount: num(kpiRow?.promo_count ?? 0),
+        liveCount: num(kpiRow?.live_count ?? 0),
+        scheduledCount: num(kpiRow?.scheduled_count ?? 0),
+        expiredCount: num(kpiRow?.expired_count ?? 0),
+        inactiveCount: num(kpiRow?.inactive_count ?? 0),
+      };
+      return { items: dump(items) as PromoRow[], total, kpis };
+    },
+  );
 
 function promoSnapshot(p: Promo) {
   return {
@@ -2143,7 +2164,8 @@ export const setPromotionActiveFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { id: number; isActive: boolean }) => {
     if (!Number.isSafeInteger(d.id) || d.id <= 0) throw new Error("Promoção inválida.");
-    if (typeof d.isActive !== "boolean") throw new Error("Informe se a promoção fica ativa ou inativa.");
+    if (typeof d.isActive !== "boolean")
+      throw new Error("Informe se a promoção fica ativa ou inativa.");
     return d;
   })
   .handler(async ({ context, data }) => {
@@ -2157,7 +2179,14 @@ export const setPromotionActiveFn = createServerFn({ method: "POST" })
       const before = mapPromo(cur);
       if (before.isActive !== data.isActive) {
         await sql`update promotions set is_active = ${data.isActive} where id = ${data.id} and company_id = ${tenant.companyId}`;
-        await auditUpdate(sql, tenant, "promotion", data.id, promoSnapshot(before), promoSnapshot({ ...before, isActive: data.isActive }));
+        await auditUpdate(
+          sql,
+          tenant,
+          "promotion",
+          data.id,
+          promoSnapshot(before),
+          promoSnapshot({ ...before, isActive: data.isActive }),
+        );
       }
       return { id: data.id, isActive: data.isActive };
     });
