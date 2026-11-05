@@ -3,10 +3,24 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { assertCan, can } from "@/lib/permissions";
 import { ncmValidSql, parseCfop, parseNcm } from "@/lib/ncm";
 import { num } from "@/lib/utils";
-import { assertOwned, assertStore, assertVariants, audit, auditUpdate, nextNumber, requireTenant } from "./context";
+import {
+  assertOwned,
+  assertStore,
+  assertVariants,
+  audit,
+  auditUpdate,
+  nextNumber,
+  requireTenant,
+} from "./context";
 import { applyStockChange } from "./stock";
 import { parseBarcode } from "@/lib/check-digit";
-import { landedUnitCosts, parsePurchaseExtra, parseStockDelta, parseStockQuantity, parseUnitCost } from "@/lib/stock-input";
+import {
+  landedUnitCosts,
+  parsePurchaseExtra,
+  parseStockDelta,
+  parseStockQuantity,
+  parseUnitCost,
+} from "@/lib/stock-input";
 import { dump, type Row } from "@/lib/json";
 import { PURCHASE_STATUS } from "@/lib/constants";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
@@ -63,7 +77,9 @@ const PRODUCT_SORT_COLUMNS = {
   stock: "coalesce(st.stock, 0)",
   active: "p.is_active",
 } as const;
-const PRODUCT_SORT_KEYS = Object.keys(PRODUCT_SORT_COLUMNS) as (keyof typeof PRODUCT_SORT_COLUMNS)[];
+const PRODUCT_SORT_KEYS = Object.keys(
+  PRODUCT_SORT_COLUMNS,
+) as (keyof typeof PRODUCT_SORT_COLUMNS)[];
 
 export const listProductsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -254,7 +270,16 @@ export const saveProductFn = createServerFn({ method: "POST" })
       isActive?: boolean;
       ncm?: string;
       cfop?: string;
-      variants?: { id?: number; sku?: string; barcode?: string; color?: string; size?: string; model?: string; cost?: number; price?: number }[];
+      variants?: {
+        id?: number;
+        sku?: string;
+        barcode?: string;
+        color?: string;
+        size?: string;
+        model?: string;
+        cost?: number;
+        price?: number;
+      }[];
     }) => ({
       ...d,
       name: requireLine(d.name, "Nome"),
@@ -314,7 +339,8 @@ export const saveProductFn = createServerFn({ method: "POST" })
     // pro preco cheio sem erro nenhum avisando ninguem.
     const cost = parseUnitCost(data.cost, "custo");
     const price = parseUnitCost(data.price, "preço");
-    const promoPrice = data.promoPrice == null ? null : parseUnitCost(data.promoPrice, "preço promocional");
+    const promoPrice =
+      data.promoPrice == null ? null : parseUnitCost(data.promoPrice, "preço promocional");
     // "Promocional" maior ou igual ao preco cheio nao e promocao -- e
     // provavelmente um numero no campo errado. Sem esta trava, um preco
     // promocional digitado errado aparecia como o preco de venda na busca
@@ -633,9 +659,11 @@ export const listStockFn = createServerFn({ method: "POST" })
     // mostravam o resto -- justamente o alerta que precisa enxergar tudo.
     const minSql = "greatest(coalesce(i.min_stock, 0), coalesce(p.min_stock, 0))";
     let filterSql = "";
-    if (data.filter === "low") filterSql = ` and ${minSql} > 0 and coalesce(i.quantity, 0) <= ${minSql}`;
+    if (data.filter === "low")
+      filterSql = ` and ${minSql} > 0 and coalesce(i.quantity, 0) <= ${minSql}`;
     else if (data.filter === "zero") filterSql = " and coalesce(i.quantity, 0) <= 0";
-    else if (data.filter === "stale") filterSql = " and (lm.last_move is null or lm.last_move < now() - interval '45 days')";
+    else if (data.filter === "stale")
+      filterSql = " and (lm.last_move is null or lm.last_move < now() - interval '45 days')";
     // KPIs do filtro atual (busca/loja, mas NAO o `filter` do dropdown --
     // os 3 numeros abaixo ja cobrem o que cada opcao dele mostraria, de
     // uma vez, sem precisar trocar de filtro pra ver). Mesma lacuna de
@@ -715,7 +743,13 @@ export const listStockFn = createServerFn({ method: "POST" })
 export const listMovementsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { storeId?: number; variantId?: number; type?: string; limit?: number; offset?: number }) => ({
+    (d: {
+      storeId?: number;
+      variantId?: number;
+      type?: string;
+      limit?: number;
+      offset?: number;
+    }) => ({
       ...d,
       page: parsePaging(d),
     }),
@@ -742,10 +776,25 @@ export const listMovementsFn = createServerFn({ method: "POST" })
           and ($4::text is null or m.type = $4)
         order by m.created_at desc
         limit $5 offset $6`,
-      [tenant.companyId, data.storeId ?? null, data.variantId ?? null, data.type ?? null, data.page.limit, data.page.offset],
+      [
+        tenant.companyId,
+        data.storeId ?? null,
+        data.variantId ?? null,
+        data.type ?? null,
+        data.page.limit,
+        data.page.offset,
+      ],
     );
     const total = rows.length ? num(rows[0]!.total) : 0;
-    return { items: dump(rows.map((r) => { const { total: _t, ...rest } = r; return rest; })), total };
+    return {
+      items: dump(
+        rows.map((r) => {
+          const { total: _t, ...rest } = r;
+          return rest;
+        }),
+      ),
+      total,
+    };
   });
 
 export const adjustStockFn = createServerFn({ method: "POST" })
@@ -787,6 +836,18 @@ export const adjustStockFn = createServerFn({ method: "POST" })
         : data.type === "entrada"
           ? parseStockQuantity(data.quantity)
           : -parseStockQuantity(data.quantity);
+    /*
+      "ajuste" sempre pode ficar negativo -- e correcao de CONTAGEM, nao
+      movimento de venda, entao o numero certo pode ser negativo se o
+      sistema estava errado antes. "saida"/"perda", porem, so respeitavam
+      o tipo, nunca a configuracao "Permitir estoque negativo" -- a mesma
+      que o PDV ja le (checkoutFn) pra decidir se bloqueia. Uma loja que
+      liga a configuracao esperando que ela valha geral via barrada aqui
+      mesmo assim, inconsistente com o que a propria tela promete.
+    */
+    const [settings] = await sql<{ allow_negative_stock: boolean }>`
+      select allow_negative_stock from company_settings where company_id = ${tenant.companyId}
+    `;
     const res = await applyStockChange(sql, {
       companyId: tenant.companyId,
       storeId: data.storeId,
@@ -795,16 +856,25 @@ export const adjustStockFn = createServerFn({ method: "POST" })
       type: data.type,
       userId: tenant.userId,
       note: data.note,
-      allowNegative: data.type === "ajuste",
+      allowNegative: data.type === "ajuste" || Boolean(settings?.allow_negative_stock),
     });
-    await audit(sql, tenant, "stock.adjust", "inventory", data.variantId, null, { ...data, ...res });
+    await audit(sql, tenant, "stock.adjust", "inventory", data.variantId, null, {
+      ...data,
+      ...res,
+    });
     return res;
   });
 
 export const transferStockFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { fromStoreId: number; toStoreId: number; variantId: number; quantity: number; note?: string }) => ({
+    (d: {
+      fromStoreId: number;
+      toStoreId: number;
+      variantId: number;
+      quantity: number;
+      note?: string;
+    }) => ({
       ...d,
       // Opcional de proposito (tem padrao abaixo), mas sem sanitizar: nao
       // obrigatorio, so ia cru igual o note do adjustStockFn.
@@ -856,12 +926,22 @@ const PURCHASE_SORT_COLUMNS = {
   total: "p.total",
   expected: "p.expected_at",
 } as const;
-const PURCHASE_SORT_KEYS = Object.keys(PURCHASE_SORT_COLUMNS) as (keyof typeof PURCHASE_SORT_COLUMNS)[];
+const PURCHASE_SORT_KEYS = Object.keys(
+  PURCHASE_SORT_COLUMNS,
+) as (keyof typeof PURCHASE_SORT_COLUMNS)[];
 
 export const listPurchasesFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
-    (d: { storeId?: number; status?: string; q?: string; sort?: string; dir?: string; limit?: number; offset?: number }) => ({
+    (d: {
+      storeId?: number;
+      status?: string;
+      q?: string;
+      sort?: string;
+      dir?: string;
+      limit?: number;
+      offset?: number;
+    }) => ({
       ...d,
       page: parsePaging(d),
       order: parseSort(d, PURCHASE_SORT_KEYS, "number", "desc"),
@@ -1007,7 +1087,13 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
       tax?: number;
       discount?: number;
       expectedAt?: string | null;
-      items: { variantId: number; productId: number; description: string; quantity: number; unitCost: number }[];
+      items: {
+        variantId: number;
+        productId: number;
+        description: string;
+        quantity: number;
+        unitCost: number;
+      }[];
     }) => d,
   )
   .handler(async ({ context, data }) => {
@@ -1016,12 +1102,19 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
     // "recebido" so pelo receivePurchaseFn: salvo por aqui, o pedido ficava
     // recebido sem somar estoque nem gerar a conta a pagar, e o botao
     // Receber passava a recusar ("ja recebido").
-    if (!(PURCHASE_STATUS as readonly string[]).includes(data.status) || data.status === "recebido") {
+    if (
+      !(PURCHASE_STATUS as readonly string[]).includes(data.status) ||
+      data.status === "recebido"
+    ) {
       throw new Error("Status de pedido inválido.");
     }
     await assertStore(sql, tenant, data.storeId);
     await assertOwned(sql, tenant.companyId, "suppliers", data.supplierId);
-    await assertVariants(sql, tenant.companyId, data.items.map((i) => i.variantId));
+    await assertVariants(
+      sql,
+      tenant.companyId,
+      data.items.map((i) => i.variantId),
+    );
     /*
       productId vem do CLIENTE, mas quem manda e a variante: o formulario
       monta os dois juntos, mas nada impede um payload direto com um par que
@@ -1093,7 +1186,8 @@ export const savePurchaseFn = createServerFn({ method: "POST" })
                  (select count(*)::int from purchase_items where purchase_id = ${id}) as item_count
           from purchases where id = ${id} and company_id = ${tenant.companyId} for update
         `;
-        if (!cur[0] || cur[0].status === "recebido") throw new Error("Pedido não pode ser alterado.");
+        if (!cur[0] || cur[0].status === "recebido")
+          throw new Error("Pedido não pode ser alterado.");
         await sql`
           update purchases set supplier_id = ${data.supplierId ?? null}, status = ${data.status}, notes = ${data.notes ?? null},
             subtotal = ${subtotal}, discount = ${desconto}, freight = ${frete}, tax = ${imposto},
@@ -1179,7 +1273,12 @@ export const receivePurchaseFn = createServerFn({ method: "POST" })
       if (!p) throw new Error("Pedido não encontrado.");
       if (p.status === "recebido") throw new Error("Pedido já recebido.");
       if (p.status === "cancelado") throw new Error("Pedido cancelado.");
-      const items = await sql<{ variant_id: number; product_id: number; quantity: string | number; unit_cost: string | number }>`
+      const items = await sql<{
+        variant_id: number;
+        product_id: number;
+        quantity: string | number;
+        unit_cost: string | number;
+      }>`
         select variant_id, product_id, quantity, unit_cost from purchase_items where purchase_id = ${p.id}
       `;
       // Custo de aterrissagem: frete + imposto - desconto do pedido, rateado
@@ -1285,7 +1384,9 @@ export const undoReceivePurchaseFn = createServerFn({ method: "POST" })
          limit 1
       `;
       if (mexeu) {
-        throw new Error("O estoque de algum item já mudou desde o recebimento — não dá pra desfazer. Ajuste manualmente em Estoque.");
+        throw new Error(
+          "O estoque de algum item já mudou desde o recebimento — não dá pra desfazer. Ajuste manualmente em Estoque.",
+        );
       }
 
       /*
@@ -1428,7 +1529,9 @@ export const listNcmPendingFn = createServerFn({ method: "GET" })
     const categorias = [...grupos.values()]
       .filter((g) => g.pendentes.length > 0)
       // Mais pendências primeiro: é onde uma aplicação em lote rende mais.
-      .sort((a, b) => b.pendentes.length - a.pendentes.length || a.categoria.localeCompare(b.categoria));
+      .sort(
+        (a, b) => b.pendentes.length - a.pendentes.length || a.categoria.localeCompare(b.categoria),
+      );
 
     return dump({
       categorias,
