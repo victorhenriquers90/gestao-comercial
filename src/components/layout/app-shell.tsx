@@ -10,7 +10,7 @@ import {
   Store,
   Sun,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -40,13 +40,7 @@ import { globalSearchFn, listNotificationsFn, markNotificationReadFn } from "@/l
 import type { Tenant } from "@/lib/server/context";
 import { cn } from "@/lib/utils";
 
-export function AppShell({
-  tenant,
-  children,
-}: {
-  tenant: Tenant;
-  children: ReactNode;
-}) {
+export function AppShell({ tenant, children }: { tenant: Tenant; children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -94,7 +88,9 @@ export function AppShell({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={cn("min-h-screen bg-background", isPdvTablet && "h-dvh min-h-0 overflow-hidden")}>
+      <div
+        className={cn("min-h-screen bg-background", isPdvTablet && "h-dvh min-h-0 overflow-hidden")}
+      >
         <aside
           className={cn(
             "no-print fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar text-sidebar-foreground md:flex",
@@ -157,9 +153,7 @@ export function AppShell({
                   </Button>
                 )}
                 <BrandMark className={cn("size-7", !isPdv && "md:hidden")} />
-                {current ? (
-                  <p className="ed-label truncate">{current.label}</p>
-                ) : null}
+                {current ? <p className="ed-label truncate">{current.label}</p> : null}
               </div>
               <GlobalSearch />
               <div className="topbar-end">
@@ -172,10 +166,7 @@ export function AppShell({
           )}
           <div
             key={pathname}
-            className={cn(
-              "app-main content-pane page-pad page-enter",
-              isPdv && "p-0",
-            )}
+            className={cn("app-main content-pane page-pad page-enter", isPdv && "p-0")}
           >
             {children}
           </div>
@@ -200,16 +191,22 @@ function SidebarBody({
 }) {
   const grouped = NAV_GROUPS.map((g) => ({
     label: g.label,
-    items: g.hrefs.map((href) => items.find((i) => i.href === href)).filter(Boolean) as typeof NAV_ITEMS,
+    items: g.hrefs
+      .map((href) => items.find((i) => i.href === href))
+      .filter(Boolean) as typeof NAV_ITEMS,
   })).filter((g) => g.items.length > 0);
 
   return (
     <>
-      <div className={cn("flex items-center gap-2.5 px-3 py-4", collapsed && "justify-center px-2")}>
+      <div
+        className={cn("flex items-center gap-2.5 px-3 py-4", collapsed && "justify-center px-2")}
+      >
         <BrandMark tone="inverse" className="size-8 shrink-0" />
         {!collapsed ? (
           <div className="min-w-0">
-            <p className="truncate font-display text-sm font-semibold tracking-tight text-sidebar-foreground">{APP_NAME}</p>
+            <p className="truncate font-display text-sm font-semibold tracking-tight text-sidebar-foreground">
+              {APP_NAME}
+            </p>
             <p className="truncate text-xs text-sidebar-muted">{tenant.companyName}</p>
           </div>
         ) : null}
@@ -217,12 +214,11 @@ function SidebarBody({
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4">
         {grouped.map((group) => (
           <div key={group.label}>
-            {!collapsed ? (
-              <p className="ed-label mb-1.5 px-2.5">{group.label}</p>
-            ) : null}
+            {!collapsed ? <p className="ed-label mb-1.5 px-2.5">{group.label}</p> : null}
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
+                const active =
+                  item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
                 const Icon = item.icon;
                 const link = (
                   <Link
@@ -440,9 +436,9 @@ function GlobalSearch() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [hits, setHits] = useState<{ type: string; id: number; title: string; subtitle: string; href: string }[]>(
-    [],
-  );
+  const [hits, setHits] = useState<
+    { type: string; id: number; title: string; subtitle: string; href: string }[]
+  >([]);
 
   // O atalho aceita Ctrl E Cmd (ver onKey abaixo), mas a DICA precisa mostrar
   // a tecla que existe no teclado de quem esta olhando -- os terminais de loja
@@ -468,16 +464,30 @@ function GlobalSearch() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /*
+    Sem isto, uma resposta mais LENTA de um termo mais VELHO podia chegar
+    DEPOIS de uma mais rapida de um termo mais novo e sobrescrever o
+    resultado certo na tela -- digitar rapido ("cal" -> "calça") sem
+    nenhum aviso de que o resultado nao bate mais com o campo. O debounce
+    (setTimeout) ja evita disparo por tecla; isto aqui cobre a corrida
+    ENTRE requisicoes ja disparadas.
+  */
+  const buscaAtual = useRef(0);
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
+      const minha = ++buscaAtual.current;
       if (q.trim().length < 2) {
         setHits([]);
         return;
       }
       globalSearchFn({ data: { q } })
-        .then(setHits)
-        .catch(() => setHits([]));
+        .then((r) => {
+          if (buscaAtual.current === minha) setHits(r);
+        })
+        .catch(() => {
+          if (buscaAtual.current === minha) setHits([]);
+        });
     }, 180);
     return () => clearTimeout(t);
   }, [q, open]);
