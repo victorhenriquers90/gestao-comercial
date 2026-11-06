@@ -1,5 +1,5 @@
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { useCallback, useState, type FormEvent, useEffect, useRef } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -287,8 +287,8 @@ function LoginPage() {
                   <Label htmlFor="name" className="ed-label">
                     Nome
                   </Label>
-                  <div className="relative">
-                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <div className="group relative">
+                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
                     <Input
                       id="name"
                       className={cn(fieldClass, "pl-11")}
@@ -305,8 +305,8 @@ function LoginPage() {
                 <Label htmlFor="email" className="ed-label">
                   E-mail
                 </Label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="group relative">
+                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
                   <Input
                     id="email"
                     type="email"
@@ -323,8 +323,8 @@ function LoginPage() {
                 <Label htmlFor="password" className="ed-label">
                   Senha
                 </Label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="group relative">
+                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
@@ -351,8 +351,11 @@ function LoginPage() {
                   {error}
                 </p>
               ) : null}
-              <Button type="submit" size="lg" className="mt-1 w-full rounded-2xl" disabled={busy}>
+              <Button type="submit" size="lg" className="group mt-1 w-full rounded-2xl" disabled={busy}>
                 {busy ? "Aguarde…" : signingUp ? "Criar conta" : "Entrar"}
+                {busy ? null : (
+                  <ArrowRight className="-translate-x-1 opacity-0 transition-[transform,opacity] duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
+                )}
               </Button>
             </form>
 

@@ -388,6 +388,12 @@
   width: 100%;
   max-width: 26rem;
   overflow: hidden;
+  /* Cantos retos (0px) contra os 32px dos campos/botao (--radius-2xl) por
+     baixo era a maior inconsistencia visual do cartao -- o continer
+     "externo" lendo como um elemento de outra linguagem de design que o
+     que ele proprio contem. Mesmo raio dos campos, nao um raio solto
+     novo, pra manter uma unica escala em vez de duas. */
+  border-radius: var(--radius-2xl);
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow:

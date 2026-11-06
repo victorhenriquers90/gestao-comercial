@@ -8581,6 +8581,47 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      paralaxe — esperado, não é regressão). Deploy Vercel "Ready",
      confirmado ao vivo em produção.
 
+169. **Login (itens 165-168): pedido explícito de "analista de design UX
+     sênior" pra dar uma cara mais moderna — achado real na auditoria
+     (cartão com canto reto contra campos bem arredondados) e dois
+     polimentos de microinteração.**
+
+     Auditoria por `getComputedStyle` antes de mexer (não só olho): o
+     cartão (`.login-card`) tinha `border-radius: 0px` enquanto os
+     campos já computavam `32px` (a escala `--radius-2xl` deste projeto,
+     maior que o padrão do Tailwind — ver `styles.css:46-51`) — o
+     contêiner "de fora" com uma linguagem de cantos diferente do que
+     ele próprio contém, a maior inconsistência visual real da tela.
+
+     - `.login-card` ganhou `border-radius: var(--radius-2xl)` (mesma
+       escala dos campos/botão, não um raio solto novo). A barra
+       gradiente do topo (`::before`) e o `overflow: hidden` do próprio
+       cartão já cuidam de cortar ela certinho nos cantos agora
+       arredondados, sem mudança nenhuma ali.
+     - Ícones dos campos (Nome/E-mail/Senha): cada `<div className="group
+       relative">` com o ícone ganhando `group-focus-within:text-primary`
+       — o ícone muda pra verde da marca quando o campo ao lado recebe
+       foco, não só a borda/fundo do próprio campo que já reagia.
+     - Botão "Entrar"/"Criar conta": ganhou um `ArrowRight` que entra
+       deslizando (`-translate-x-1 opacity-0` → `translate-x-0
+       opacity-100` no `group-hover`) — some de novo em `disabled`/
+       "Aguarde…" (`busy ? null : <ArrowRight .../>`), não fica um ícone
+       parado ali enquanto a chamada está em andamento.
+     - Não mexido, por decisão (ver texto do item): o estilo em si dos
+       campos (preenchido/`bg-muted`, não contorno) e os rótulos
+       `ed-label` em versalete — são convenção do DESIGN SYSTEM inteiro
+       (`AGENTS.project.md`: "Design é sistêmico"), não só do login;
+       mudar aqui destoaria do resto do app, não combinaria com ele. Não
+       existe fluxo de "esqueci minha senha" no código (`grep` por
+       `forgotPassword`/`resetPassword` sem nenhum resultado) — não
+       adicionado link nenhum pra uma tela que não existe.
+
+     **Verificação**: `typecheck`/`lint` limpos. Visual no servidor de
+     dev: cartão com cantos arredondados de verdade (1100px e 375px),
+     ícone do e-mail virando verde ao focar o campo (clique real,
+     conferido no screenshot), seta aparecendo no botão ao passar o
+     mouse. Deploy Vercel "Ready", confirmado ao vivo em produção.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
