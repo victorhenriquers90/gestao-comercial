@@ -9001,6 +9001,27 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      mudar nenhum arquivo). Nenhum código alterado neste item, só
      diagnóstico.
 
+176. **Continuação dos itens 174/175: decidido consertar o cabeçalho
+     `sticky` de verdade — opção 2 do item 175 (tabela ganha caixa de
+     rolagem própria, altura máxima, cabeçalho gruda dentro dela). Pedido
+     "continuar" repetido sem escolher entre as 3 opções; dado o custo
+     baixo e reversível desta (uma linha de CSS no `TableWrap`
+     compartilhado, nada de reescrever `DataTable`), decisão tomada sem
+     aguardar mais — fácil de reverter se o dono da loja não gostar.**
+
+     `TableWrap` (`shared.tsx`) ganhou `max-h-[36rem] overflow-auto` no
+     lugar de só `overflow-x-auto`. `max-height` só pesa quando o
+     conteúdo passa do teto — uma tabela curta (cabe nos 36rem) renderiza
+     idêntica a antes, nenhuma mudança visual; só listas longas (onde
+     perder o cabeçalho rolando realmente atrapalha) ganham a caixa com
+     rolagem própria E o cabeçalho grudando nela de verdade (explicado no
+     item 175: só funciona porque agora o `<div>` É o scroll container de
+     verdade, não um impostor que nunca rola).
+
+     **Verificação**: `typecheck`/`lint` limpos. Deploy e teste ao vivo a
+     seguir (tabela curta sem mudança visual, tabela longa com scroll
+     interno e cabeçalho grudando).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

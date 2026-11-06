@@ -240,20 +240,22 @@ export function clickableRow<T extends HTMLElement = HTMLElement>(onClick: () =>
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    // O `sticky top-0` do cabecalho da tabela NAO gruda no scroll da
-    // pagina (confirmado ao vivo, item 174 do HANDOFF) -- investigado a
-    // fundo, mas a causa nao e uma propriedade isolada deste wrapper
-    // (overflow/transform/container-type testados um a um aqui e em
-    // `.content-pane`, nenhum sozinho resolve; só remover TODAS as
-    // classes dos dois ao mesmo tempo faz o sticky engatar, o que aponta
-    // pra uma interacao entre a infraestrutura de container query
-    // (usada tambem pelo dashboard e pelos field-grid das Fases 1-4) e
-    // algo neste wrapper que nao isolei). Consertar direito pede mexer
-    // nessa base compartilhada ou trocar a estrategia (cabecalho
-    // sincronizado por JS, ou tabela com altura própria e scroll
-    // interno) -- maior que o escopo "mecanico, pequeno" desta fase.
-    // Documentado como limitacao conhecida, nao corrigido aqui.
-    <div className="enter-fade overflow-x-auto border-y border-border bg-card">{children}</div>
+    // `max-h-[36rem] overflow-auto`, nao so `overflow-x-auto`: item 175
+    // do HANDOFF provou (repro isolado, fora da pagina) que `overflow-x:
+    // auto` sozinho sequestra o `sticky top-0` do cabecalho pros DOIS
+    // eixos, nao so o horizontal -- nao tem como ter "rolagem horizontal
+    // isolada" E "cabecalho grudando no scroll da PAGINA" no mesmo
+    // elemento, CSS puro nao permite. Escolhido aqui: a tabela ganha
+    // caixa de rolagem PROPRIA (as duas direcoes) com altura maxima, e o
+    // cabecalho gruda DENTRO dela -- so entao sticky faz sentido (o
+    // scroll que ele vigia e o da propria caixa, nao mais o da pagina).
+    // Tabela curta (cabe nos 36rem) nao muda nada -- max-height so pesa
+    // quando o conteudo passa do teto, visual identico a antes. So pesa
+    // em listas longas, que e justamente onde perder o cabecalho rolando
+    // doia de verdade.
+    <div className="enter-fade max-h-[36rem] overflow-auto border-y border-border bg-card">
+      {children}
+    </div>
   );
 }
 
