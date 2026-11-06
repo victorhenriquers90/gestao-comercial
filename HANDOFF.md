@@ -9018,9 +9018,17 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      item 175: só funciona porque agora o `<div>` É o scroll container de
      verdade, não um impostor que nunca rola).
 
-     **Verificação**: `typecheck`/`lint` limpos. Deploy e teste ao vivo a
-     seguir (tabela curta sem mudança visual, tabela longa com scroll
-     interno e cabeçalho grudando).
+     **Verificação**: `typecheck`/`lint` limpos. Deploy `883b570`
+     "Ready", confirmado ao vivo em produção nos dois extremos:
+     `fornecedores.tsx` (1 linha, `scrollHeight === clientHeight`, zero
+     scroll, visual idêntico a antes) e `vendas.tsx` (lista longa,
+     `scrollHeight > clientHeight`) — aqui confirmado tanto por
+     `getBoundingClientRect` (cabeçalho no mesmo `top` antes/depois de
+     mexer `scrollTop` da caixa) quanto visualmente, rolando a roda do
+     mouse de verdade sobre a tabela: as linhas mudam (venda 41→35), o
+     cabeçalho ("N°", "DATA", "CLIENTE", "DOCUMENTO") fica parado no
+     topo da caixa, com a barra de rolagem própria da tabela visível na
+     lateral — não mais a da página.
 
 ## Como a próxima IA deve trabalhar
 
