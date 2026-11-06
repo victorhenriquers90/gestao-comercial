@@ -8791,6 +8791,40 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      UI nem rota pra isso) e não há necessidade real de reverter dado o
      impacto nulo, mas fica registrado aqui por transparência.
 
+172. **Plano de design pra todo o sistema, Fase 3 (microinterações do
+     login, só onde fazem sentido): ícone da busca do topbar ganha o
+     mesmo destaque de foco do login. A seta do botão fica exclusiva do
+     login (decisão do dono da loja, não técnica).**
+
+     Fase 3 tinha uma pergunta de produto genuína em aberto (ver plano em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`):
+     a seta que desliza no botão "Entrar" deveria virar um padrão oficial
+     do `Button` (prop pra qualquer tela usar) ou ficar só como assinatura
+     visual do login? **Resposta do dono da loja: só no login mesmo** —
+     nenhuma mudança em `button.tsx`, nenhum outro botão do app ganha
+     seta.
+
+     A outra parte da fase era mecânica: o ícone de campo que fica verde
+     no foco (`group-focus-within:text-primary`) só existia no login
+     (Mail/Lock/User). O plano já desconfiava que a busca do topbar
+     (`.topbar-search`, `app-shell.tsx:497-498`, ícone `Search` antes do
+     `Input`) fosse o único outro candidato real fora do PDV — confirmado
+     por grep (`absolute.*left-\d.*-translate-y-1/2`, excluindo os 6
+     arquivos de PDV que o mesmo grep também achou, fora de escopo por
+     invariante #1). Achado parecido em `financeiro.tsx:899` ("R$" antes
+     do campo de valor) **não** é o mesmo padrão — é um prefixo de texto
+     fixo (moeda), não um ícone indicando o tipo do campo, e não ganhou
+     o destaque de foco por isso.
+
+     Mudança: `app-shell.tsx` — `.topbar-search` ganha `group`, o ícone
+     `Search` ganha `transition-colors group-focus-within:text-primary`.
+     É a busca global (`Ctrl K`), presente em toda tela do back-office
+     via o shell — uma mudança no componente compartilhado, não
+     tela por tela (invariante #11).
+
+     **Verificação**: `typecheck`/`lint` limpos (mesmos avisos
+     pré-existentes). Deploy e verificação ao vivo a seguir.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
