@@ -24,13 +24,24 @@ export function DialogContent({
           // diálogo não encontra NENHUM ancestral com container query --
           // o Dialog é Portal do Radix pro document.body, fora de
           // `.content-pane` (que só cobre a página por trás dele).
-          "fixed top-1/2 left-1/2 z-50 w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-pop outline-none [container-type:inline-size] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
+          // max-h-[85vh] + overflow-y-auto por padrao: antes cada tela
+          // decidia uma altura diferente (90vh/88vh/85vh) ou nenhuma, e
+          // "nenhuma" deixava o dialogo vazar pra fora da tela em telas
+          // baixas quando o conteudo era grande (recibo + bloco de NFC-e +
+          // comissao, por exemplo). Uma tela que já passa seu proprio
+          // max-h/overflow via className continua vencendo (cn funde por
+          // ultimo), isto so cobre quem nao decidia nada.
+          "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-pop outline-none [container-type:inline-size] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
           className,
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-3 right-3 flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+        {/* rounded-full, nao rounded-md: todo OUTRO botao so-icone do app
+            (button.tsx, variante "icon") e circular -- este X era o unico
+            quadrado com canto arredondado, mesmo visual mas linguagem
+            diferente. */}
+        <DialogPrimitive.Close className="absolute top-3 right-3 flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <X className="size-4" />
           <span className="sr-only">Fechar</span>
         </DialogPrimitive.Close>

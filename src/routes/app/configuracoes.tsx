@@ -10,7 +10,6 @@ import { ImageField } from "@/components/image-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -836,42 +835,26 @@ function ConfigPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      <Dialog open={fechandoLoja != null} onOpenChange={(next) => !next && setFechandoLoja(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Fechar loja</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Fechar “{fechandoLoja?.name}”? Ela some do seletor de loja e de todo formulário novo
-            (PDV, Compras, Metas...), mas vendas, estoque e caixas antigos continuam no histórico
-            normalmente.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Button
-              variant="destructive"
-              disabled={salvando === "fechar-loja"}
-              onClick={() => {
-                if (!fechandoLoja) return;
-                void salvar(
-                  "fechar-loja",
-                  () => closeStoreFn({ data: { id: fechandoLoja.id } }),
-                  "Loja fechada.",
-                  () => {
-                    setFechandoLoja(null);
-                    void qc.invalidateQueries({ queryKey: ["settings"] });
-                    void qc.invalidateQueries({ queryKey: ["tenant"] });
-                  },
-                );
-              }}
-            >
-              {salvando === "fechar-loja" ? "Fechando…" : "Fechar loja"}
-            </Button>
-            <Button variant="ghost" onClick={() => setFechandoLoja(null)}>
-              Cancelar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmBar
+        open={fechandoLoja != null}
+        title={`Fechar "${fechandoLoja?.name}"? Ela some do seletor de loja e de todo formulário novo (PDV, Compras, Metas...), mas vendas, estoque e caixas antigos continuam no histórico normalmente.`}
+        confirmLabel="Fechar loja"
+        danger
+        onCancel={() => setFechandoLoja(null)}
+        onConfirm={() => {
+          if (!fechandoLoja) return;
+          void salvar(
+            "fechar-loja",
+            () => closeStoreFn({ data: { id: fechandoLoja.id } }),
+            "Loja fechada.",
+            () => {
+              setFechandoLoja(null);
+              void qc.invalidateQueries({ queryKey: ["settings"] });
+              void qc.invalidateQueries({ queryKey: ["tenant"] });
+            },
+          );
+        }}
+      />
 
       <ConfirmBar
         open={desativando != null}

@@ -3,11 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { EmptyState, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { ConfirmBar, EmptyState, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { TARGET_BONUS_KINDS, TARGET_BONUS_LABELS, type TargetBonusKind } from "@/lib/constants";
@@ -292,30 +292,21 @@ function MetasPage() {
               Metas de loja acompanham o faturamento. Para pagar bônus, escolha um vendedor.
             </p>
           )}
-          <Button className="mt-4" disabled={salvando} onClick={() => void save()}>
-            {salvando ? "Salvando…" : "Salvar"}
-          </Button>
+          <DialogFooter>
+            <Button disabled={salvando} onClick={() => void save()}>
+              {salvando ? "Salvando…" : "Salvar"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={excluindo != null} onOpenChange={(next) => !next && setExcluindo(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Excluir meta</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Excluir “{excluindo?.name}”? O progresso realizado some do painel; as vendas que já contaram para
-            ela continuam no histórico de vendas normalmente.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Button variant="destructive" disabled={confirmandoExclusao} onClick={() => void confirmarExclusao()}>
-              {confirmandoExclusao ? "Excluindo…" : "Excluir"}
-            </Button>
-            <Button variant="ghost" onClick={() => setExcluindo(null)}>
-              Cancelar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmBar
+        open={excluindo != null}
+        title={`Excluir meta "${excluindo?.name}"? O progresso realizado some do painel; as vendas que já contaram para ela continuam no histórico de vendas normalmente.`}
+        confirmLabel="Excluir"
+        danger
+        onCancel={() => setExcluindo(null)}
+        onConfirm={() => void confirmarExclusao()}
+      />
     </div>
   );
 }

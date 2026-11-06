@@ -8622,6 +8622,76 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      conferido no screenshot), seta aparecendo no botão ao passar o
      mouse. Deploy Vercel "Ready", confirmado ao vivo em produção.
 
+170. **Plano de design pra todo o sistema, Fase 1 (base compartilhada):
+     rodapé de diálogo padronizado, altura/scroll do diálogo por padrão,
+     botão de fechar circular, forma do esqueleto de KPI corrigida, erro
+     cru trocado pelo componente compartilhado em 2 telas.**
+
+     Pedido explícito do dono da loja por um plano de design pro resto do
+     sistema (não só o login). Pesquisa prévia com 3 agentes Explore (não
+     repetir) mostrou que **isto não é reforma do zero** — o sistema já
+     tem base de design madura (raio por elevação: controles 12-16px →
+     cards 24px → diálogos 32px; KPIs chapados *de propósito*; linguagem
+     de movimento unificada). O plano foca em lacunas reais, catalogadas
+     por arquivo:linha pelos agentes, não em redesenhar o que já funciona.
+     Plano completo em `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`.
+
+     **`DialogFooter` existia e não era usado em lugar nenhum** — cada
+     diálogo posicionava o botão de ação de um jeito (largura total;
+     auto-largura à esquerda; destrutivo primeiro + Cancelar fantasma;
+     alinhado à direita — 4 padrões catalogados). Agora todo diálogo do
+     back-office usa `DialogFooter` (ação primária à direita, Cancelar
+     antes dela — o mesmo que `ConfirmBar` já fazia), em
+     `compras.tsx` (2×), `produtos.tsx`, `estoque.tsx`, `clientes.tsx`,
+     `fornecedores.tsx`, `promocoes.tsx`, `metas.tsx`, `commission-panel.tsx`,
+     `financeiro.tsx` (3×, incluindo trocar a ordem Cancelar/destrutivo em
+     "Cancelar lançamento"), `devolucoes.tsx`, `vendedores.tsx` (2×) e
+     `image-editor.tsx`. **Dois diálogos de exclusão escritos à mão**
+     (`metas.tsx` "Excluir meta", `configuracoes.tsx` "Fechar loja") viraram
+     `ConfirmBar` de verdade em vez de só reordenar os botões — mesmo
+     padrão de foco/Escape/`role="alertdialog"` que o resto do app já usa
+     pra ação destrutiva, e o import de `Dialog`/`DialogContent`/
+     `DialogHeader`/`DialogTitle` saiu de `configuracoes.tsx` (ficou sem
+     nenhum outro uso). **Não mexido, de propósito**: os botões "Salvar
+     dados" dentro das abas de `customer-panel.tsx`/`supplier-panel.tsx`
+     (ação por aba, não rodapé do diálogo inteiro) e o botão "Cancelar
+     venda" de `vendas.tsx` (linha inline campo+botão, não um par
+     Cancelar/Confirmar).
+
+     **`DialogContent` ganhou `max-h-[85vh] overflow-y-auto` por padrão**
+     — antes cada tela decidia uma altura diferente (90vh/88vh/85vh) ou
+     nenhuma, e "nenhuma" deixava o diálogo vazar pra fora da tela em
+     telas baixas com conteúdo grande. Uma tela que já passa seu próprio
+     `max-h`/`overflow` continua vencendo (o `cn()` funde por último);
+     removida a declaração agora redundante em `produtos.tsx` (2 diálogos
+     que já usavam exatamente 85vh).
+
+     **Botão de fechar (X) do diálogo**: `rounded-md` → `rounded-full` —
+     era o único botão-só-ícone quadrado do app inteiro; `button.tsx`
+     já estabelece círculo pra todo o resto.
+
+     **Esqueleto de carregamento dos KPIs tinha formato errado**:
+     `PageSkeleton` (`shared.tsx`) e a tela de carregamento do app inteiro
+     (`route.tsx`) desenhavam blocos arredondados de 24px, mas o
+     `KpiCard` de verdade é chapado (só um filete embaixo, zero sombra/
+     borda/raio — decisão deliberada, invariante #11). A tela "pulava" de
+     forma visível no instante em que os dados chegavam. Novo esqueleto
+     copia a forma real: `kpi-card` chapado com duas barras de texto
+     (rótulo + valor) dentro.
+
+     **Erro cru em vez do `QueryError` compartilhado**: `index.tsx` e
+     `relatorios.tsx` mostravam um `<p>` vermelho solto; agora usam o
+     mesmo componente que o resto do app já usa (a maioria das telas, como
+     `metas.tsx`, já usava `QueryError` — só esses dois ficaram pra trás).
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Visual ao
+     vivo pendente de login do dono da loja na sessão de teste (deslogada
+     durante o trabalho do item 169); a verificar antes de considerar a
+     fase fechada: botão X circular, rodapé alinhado à direita nos
+     diálogos trocados, `ConfirmBar` novo de "Excluir meta"/"Fechar loja"
+     funcionando (Escape, foco, confirmar/cancelar), diálogo alto
+     (ex. detalhe de venda) rolando em vez de vazar da tela.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

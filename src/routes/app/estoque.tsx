@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -319,8 +319,8 @@ function EstoquePage() {
               ))}
             </Select>
           </Field>
+          <DialogFooter>
           <Button
-            className="mt-4 w-full"
             disabled={registrando}
             onClick={async () => {
               if (!adj || !storeId || registrando) return;
@@ -378,6 +378,7 @@ function EstoquePage() {
           >
             {registrando ? "Registrando…" : "Registrar"}
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

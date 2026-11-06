@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { DataTable, EmptyState, KpiCard, QueryError, Td, Th } from "@/components/shared";
@@ -585,9 +585,11 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
               Regra ativa
             </label>
           </div>
-          <Button className="mt-4" disabled={salvando} onClick={() => void save()}>
-            {salvando ? "Salvando…" : "Salvar regra"}
-          </Button>
+          <DialogFooter>
+            <Button disabled={salvando} onClick={() => void save()}>
+              {salvando ? "Salvando…" : "Salvar regra"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

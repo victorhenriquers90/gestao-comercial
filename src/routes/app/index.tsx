@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { KpiCard, PageHeader, PageSkeleton } from "@/components/shared";
+import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -69,11 +69,7 @@ function DashboardPage() {
   }
   if (dash.isPending) return <PageSkeleton cards={8} />;
   if (dash.error) {
-    return (
-      <p className="text-sm text-destructive">
-        {dash.error instanceof Error ? dash.error.message : "Erro ao carregar o painel."}
-      </p>
-    );
+    return <QueryError error={dash.error} fallback="Erro ao carregar o painel." />;
   }
   const d = dash.data!;
 

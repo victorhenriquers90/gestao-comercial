@@ -8,6 +8,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -1046,7 +1047,10 @@ function FinanceiroPage() {
               }}
             />
           </Field>
-          <div className="mt-4 flex gap-2">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelando(null)}>
+              Voltar
+            </Button>
             <Button
               variant="destructive"
               disabled={confirmandoCancelamento}
@@ -1060,10 +1064,7 @@ function FinanceiroPage() {
                   ? "Confirmar estorno"
                   : "Confirmar cancelamento"}
             </Button>
-            <Button variant="ghost" onClick={() => setCancelando(null)}>
-              Voltar
-            </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={openPay} onOpenChange={setOpenPay}>
@@ -1097,8 +1098,8 @@ function FinanceiroPage() {
           <Field label="Valor" className="mt-block">
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
+          <DialogFooter>
           <Button
-            className="mt-4"
             disabled={salvandoConta}
             onClick={async () => {
               if (salvandoConta) return;
@@ -1138,6 +1139,7 @@ function FinanceiroPage() {
           >
             {salvandoConta ? "Salvando…" : "Salvar"}
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={openRec} onOpenChange={setOpenRec}>
@@ -1161,8 +1163,8 @@ function FinanceiroPage() {
           <Field label="Valor" className="mt-block">
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
+          <DialogFooter>
           <Button
-            className="mt-4"
             disabled={salvandoTitulo}
             onClick={async () => {
               if (salvandoTitulo) return;
@@ -1198,6 +1200,7 @@ function FinanceiroPage() {
           >
             {salvandoTitulo ? "Salvando…" : "Salvar"}
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -10,7 +10,7 @@ import { RetentionGuide } from "@/components/retention-guide";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -615,8 +615,8 @@ function VendedoresPage() {
               </span>
             </label>
           ) : null}
+          <DialogFooter>
           <Button
-            className="mt-4"
             onClick={async () => {
               try {
                 parseBrDocument(form.document, sellerDocKind(form.taxRegime));
@@ -646,6 +646,7 @@ function VendedoresPage() {
           >
             Salvar
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -668,19 +669,20 @@ function VendedoresPage() {
             return (
               <div>
                 <TaxBreakdown tax={tax} />
-                <Button
-                  className="mt-block"
-                  variant="outline"
-                  onClick={() => {
-                    const slip = previewSlip(c.id);
-                    if (slip) {
-                      setTaxOpen(null);
-                      setSlips([slip]);
-                    }
-                  }}
-                >
-                  Imprimir recibo
-                </Button>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const slip = previewSlip(c.id);
+                      if (slip) {
+                        setTaxOpen(null);
+                        setSlips([slip]);
+                      }
+                    }}
+                  >
+                    Imprimir recibo
+                  </Button>
+                </DialogFooter>
               </div>
             );
           })()}

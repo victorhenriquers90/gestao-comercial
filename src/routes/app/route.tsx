@@ -33,9 +33,16 @@ function AppLayout() {
         </div>
         <div className="flex-1 p-8">
           <Skeleton className="h-10 w-64" />
+          {/* Mesma forma chapada do kpi-card de verdade -- ver shared.tsx PageSkeleton. */}
           <div className="mt-6 kpi-grid">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 rounded-xl" />
+              <div
+                key={i}
+                className="kpi-card min-w-0 rounded-none border-0 border-b border-border bg-transparent px-1 py-4 shadow-none"
+              >
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="mt-2.5 h-7 w-24" />
+              </div>
             ))}
           </div>
         </div>

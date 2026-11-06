@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
@@ -330,8 +330,8 @@ function DevolucoesPage() {
               onBlur={(e) => validateReason(e.target.value)}
             />
           </Field>
+          <DialogFooter>
           <Button
-            className="mt-4"
             disabled={!saleId || confirmando}
             onClick={async () => {
               if (!validateReason(reason)) return;
@@ -361,6 +361,7 @@ function DevolucoesPage() {
           >
             {confirmando ? "Confirmando…" : "Confirmar"}
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

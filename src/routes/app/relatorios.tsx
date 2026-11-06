@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, Td, Th } from "@/components/shared";
+import { DataTable, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError, Td, Th } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -323,9 +323,7 @@ function RelatoriosPage() {
       {report.isPending ? (
         <PageSkeleton cards={4} />
       ) : report.error ? (
-        <p className="text-sm text-destructive">
-          {report.error instanceof Error ? report.error.message : "Erro ao gerar o relatório."}
-        </p>
+        <QueryError error={report.error} fallback="Erro ao gerar o relatório." />
       ) : report.data ? (
         <ReportBody type={type} pack={report.data} />
       ) : null}

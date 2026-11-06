@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
@@ -316,8 +316,8 @@ function ComprasPage() {
               </div>
             ))}
           </div>
+          <DialogFooter>
           <Button
-            className="mt-4 w-full"
             disabled={salvandoPedido}
             onClick={async () => {
               if (!storeId) return toast.error("Selecione a loja.");
@@ -347,6 +347,7 @@ function ComprasPage() {
           >
             {salvandoPedido ? "Salvando…" : "Salvar pedido"}
           </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -404,9 +405,11 @@ function ComprasPage() {
                 </div>
               </div>
               {p.status !== "recebido" && p.status !== "cancelado" ? (
-                <Button className="w-full" disabled={recebendoId === p.id} onClick={() => setConfirmReceive(p.id)}>
-                  {recebendoId === p.id ? "Recebendo…" : "Receber pedido"}
-                </Button>
+                <DialogFooter>
+                  <Button disabled={recebendoId === p.id} onClick={() => setConfirmReceive(p.id)}>
+                    {recebendoId === p.id ? "Recebendo…" : "Receber pedido"}
+                  </Button>
+                </DialogFooter>
               ) : p.receivedAt ? (
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Recebido em {formatDateTime(p.receivedAt)}</p>

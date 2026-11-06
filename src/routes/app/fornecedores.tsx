@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { SupplierPanel } from "@/components/supplier-panel";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
@@ -206,6 +206,8 @@ function FornecedoresPage() {
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
+          </div>
+          <DialogFooter>
             <Button
               disabled={salvando}
               onClick={async () => {
@@ -227,7 +229,7 @@ function FornecedoresPage() {
             >
               {salvando ? "Salvando…" : "Salvar"}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <SupplierPanel

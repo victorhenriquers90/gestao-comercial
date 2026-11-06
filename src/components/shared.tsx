@@ -355,8 +355,21 @@ export function PageSkeleton({ cards = 4 }: { cards?: number }) {
     <div className="space-y-5">
       <Skeleton className="h-8 w-48" />
       <div className="kpi-grid">
+        {/*
+          Mesma forma do KpiCard de verdade (chapado, so um filete embaixo
+          -- ver kpi-card em styles.css) e nao uma caixa arredondada: com
+          `h-28 rounded-xl` o esqueleto parecia um cartao com sombra/borda
+          que nunca existe depois que os dados chegam, e a tela "pulava"
+          de forma nesse instante.
+        */}
         {Array.from({ length: cards }).map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-xl" />
+          <div
+            key={i}
+            className="kpi-card min-w-0 rounded-none border-0 border-b border-border bg-transparent px-1 py-4 shadow-none"
+          >
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2.5 h-7 w-24" />
+          </div>
         ))}
       </div>
       <Skeleton className="h-80 rounded-xl" />

@@ -2,7 +2,7 @@ import { ImagePlus, RotateCw, Sparkles, Trash2, ZoomIn } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/input";
 import {
   ASPECTS,
@@ -793,7 +793,7 @@ function ImageEditorDialog({
             </div>
           </div>
         )}
-        <div className="mt-4 flex justify-end gap-2">
+        <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
@@ -809,7 +809,7 @@ function ImageEditorDialog({
           <Button type="button" onClick={apply} disabled={!rotated}>
             {src && !rotated ? "Carregando…" : "Usar recorte"}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

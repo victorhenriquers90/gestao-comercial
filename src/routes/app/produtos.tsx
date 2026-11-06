@@ -7,7 +7,7 @@ import { ImageField } from "@/components/image-editor";
 import { PriceTags, type PriceTagItem } from "@/components/price-tag";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NcmBulkPanel } from "@/components/ncm-bulk-panel";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
@@ -442,7 +442,7 @@ function ProdutosPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editId ? "Editar produto" : "Novo produto"}</DialogTitle>
           </DialogHeader>
@@ -583,14 +583,16 @@ function ProdutosPage() {
               Ativo
             </label>
           </div>
-          <Button className="mt-4 w-full" disabled={salvando} onClick={() => void save()}>
-            {salvando ? "Salvando…" : "Salvar"}
-          </Button>
+          <DialogFooter>
+            <Button disabled={salvando} onClick={() => void save()}>
+              {salvando ? "Salvando…" : "Salvar"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={ncmOpen} onOpenChange={setNcmOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Classificação fiscal (NCM)</DialogTitle>
           </DialogHeader>
