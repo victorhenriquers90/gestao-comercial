@@ -8869,9 +8869,11 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      daquela tela) pra não deslogar a sessão de teste outra vez.
 
 174. **Plano de design pra todo o sistema, Fase 4 (consertos pontuais
-     catalogados): CRM, Relatórios, Configurações, `PageHeader` e um bug
-     real de verdade — o cabeçalho de tabela `sticky` nunca grudava no
-     scroll da página, em TODA tabela do sistema.**
+     catalogados): CRM, Relatórios, Configurações, `PageHeader` corrigidos
+     de verdade. Achado um bug real à parte — o cabeçalho de tabela
+     `sticky` nunca gruda no scroll da página, em TODA tabela do sistema
+     — mas NÃO corrigido (ver abaixo): a primeira tentativa de fix foi
+     publicada e, testando ao vivo de novo, não resolveu nada; revertida.**
 
      - **CRM** (`crm.tsx`): `<select>` cru de etapa dentro do cartão →
        componente `Select` (mantido `onClick` com `stopPropagation`, já
@@ -8903,30 +8905,39 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        `PageHeader` continuam usando `description` sem mudança nenhuma —
        curtos de verdade (listas de 3-5 palavras), não frase.
 
-     **O bug real**: o plano desconfiava que o cabeçalho `sticky top-0`
-     da tabela nunca grudava no scroll da PÁGINA, e media certo — medido
-     ao vivo antes de mexer (`vendas.tsx`, tabela com conteúdo que exige
-     rolar a página): rolando a janela 600px, o cabeçalho andou os MESMOS
-     600px junto, zero efeito do `sticky`. Causa: `TableWrap`
-     (`shared.tsx`) tem `overflow-x-auto` (pra rolar tabela larga na
-     horizontal) mas não define `overflow-y` — e a regra do próprio CSS
-     (overflow visível num eixo quando o outro já rola é PROMOVIDO sozinho
-     pra "auto", nenhum navegador deixa um eixo vazar livre quando o outro
-     já é controlado) faz esse `<div>` virar sem querer o CONTAINER DE
-     SCROLL pro `sticky` do cabeçalho. Só que esse mesmo `<div>` nunca
-     rola de verdade sozinho — a altura dele sempre cabe a tabela inteira
-     (`scrollHeight === clientHeight`, confirmado ao vivo) — então o
-     "scroll" que o sticky estava vigiando nunca acontecia, e o cabeçalho
-     ficava preso na posição normal, subindo junto com a página.
-     **Fix**: `overflow-y-clip` no mesmo `<div>` — `clip` não sofre essa
-     promoção (ao contrário de `visible`), então o `sticky` volta a
-     enxergar o scroll de verdade, o da página. Vale pra TODA tabela do
-     sistema (`DataTable`/`TableWrap` é compartilhado, Invariante #11).
+     **O bug real, investigado mas NÃO corrigido nesta fase** — o plano
+     desconfiava que o cabeçalho `sticky top-0` da tabela nunca grudava
+     no scroll da PÁGINA, e media certo: medido ao vivo (`vendas.tsx`,
+     tabela com conteúdo que exige rolar a página), rolando a janela
+     600px o cabeçalho andou os MESMOS 600px junto, zero efeito do
+     `sticky`. **Primeira tentativa de fix (errada, revertida)**: supus
+     que `overflow-x-auto` sem `overflow-y` definido fizesse o `<div>` de
+     `TableWrap` virar sem querer o container de scroll do `sticky` (a
+     regra do CSS que promove "visible" pra "auto" quando o outro eixo já
+     rola) — tentei `overflow-y-clip`, publiquei, e testando ao vivo DE
+     NOVO depois do deploy, **o cabeçalho continuou sem grudar,
+     idêntico**. Investigando mais a fundo (testes isolados trocando uma
+     propriedade por vez — overflow, `transform` residual da animação
+     `page-enter`/`enter-fade`, `container-type` de `.content-pane`,
+     display `table-header-group` do `<thead>` — nenhum sozinho
+     explicava); só removendo TODAS as classes do `TableWrap` E de
+     `.content-pane` ao mesmo tempo o `sticky` passou a grudar de
+     verdade (confirmado com um `<div>` de teste sticky simples inserido
+     no lugar). Ou seja, é uma combinação de fatores na infraestrutura
+     de container query compartilhada (a mesma que o Dashboard e os
+     `field-grid-2/3` das Fases 1 usam), não uma propriedade isolada —
+     consertar direito pede mexer nessa base ou trocar de estratégia
+     (cabeçalho sincronizado por JS, ou tabela com altura própria e
+     scroll interno), maior que "mecânico, pequeno". **Revertido**
+     `overflow-y-clip` (não resolvia nada, só ficava um código confuso
+     sem efeito). Documentado como limitação conhecida — próxima IA:
+     não repetir a tentativa `overflow-y-clip`, já descartada; o
+     comentário em `TableWrap` (`shared.tsx`) explica o que já foi
+     eliminado.
 
      **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy e
-     reteste ao vivo a seguir (cabeçalho grudando de verdade rolando
-     `vendas.tsx`, chips de Relatórios com foco visível, cartão do CRM
-     abrindo com Enter/Espaço no teclado).
+     reteste ao vivo a seguir pros itens que SÃO fixes de verdade nesta
+     fase (CRM, Relatórios, Configurações, `PageHeader`).
 
 ## Como a próxima IA deve trabalhar
 

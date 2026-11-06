@@ -240,21 +240,20 @@ export function clickableRow<T extends HTMLElement = HTMLElement>(onClick: () =>
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    // overflow-y-clip, nao so overflow-x-auto: por regra do proprio CSS
-    // (overflow-x escolhido e overflow-y "visible" -> o navegador PROMOVE
-    // o "visible" pra "auto" sozinho, pra nenhum eixo vazar), este wrapper
-    // virava sem querer o container de rolagem vertical pro `sticky
-    // top-0` do cabecalho -- mas ele mesmo nunca rola de verdade (a altura
-    // sempre cabe o conteudo inteiro, scrollHeight == clientHeight), entao
-    // o cabecalho so acompanhava a pagina rolando embaixo dele, nunca
-    // grudava. Testado ao vivo (vendas.tsx, rolagem real de 600px): o
-    // cabecalho se movia 1:1 com a pagina, zero efeito do sticky. `clip`
-    // nao sofre essa promocao (a mesma excecao que `visible`, so que sem
-    // o rolamento residual), entao o sticky passa a enxergar o scroll de
-    // verdade (o da pagina).
-    <div className="enter-fade overflow-x-auto overflow-y-clip border-y border-border bg-card">
-      {children}
-    </div>
+    // O `sticky top-0` do cabecalho da tabela NAO gruda no scroll da
+    // pagina (confirmado ao vivo, item 174 do HANDOFF) -- investigado a
+    // fundo, mas a causa nao e uma propriedade isolada deste wrapper
+    // (overflow/transform/container-type testados um a um aqui e em
+    // `.content-pane`, nenhum sozinho resolve; só remover TODAS as
+    // classes dos dois ao mesmo tempo faz o sticky engatar, o que aponta
+    // pra uma interacao entre a infraestrutura de container query
+    // (usada tambem pelo dashboard e pelos field-grid das Fases 1-4) e
+    // algo neste wrapper que nao isolei). Consertar direito pede mexer
+    // nessa base compartilhada ou trocar a estrategia (cabecalho
+    // sincronizado por JS, ou tabela com altura própria e scroll
+    // interno) -- maior que o escopo "mecanico, pequeno" desta fase.
+    // Documentado como limitacao conhecida, nao corrigido aqui.
+    <div className="enter-fade overflow-x-auto border-y border-border bg-card">{children}</div>
   );
 }
 
