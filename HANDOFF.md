@@ -8770,7 +8770,26 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      avisos pré-existentes de sempre, incluindo o mesmo
      `react-refresh/only-export-components` que `badge.tsx`/`button.tsx`
      já tinham — `panel.tsx` exporta componente + função auxiliar, mesmo
-     padrão aceito ali). Deploy e verificação ao vivo a seguir.
+     padrão aceito ali). Deploy `1f8d892` "Ready", confirmado ao vivo em
+     produção: o `Card`+`panelToneClass("destructive")` do aviso "Caixa
+     aberto há 4 dias, sem fechar" renderiza igual a antes, e o
+     `Stat`+`Card`+`panelToneClass("warning")` de "Dinheiro esperado na
+     gaveta" também — conferido clicando "Revelar o dinheiro esperado"
+     no caixa real da Victor Comércio (sem saldo nenhum, R$0, registro
+     parado há dias sem venda desde os testes anteriores desta sessão).
+
+     **Atenção, ação real sem querer**: esse clique revelou o esperado
+     de verdade (`revealExpectedCashFn`) — não dava pra saber antes de
+     clicar que isso muda estado real (o fechamento deste caixa vai
+     registrar "conferência não cega" quando fechar, para sempre). Impacto
+     nulo na prática (R$0 de saldo, caixa já estava parado de testes
+     anteriores, ninguém vai fechar errado por causa disso), mas devia ter
+     checado o código (`caixa.tsx`/`revealExpectedCashFn`) ANTES de
+     clicar, não depois —
+     o próprio comentário do arquivo já avisa que isto é uma mudança real
+     de estado, não decoração. Não revertido (não existe "desrevelar" na
+     UI nem rota pra isso) e não há necessidade real de reverter dado o
+     impacto nulo, mas fica registrado aqui por transparência.
 
 ## Como a próxima IA deve trabalhar
 
