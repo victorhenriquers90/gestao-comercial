@@ -8825,6 +8825,45 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Verificação**: `typecheck`/`lint` limpos (mesmos avisos
      pré-existentes). Deploy e verificação ao vivo a seguir.
 
+173. **Achado na verificação ao vivo do item 172: `transition-colors` nos
+     ícones com `group-focus-within:text-primary` (login + busca do
+     topbar) é instável — às vezes a cor não troca, às vezes troca e não
+     volta. Removido `transition-colors` dos 4 ícones (login:
+     User/Mail/Lock; app-shell: Search); a troca de cor agora é instantânea,
+     não some mais.**
+
+     Testando o ícone novo da busca do topbar (item 172) ao vivo, a cor
+     não mudava ao focar o campo. Investigando a fundo (testes isolados
+     com CSS puro, sem Tailwind, trocando só uma propriedade por vez):
+     com `transition: color <qualquer duração > 0>` numa regra cuja
+     mudança de cor depende do `:focus-within` de um ANCESTRAL (não do
+     próprio elemento), a troca de cor fica instável nesta sessão —
+     às vezes não troca ao focar, às vezes troca ao focar mas não volta
+     ao desfocar. Com `transition: color 0s` (ou sem `transition` nenhuma),
+     sempre funciona nos dois sentidos, em todo teste repetido.
+
+     **Não ficou provado que isto afeta o usuário de verdade**: não
+     consegui confirmar no Chrome real (extensão Claude in Chrome não
+     conectada nesta sessão) se é um bug de navegador de verdade ou um
+     artefato só deste pane de automação (que já tem outras peculiaridades
+     registradas em memória — emulação de viewport, clique por `ref`).
+     Mas o padrão `group-focus-within` + `transition-colors` é comum demais
+     na web pra ser um bug real de navegador sem estar documentado em
+     algum lugar — a suspeita manda mais pro lado "só neste pane". Mesmo
+     assim, tirar a transição é uma correção de baixo risco e alto
+     benefício: a troca de cor vira instantânea em vez de suave (perda
+     visual mínima, 150ms a menos de fade) mas garantidamente correta nos
+     dois sentidos, em vez de arriscar o recurso não aparecer pra ninguém
+     ver — testado repetidamente após a mudança, sempre indo e voltando
+     certo.
+
+     `src/routes/login.tsx` (3 ícones) e
+     `src/components/layout/app-shell.tsx` (1 ícone) — só a classe
+     `transition-colors` removida, mais nada muda.
+
+     **Verificação**: `typecheck`/`lint` limpos. Deploy e reteste ao vivo
+     a seguir (focar/desfocar repetido, nos dois arquivos).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

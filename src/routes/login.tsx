@@ -288,7 +288,7 @@ function LoginPage() {
                     Nome
                   </Label>
                   <div className="group relative">
-                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                     <Input
                       id="name"
                       className={cn(fieldClass, "pl-11")}
@@ -306,7 +306,7 @@ function LoginPage() {
                   E-mail
                 </Label>
                 <div className="group relative">
-                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                   <Input
                     id="email"
                     type="email"
@@ -324,7 +324,7 @@ function LoginPage() {
                   Senha
                 </Label>
                 <div className="group relative">
-                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
