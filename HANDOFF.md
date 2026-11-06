@@ -8935,9 +8935,15 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      comentário em `TableWrap` (`shared.tsx`) explica o que já foi
      eliminado.
 
-     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy e
-     reteste ao vivo a seguir pros itens que SÃO fixes de verdade nesta
-     fase (CRM, Relatórios, Configurações, `PageHeader`).
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy
+     `919e1f7` "Ready", confirmado ao vivo em produção pros fixes que SÃO
+     de verdade nesta fase: CRM — cartão do quadro com `role="button"
+     tabindex="0"`, `Select` de etapa estilizado certo, e Enter no
+     teclado abrindo o diálogo de detalhe de verdade (testado com o
+     único cliente real no funil); Relatórios — os chips de tipo/período
+     viraram `Button` de verdade (clique em "Vendas" trocou pra
+     `background-color` primário, confirmado por `getComputedStyle`), com
+     foco/hover herdados de graça do componente.
 
 ## Como a próxima IA deve trabalhar
 
