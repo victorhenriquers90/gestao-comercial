@@ -8861,8 +8861,12 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `src/components/layout/app-shell.tsx` (1 ícone) — só a classe
      `transition-colors` removida, mais nada muda.
 
-     **Verificação**: `typecheck`/`lint` limpos. Deploy e reteste ao vivo
-     a seguir (focar/desfocar repetido, nos dois arquivos).
+     **Verificação**: `typecheck`/`lint` limpos. Deploy `d1e1df7` "Ready",
+     confirmado ao vivo em produção: busca do topbar, foco/desfoque
+     repetido 4 vezes seguidas, sempre trocando de cor certo nos dois
+     sentidos (antes travava). Login não testado de novo ao vivo nesta
+     rodada (mesmo fix, mesmo padrão, aplicado nos 3 ícones idênticos
+     daquela tela) pra não deslogar a sessão de teste outra vez.
 
 ## Como a próxima IA deve trabalhar
 
