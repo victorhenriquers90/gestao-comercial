@@ -131,7 +131,7 @@ function PromocoesPage() {
     <div>
       <PageHeader
         title="Promoções"
-        description="Percentual, valor, preço promocional, leve X pague Y e desconto por quantidade."
+        subtitle="Percentual, valor, preço promocional, leve X pague Y e desconto por quantidade."
         actions={<Button onClick={() => setOpen(true)}>Nova promoção</Button>}
       />
       {kpis ? (

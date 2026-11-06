@@ -8868,6 +8868,66 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      rodada (mesmo fix, mesmo padrão, aplicado nos 3 ícones idênticos
      daquela tela) pra não deslogar a sessão de teste outra vez.
 
+174. **Plano de design pra todo o sistema, Fase 4 (consertos pontuais
+     catalogados): CRM, Relatórios, Configurações, `PageHeader` e um bug
+     real de verdade — o cabeçalho de tabela `sticky` nunca grudava no
+     scroll da página, em TODA tabela do sistema.**
+
+     - **CRM** (`crm.tsx`): `<select>` cru de etapa dentro do cartão →
+       componente `Select` (mantido `onClick` com `stopPropagation`, já
+       existia); cabeçalho de coluna do quadro → `ed-label` (era
+       `text-xs font-medium text-muted-foreground` solto); cartões
+       clicáveis do quadro ganharam teclado — mesmo `clickableRow` que
+       linha de tabela já usa, agora genérico no tipo do elemento
+       (`clickableRow<T extends HTMLElement = HTMLElement>`, era fixo em
+       `HTMLTableRowElement`) pra servir também pra um `<Card>`.
+     - **Relatórios** (`relatorios.tsx`): os dois grupos de "chip" prá
+       escolher relatório/período eram `<button>` escritos à mão com
+       estilos de "ativo" DIFERENTES um do outro (`bg-primary` vs
+       `bg-foreground`) e sem anel de foco — viraram `Button` de verdade
+       (`variant={ativo ? "default" : "outline"}`), ganhando foco/hover
+       consistentes de graça. Kicker handmade → `ed-label`. Cabeçalho de
+       coluna numérica → classe `col-num` (antes só `text-right`, sem
+       `whitespace-nowrap` — podia quebrar linha num rótulo mais comprido).
+     - **Configurações**: o card de NFC-e usava `ed-label` como TÍTULO de
+       seção — `card.tsx` já documenta pra não fazer isso (rotulo de
+       rodapé virando título). Trocado por `ed-title`. (A ordem de botão
+       do diálogo "Fechar loja" já tinha sido corrigida no item 170,
+       migrando pra `ConfirmBar`.)
+     - **`PageHeader`** (`shared.tsx`): o slot `description` virava kicker
+       maiúsculo de 11px, mas 3 telas passavam uma FRASE inteira ali
+       (`metas.tsx`, `promocoes.tsx`, `compras.tsx` — o catálogo do plano
+       já esperava achar "provavelmente mais" que os 2 citados). Novo
+       slot `subtitle` (frase normal, abaixo do título, mesmo tratamento
+       do subtítulo do login) pros 3 casos; os outros 13 call sites do
+       `PageHeader` continuam usando `description` sem mudança nenhuma —
+       curtos de verdade (listas de 3-5 palavras), não frase.
+
+     **O bug real**: o plano desconfiava que o cabeçalho `sticky top-0`
+     da tabela nunca grudava no scroll da PÁGINA, e media certo — medido
+     ao vivo antes de mexer (`vendas.tsx`, tabela com conteúdo que exige
+     rolar a página): rolando a janela 600px, o cabeçalho andou os MESMOS
+     600px junto, zero efeito do `sticky`. Causa: `TableWrap`
+     (`shared.tsx`) tem `overflow-x-auto` (pra rolar tabela larga na
+     horizontal) mas não define `overflow-y` — e a regra do próprio CSS
+     (overflow visível num eixo quando o outro já rola é PROMOVIDO sozinho
+     pra "auto", nenhum navegador deixa um eixo vazar livre quando o outro
+     já é controlado) faz esse `<div>` virar sem querer o CONTAINER DE
+     SCROLL pro `sticky` do cabeçalho. Só que esse mesmo `<div>` nunca
+     rola de verdade sozinho — a altura dele sempre cabe a tabela inteira
+     (`scrollHeight === clientHeight`, confirmado ao vivo) — então o
+     "scroll" que o sticky estava vigiando nunca acontecia, e o cabeçalho
+     ficava preso na posição normal, subindo junto com a página.
+     **Fix**: `overflow-y-clip` no mesmo `<div>` — `clip` não sofre essa
+     promoção (ao contrário de `visible`), então o `sticky` volta a
+     enxergar o scroll de verdade, o da página. Vale pra TODA tabela do
+     sistema (`DataTable`/`TableWrap` é compartilhado, Invariante #11).
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy e
+     reteste ao vivo a seguir (cabeçalho grudando de verdade rolando
+     `vendas.tsx`, chips de Relatórios com foco visível, cartão do CRM
+     abrindo com Enter/Espaço no teclado).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -142,7 +142,7 @@ function ComprasPage() {
     <div>
       <PageHeader
         title="Compras"
-        description="Pedidos, recebimento e atualização automática de estoque e custo."
+        subtitle="Pedidos, recebimento e atualização automática de estoque e custo."
         actions={<Button onClick={() => setOpen(true)}>Novo pedido</Button>}
       />
       {kpis ? (

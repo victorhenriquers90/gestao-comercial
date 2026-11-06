@@ -224,24 +224,18 @@ function RelatoriosPage() {
           <CardContent className="space-y-4 p-4">
             {GROUPS.map((g) => (
               <div key={g.label}>
-                <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  {g.label}
-                </p>
+                <p className="mb-2 ed-label">{g.label}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {g.items.map((item) => (
-                    <button
+                    <Button
                       key={item.id}
                       type="button"
+                      size="sm"
+                      variant={type === item.id ? "default" : "outline"}
                       onClick={() => setType(item.id)}
-                      className={cn(
-                        "h-9 rounded-md px-3 text-sm font-medium transition-colors",
-                        type === item.id
-                          ? "bg-primary text-primary-foreground shadow-soft"
-                          : "border border-border bg-card text-foreground hover:bg-muted",
-                      )}
                     >
                       {item.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -252,19 +246,15 @@ function RelatoriosPage() {
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-1.5">
             {PERIOD_OPTIONS.map((o) => (
-              <button
+              <Button
                 key={o.value}
                 type="button"
+                size="sm"
+                variant={period === o.value ? "default" : "outline"}
                 onClick={() => pickPeriod(o.value)}
-                className={cn(
-                  "h-9 rounded-md px-3 text-sm font-medium transition-colors",
-                  period === o.value
-                    ? "bg-foreground text-background"
-                    : "border border-border bg-card text-foreground hover:bg-muted",
-                )}
               >
                 {o.label}
-              </button>
+              </Button>
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -383,7 +373,7 @@ function ReportBody({
                     key={c}
                     className={
                       kinds[i] === "money" || kinds[i] === "qty" || kinds[i] === "pct"
-                        ? "text-right"
+                        ? "col-num"
                         : undefined
                     }
                   >

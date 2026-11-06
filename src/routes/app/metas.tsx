@@ -142,7 +142,7 @@ function MetasPage() {
     <div>
       <PageHeader
         title="Metas"
-        description="Acompanhe o progresso e ligue um bônus de comissão quando o vendedor bater a meta."
+        subtitle="Acompanhe o progresso e ligue um bônus de comissão quando o vendedor bater a meta."
         actions={<Button onClick={startCreate}>Nova meta</Button>}
       />
       {rows.length === 0 ? (

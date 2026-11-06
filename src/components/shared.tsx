@@ -25,10 +25,18 @@ import { Skeleton } from "./ui/card";
 export function PageHeader({
   title,
   description,
+  subtitle,
   actions,
 }: {
   title: string;
+  /** Kicker curto (vira `ed-label`, maiúsculo) ACIMA do título -- uma
+   * lista de 3-5 palavras ("Empresa, lojas, equipe..."), não frase. */
   description?: string;
+  /** Frase normal, com verbo, ABAIXO do título -- pro caso (metas.tsx,
+   * promocoes.tsx, compras.tsx) em que `description` virava uma frase
+   * inteira espremida em maiúsculo de 11px. Mesmo tratamento do
+   * subtítulo do login (tamanho/cor), não uma convenção nova. */
+  subtitle?: string;
   actions?: ReactNode;
 }) {
   return (
@@ -48,6 +56,7 @@ export function PageHeader({
         <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
           {title}
         </h1>
+        {subtitle ? <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -192,26 +201,29 @@ export function Stat({
 }
 
 /**
- * Props pra espalhar numa `<tr>` que abre um detalhe ao clicar (padrão já
- * usado em clientes/fornecedores/produtos/compras/vendas, sempre com
- * `className="cursor-pointer"` do lado de fora).
+ * Props pra espalhar num elemento que abre um detalhe ao clicar (padrão já
+ * usado em clientes/fornecedores/produtos/compras/vendas numa `<tr>`, e em
+ * crm.tsx num `<Card>` do quadro — sempre com `className="cursor-pointer"`
+ * do lado de fora). Genérico no tipo do elemento (`HTMLElement` por padrão)
+ * de propósito: a mesma falta de teclado vale pra qualquer coisa clicável,
+ * não só linha de tabela.
  *
- * Sem isto, a linha só funcionava no mouse: nenhuma tinha `tabIndex`,
+ * Sem isto, o elemento só funcionava no mouse: nenhum tinha `tabIndex`,
  * `onKeyDown` ou `role` — quem navega só pelo teclado não alcançava o
  * detalhe nenhum jeito. `role="button"` em vez de deixar a `<tr>` como
- * `row` implícito é de propósito: a linha JÁ FUNCIONA como botão (um alvo
- * clicável, uma ação), então anunciar ela como tal é mais honesto que
+ * `row` implícito é de propósito: o elemento JÁ FUNCIONA como botão (um alvo
+ * clicável, uma ação), então anunciar ele como tal é mais honesto que
  * fingir que é só uma linha de dado estática — o alternativo (manter
  * `role="row"` e só adicionar foco/tecla) deixaria quem usa leitor de tela
  * focando em algo "clicável" sem o leitor nunca avisar que dá pra ativar.
  * Mesmo botão (Enter e Espaço) que qualquer `<button>` nativo já aceita.
  */
-export function clickableRow(onClick: () => void) {
+export function clickableRow<T extends HTMLElement = HTMLElement>(onClick: () => void) {
   return {
     role: "button" as const,
     tabIndex: 0,
     onClick,
-    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
+    onKeyDown: (e: KeyboardEvent<T>) => {
       // So reage quando o Enter/Espaco aconteceu na PROPRIA linha. Linha
       // com botao de acao rapida dentro (ex.: "Receber" em compras.tsx) ja
       // tem seu proprio onClick com stopPropagation — isso cobre cliques
@@ -228,7 +240,21 @@ export function clickableRow(onClick: () => void) {
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="enter-fade overflow-x-auto border-y border-border bg-card">{children}</div>
+    // overflow-y-clip, nao so overflow-x-auto: por regra do proprio CSS
+    // (overflow-x escolhido e overflow-y "visible" -> o navegador PROMOVE
+    // o "visible" pra "auto" sozinho, pra nenhum eixo vazar), este wrapper
+    // virava sem querer o container de rolagem vertical pro `sticky
+    // top-0` do cabecalho -- mas ele mesmo nunca rola de verdade (a altura
+    // sempre cabe o conteudo inteiro, scrollHeight == clientHeight), entao
+    // o cabecalho so acompanhava a pagina rolando embaixo dele, nunca
+    // grudava. Testado ao vivo (vendas.tsx, rolagem real de 600px): o
+    // cabecalho se movia 1:1 com a pagina, zero efeito do sticky. `clip`
+    // nao sofre essa promocao (a mesma excecao que `visible`, so que sem
+    // o rolamento residual), entao o sticky passa a enxergar o scroll de
+    // verdade (o da pagina).
+    <div className="enter-fade overflow-x-auto overflow-y-clip border-y border-border bg-card">
+      {children}
+    </div>
   );
 }
 

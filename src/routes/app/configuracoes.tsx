@@ -708,7 +708,7 @@ function ConfigPage() {
             }}
           />
           <Card className="mt-4 max-w-xl space-y-block p-5">
-            <p className="ed-label">Nota fiscal (NFC-e)</p>
+            <p className="ed-title">Nota fiscal (NFC-e)</p>
             <p className="text-sm text-muted-foreground">
               Emissão via Focus NFe.{" "}
               {nfceStatus.data?.available ? (

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CustomerPanel } from "@/components/customer-panel";
 import { Card } from "@/components/ui/card";
-import { NativeCheckbox } from "@/components/ui/select";
-import { KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { NativeCheckbox, Select } from "@/components/ui/select";
+import { clickableRow, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { CRM_STAGE_LABELS, CRM_STAGES, type CrmStage } from "@/lib/constants";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -123,7 +123,7 @@ function CrmPage() {
               className="board-col rounded-xl border-t-4 bg-muted/50 p-2"
               style={{ borderTopColor: CRM_STAGE_ACCENT[stage] }}
             >
-              <p className="px-2 pt-2 text-xs font-medium text-muted-foreground">
+              <p className="px-2 pt-2 ed-label">
                 {CRM_STAGE_LABELS[stage]} · {col.count}
               </p>
               <p className="px-2 pb-2 text-xs tabular text-muted-foreground">{formatBRL(col.totalBought)}</p>
@@ -132,7 +132,7 @@ function CrmPage() {
                   <Card
                     key={c.id}
                     className="cursor-pointer p-3 shadow-none hover:bg-muted/40"
-                    onClick={() => setDetailId(c.id)}
+                    {...clickableRow<HTMLDivElement>(() => setDetailId(c.id))}
                   >
                     <p className="text-sm font-medium">{c.name}</p>
                     <p className="text-xs text-muted-foreground">{c.phone ?? c.city ?? "—"}</p>
@@ -146,8 +146,8 @@ function CrmPage() {
                         {c.next_due ? ` · ${formatDate(c.next_due)}` : ""}
                       </p>
                     ) : null}
-                    <select
-                      className="mt-2 h-8 w-full rounded-md border border-border bg-card text-xs"
+                    <Select
+                      className="mt-2 h-8 text-xs"
                       value={c.crm_stage}
                       onClick={(e) => e.stopPropagation()}
                       onChange={async (e) => {
@@ -164,7 +164,7 @@ function CrmPage() {
                           {CRM_STAGE_LABELS[s]}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </Card>
                 ))}
                 {col.count > col.cards.length ? (
