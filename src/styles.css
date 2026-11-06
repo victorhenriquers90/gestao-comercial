@@ -317,6 +317,14 @@
   position: relative;
   overflow: hidden;
   background: var(--background);
+  /* Lidas por `calc()` nas manchas abaixo -- numero (0-100), nao
+     porcentagem, pra dar pra fazer conta com `px` sem precisar de
+     `calc(var(--mx) * 1%)` aninhado. `login.tsx` atualiza isto no
+     `pointermove` sobre o painel; sem JS (ou com JS desligado) fica
+     parado no centro (50/50), o que so desativa o paralaxe -- a deriva
+     continua abaixo e o fluxo da barra do cartao independem disto. */
+  --mx: 50;
+  --my: 50;
 }
 
 /* Duas manchas de cor desfocadas atras do cartao -- o lado do formulario
@@ -324,7 +332,14 @@
    isto o vazio em volta do cartao (bem visivel em telas altas, onde o
    `justify-center` sobra bastante espaco acima/abaixo) lia como "sem
    acabamento". As cores saem dos tokens de grafico (--chart-1/--chart-3)
-   que a dashboard ja usa, entao nao introduz cor nova no sistema. */
+   que a dashboard ja usa, entao nao introduz cor nova no sistema.
+
+   `translate` anima a deriva lenta (propriedade separada de `transform`
+   desde CSS Motion Path/Transforms Level 2, com suporte amplo ha anos --
+   nao e gambiarra) enquanto `transform` reage ao mouse via --mx/--my; as
+   duas compoem sem conflito porque sao propriedades diferentes. Se
+   fossem a mesma propriedade, o `@keyframes` da deriva sobrescreveria o
+   deslocamento do mouse a cada quadro. */
 .login-form-panel::before,
 .login-form-panel::after {
   content: "";
@@ -332,6 +347,7 @@
   z-index: 0;
   border-radius: 9999px;
   filter: blur(90px);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .login-form-panel::before {
   top: -9rem;
@@ -340,6 +356,8 @@
   height: 24rem;
   background: var(--chart-1);
   opacity: 0.35;
+  transform: translate(calc((var(--mx) - 50) * 0.5px), calc((var(--my) - 50) * 0.5px));
+  animation: login-blob-drift-a 22s ease-in-out infinite;
 }
 .login-form-panel::after {
   bottom: -8rem;
@@ -348,6 +366,20 @@
   height: 20rem;
   background: var(--chart-3);
   opacity: 0.3;
+  transform: translate(calc((var(--mx) - 50) * -0.35px), calc((var(--my) - 50) * -0.35px));
+  animation: login-blob-drift-b 26s ease-in-out infinite;
+}
+
+/* Direcoes diferentes pras duas manchas (uma "persegue" o mouse, a outra
+   foge de leve na direcao oposta, em velocidade menor) -- paralaxe de
+   verdade, nao as duas coladas se movendo iguais. */
+@keyframes login-blob-drift-a {
+  0%, 100% { translate: 0 0; }
+  50% { translate: -1.75rem 1.25rem; }
+}
+@keyframes login-blob-drift-b {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 1.5rem -1rem; }
 }
 
 .login-card {
@@ -371,13 +403,32 @@
 /* Barra gradiente no topo do cartao -- o toque de "personalidade de
    marca" pedido (visual mais arrojado, tipo Notion/Framer) sem reservar
    espaco proprio de layout: `overflow: hidden` do cartao corta os cantos
-   quadrados dela contra o raio arredondado do cartao. */
+   quadrados dela contra o raio arredondado do cartao.
+
+   Primeira e ultima cor do gradiente iguais (verde) de proposito: com
+   `background-size` dobrado e a posicao andando de 0% a 100%, o ponto
+   em que ela "repete" fica invisivel -- a tinta no fim da faixa visivel
+   sempre bate com o comeco dela mesma, loop sem costura em vez de um
+   salto a cada volta. */
 .login-card::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 0.3rem;
-  background: linear-gradient(90deg, var(--primary) 0%, var(--chart-3) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--primary) 0%,
+    var(--chart-3) 33%,
+    var(--chart-1) 66%,
+    var(--primary) 100%
+  );
+  background-size: 200% 100%;
+  animation: login-bar-flow 10s linear infinite;
+}
+
+@keyframes login-bar-flow {
+  from { background-position: 0% 0%; }
+  to { background-position: -200% 0%; }
 }
 
 .login-card input {

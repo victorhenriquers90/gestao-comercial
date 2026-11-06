@@ -8522,6 +8522,65 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      (`/login?cadastro`, 3 campos) pra garantir que o card mais alto não
      quebra nada. Deploy Vercel "Ready", confirmado ao vivo em produção.
 
+168. **Login (itens 165-167): "interação e leve movimento das cores"
+     pedido apontando a barra gradiente/manchas do formulário — ganharam
+     deriva ambiente contínua, fluxo de cor na barra, e paralaxe de
+     verdade reagindo ao mouse. Um bug achado e corrigido no caminho
+     (a ref do paralaxe nunca ligava na prática).**
+
+     - `.login-form-panel::before`/`::after` (as duas manchas do item
+       167): ganharam `animation` própria (`login-blob-drift-a`/`-b`,
+       22s/26s) animando a propriedade `translate` — deriva lenta e
+       contínua, direções opostas entre as duas manchas pra não parecer
+       coladas se movendo juntas.
+     - As mesmas duas manchas também reagem ao mouse: `transform:
+       translate(calc((var(--mx) - 50) * Npx), ...)`, lido de `--mx`/
+       `--my` (0-100, escritos por `login.tsx` a cada `pointermove`).
+       `translate` (a deriva) e `transform` (o paralaxe) são propriedades
+       CSS *diferentes* — compõem sem um sobrescrever o outro; se fossem
+       a mesma propriedade, o `@keyframes` apagaria o deslocamento do
+       mouse a cada quadro. Sinais opostos nas duas manchas (uma persegue
+       o cursor, a outra foge de leve) para dar sensação de profundidade,
+       não só duas manchas grudadas se mexendo iguais.
+     - `.login-card::before` (a barra gradiente do item 167): o gradiente
+       de 2 cores virou de 4 pontos com a primeira e a última iguais
+       (verde→terracota→menta→verde) a `background-size: 200% 100%`
+       animando `background-position` (`login-bar-flow`, 10s linear) —
+       primeira/última cor iguais de propósito, pra não ter um "salto"
+       visível toda vez que o loop reinicia.
+
+     **Achado e corrigido no mesmo commit**: a primeira versão do
+     paralaxe usava `useRef` + `useEffect(() => {...}, [])` pra ligar o
+     `pointermove` em `formPanelRef.current`. `LoginPage` tem 3 retornos
+     antecipados antes do formulário de verdade (`isPending`, convite
+     aceito, já logado) — na primeira renderização (quase sempre
+     `isPending`, enquanto a sessão carrega) a seção com a ref nem existe
+     ainda, então o efeito `[]` rodava uma vez com `ref.current` nulo e
+     **nunca mais** ligava o listener depois que o formulário real
+     aparecia (o efeito não roda de novo, deps vazias). Resultado: zero
+     reação ao mouse em produção, sem erro nenhum no console — só não
+     fazia nada. Pego testando o próprio paralaxe ao vivo (`--mx`/`--my`
+     continuavam vazios depois de mover o mouse de verdade). **Fix**:
+     trocado por ref de callback (dispara exatamente quando o nó de
+     verdade monta/desmonta, em qualquer um dos retornos, sem essa
+     corrida) — confirmado depois que `--mx`/`--my` atualizam a cada
+     movimento e o `transform` das duas manchas muda junto.
+     Ignora o listener inteiro com `prefers-reduced-motion: reduce`
+     (a deriva/fluxo contínuos já são neutralizados pelo `@media` global
+     de `styles.css`; o paralaxe é por movimento do visitante, não
+     looping sozinho, mas não faz sentido religar o calculo sem nenhum
+     efeito visual pra mostrar).
+
+     **Verificação**: `typecheck`/`lint` limpos. Ao vivo no servidor de
+     dev: confirmado por `getComputedStyle` (não só olho) que `translate`
+     muda sozinho ao longo do tempo (deriva), `background-position` da
+     barra muda sozinho (fluxo), e que mover o mouse de verdade
+     (`hover` em dois pontos bem diferentes do painel) muda `--mx`/`--my`
+     e o `transform` das duas manchas em direções opostas. Celular
+     (375px): deriva e fluxo aparecem normalmente (sem mouse, sem
+     paralaxe — esperado, não é regressão). Deploy Vercel "Ready",
+     confirmado ao vivo em produção.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

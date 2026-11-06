@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
-import { useState, type FormEvent, useEffect, useRef } from "react";
+import { useCallback, useState, type FormEvent, useEffect, useRef } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -117,6 +117,38 @@ function LoginPage() {
     ensureCsrfCookie();
   }, []);
 
+  // Paralaxe leve das manchas de cor atras do cartao (lidas via --mx/--my
+  // em styles.css) -- escrito direto no estilo do elemento, sem state/
+  // re-render a cada pixel do mouse. Nem liga o listener com
+  // prefers-reduced-motion: o CSS ja zera duracao de transicao/animacao
+  // nesse caso, entao recalcular a cada movimento nao teria efeito
+  // visual nenhum, so custo.
+  //
+  // Ref de callback, nao `useRef` + `useEffect([])`: este componente tem
+  // 3 retornos antecipados antes do formulario de verdade (`isPending`,
+  // convite aceito, ja logado) -- na PRIMEIRA renderizacao (quase sempre
+  // `isPending`), a secao com a ref nem existe ainda, entao um efeito
+  // `[]` roda uma vez com `ref.current` nulo e nunca mais liga o
+  // listener depois que o formulario real aparece. A ref de callback
+  // dispara exatamente quando o React monta/desmonta O NO DE VERDADE,
+  // em qualquer um dos retornos, sem essa corrida.
+  const pointerCleanupRef = useRef<(() => void) | null>(null);
+  const formPanelRef = useCallback((panel: HTMLElement | null) => {
+    pointerCleanupRef.current?.();
+    pointerCleanupRef.current = null;
+    if (!panel) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    function onMove(e: PointerEvent) {
+      const rect = panel!.getBoundingClientRect();
+      const mx = ((e.clientX - rect.left) / rect.width) * 100;
+      const my = ((e.clientY - rect.top) / rect.height) * 100;
+      panel!.style.setProperty("--mx", String(Math.min(100, Math.max(0, mx))));
+      panel!.style.setProperty("--my", String(Math.min(100, Math.max(0, my))));
+    }
+    panel.addEventListener("pointermove", onMove);
+    pointerCleanupRef.current = () => panel.removeEventListener("pointermove", onMove);
+  }, []);
+
   if (isPending) {
     return (
       <main className="login-page flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6">
@@ -221,7 +253,10 @@ function LoginPage() {
           </p>
         </div>
       </div>
-      <section className="login-form-panel flex items-center justify-center px-6 py-10">
+      <section
+        ref={formPanelRef}
+        className="login-form-panel flex items-center justify-center px-6 py-10"
+      >
         <div className="login-card animate-in fade-in-0 duration-300 p-7 sm:p-9">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
               <BrandMark className="size-10" />
