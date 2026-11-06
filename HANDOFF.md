@@ -8684,13 +8684,25 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      mesmo componente que o resto do app já usa (a maioria das telas, como
      `metas.tsx`, já usava `QueryError` — só esses dois ficaram pra trás).
 
-     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Visual ao
-     vivo pendente de login do dono da loja na sessão de teste (deslogada
-     durante o trabalho do item 169); a verificar antes de considerar a
-     fase fechada: botão X circular, rodapé alinhado à direita nos
-     diálogos trocados, `ConfirmBar` novo de "Excluir meta"/"Fechar loja"
-     funcionando (Escape, foco, confirmar/cancelar), diálogo alto
-     (ex. detalhe de venda) rolando em vez de vazar da tela.
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos. Deploy
+     `f54a2d6` "Ready", confirmado ao vivo em produção (dono da loja
+     logou de novo na sessão de teste, deslogada durante o item 169):
+     botão X do diálogo circular (conferido por `getComputedStyle`,
+     `border-radius` resolvendo pro raio total); "Pedido de compra" e
+     "Novo cliente" com o botão de ação no rodapé à direita, dentro de
+     `DialogFooter`; diálogo "Pedido nº X" (compras) com "Receber pedido"
+     também no rodapé; `max-h-[85vh] overflow-y-auto` confirmado por
+     `getComputedStyle` no diálogo de venda (719px = 85% da altura do
+     viewport de teste, `overflow-y: auto`) e visualmente com barra de
+     rolagem de verdade no diálogo "Novo cliente" (mais campos que cabem
+     em 85vh). Os dois `ConfirmBar` novos testados end-to-end com dado
+     descartável: criada `ZZTESTE Meta QA`, Escape fechou sem excluir,
+     "Excluir" excluiu de verdade (toast "Meta excluída.", lista voltou
+     ao vazio); criada `ZZTESTE Loja QA`, "Fechar loja" fechou de verdade
+     (toast "Loja fechada.", some da lista de lojas ativas — fechar loja
+     é `deleted_at = now()` em `closeStoreFn`, sem função de reabrir pela
+     UI; loja de teste fica fechada/invisível pra sempre, mas sem nenhuma
+     venda/estoque/caixa associado, inofensiva).
 
 ## Como a próxima IA deve trabalhar
 
