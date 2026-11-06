@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/shared";
 import { CASH_DENOMINATIONS, DIFFERENCE_LABELS } from "@/lib/cash-count";
 import { formatBRL, formatDateTime } from "@/lib/format";
@@ -132,7 +133,7 @@ export function CashClosuresPanel({ storeId }: { storeId: number | null }) {
               {f.explainedBy ? ` — ${f.explainedBy}` : ""}
             </p>
           ) : f.pendente ? (
-            <div className="mt-block rounded-lg border border-warning/40 bg-warning/5 p-3">
+            <Panel tone="warning" className="mt-block">
               <p className="text-sm font-medium">Esta diferença ainda não foi explicada.</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Vale mais o que aconteceu do que o valor: troco errado, sangria não lançada,
@@ -166,7 +167,7 @@ export function CashClosuresPanel({ storeId }: { storeId: number | null }) {
               >
                 {ocupado === f.id ? "Registrando…" : "Registrar explicação"}
               </Button>
-            </div>
+            </Panel>
           ) : null}
         </div>
       ))}

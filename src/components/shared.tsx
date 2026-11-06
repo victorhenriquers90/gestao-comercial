@@ -143,6 +143,55 @@ export function KpiCard({
 }
 
 /**
+ * Numero grande com rotulo pequeno em cima -- o terceiro jeito (depois do
+ * `KpiCard` e de texto solto) que telas como caixa.tsx repetiam a mao pra
+ * mostrar "Contado"/"Esperado"/etc. Nao e `KpiCard`: `Stat` nao e um
+ * ladrilho de resumo da tela inteira, e um numero dentro de um bloco maior
+ * (um resumo de contagem, uma comparacao lado a lado) que so empresta o
+ * MESMO par rotulo+valor, em dois tamanhos (`lg` pros tres-numeros-lado-a-
+ * lado, `xl` pro numero sozinho de destaque) e dois arranjos (`column`,
+ * rotulo em cima; `row`, rotulo e valor na mesma linha, encostados nas
+ * pontas -- o resumo "Contado na gaveta: R$ X" no rodape de um formulario).
+ */
+export function Stat({
+  label,
+  value,
+  size = "lg",
+  layout = "column",
+  className,
+}: {
+  label: string;
+  value: string;
+  size?: "lg" | "xl";
+  layout?: "column" | "row";
+  className?: string;
+}) {
+  if (layout === "row") {
+    return (
+      <div className={cn("flex items-baseline justify-between", className)}>
+        <span className="ed-label">{label}</span>
+        <span className={cn("tabular font-display font-semibold", size === "xl" ? "text-2xl" : "text-xl")}>
+          {value}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={className}>
+      <p className="ed-label">{label}</p>
+      <p
+        className={cn(
+          "tabular font-display font-semibold",
+          size === "xl" ? "mt-1 text-2xl" : "mt-0.5 text-xl",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/**
  * Props pra espalhar numa `<tr>` que abre um detalhe ao clicar (padrão já
  * usado em clientes/fornecedores/produtos/compras/vendas, sempre com
  * `className="cursor-pointer"` do lado de fora).

@@ -8704,6 +8704,74 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      UI; loja de teste fica fechada/invisível pra sempre, mas sem nenhuma
      venda/estoque/caixa associado, inofensiva).
 
+171. **Plano de design pra todo o sistema, Fase 2 (consolidação):
+     componente `Panel` (aviso colorido) e `Stat` (número com rótulo),
+     substituindo ~15 divs escritos à mão em 7 arquivos. Dois bugs reais
+     de opacidade divergente corrigidos no caminho.**
+
+     Levantamento próprio (grep por `border-X/N bg-X/N`, não confiar só
+     no catálogo dos agentes da Fase 0) achou que a inconsistência real
+     era MENOR do que parecia: quase todo aviso colorido do back-office
+     já convergia sozinho pro mesmo esquema (`border-X/40 bg-X/5`) — só
+     dois pontos fugiam disso: `caixa.tsx` (confirmação de fechamento)
+     usava `bg-warning/10`, e `backup-status-card.tsx` usava
+     `border-destructive/50`. O valor real da Fase 2 não é tanto
+     "consertar inconsistência visível" (quase não tinha) e sim consolidar
+     a MESMA combinação repetida ~15 vezes à mão em um lugar só, pra não
+     divergir de novo no futuro.
+
+     - **`src/components/ui/panel.tsx`** (novo): `panelToneClass(tone)`
+       é a fonte única (`info`/`success`/`warning`/`destructive`/`muted`,
+       sempre `/40` borda + `/5` fundo — `muted` é o caso "sem alarme
+       nenhum", `border-border bg-muted/40 text-muted-foreground`, pro
+       lado quieto de um aviso condicional). `Panel` é um `<div
+       rounded-lg border p-3>` leve que lê dali, pra avisos ANINHADOS
+       dentro de outra tela/cartão. Pra aviso de PÁGINA INTEIRA com o
+       peso do `Card` (sombra, canto maior — os `Card` coloridos de
+       `caixa.tsx`), usa-se `Card` direto com `panelToneClass(tone)` no
+       className — os dois tamanhos são de propósito, Card pesado pra
+       destaque de página, Panel leve pra aviso aninhado, não uma
+       inconsistência a mais pra resolver.
+     - **`Stat`** (`shared.tsx`, perto do `KpiCard`): rótulo pequeno +
+       número grande (Syne), o terceiro jeito que `caixa.tsx` repetia a
+       mão (nem `KpiCard` — que é ladrilho de resumo da tela inteira —
+       nem texto solto). Dois tamanhos (`lg` text-xl, `xl` text-2xl) e
+       dois arranjos (`column`, rótulo em cima; `row`, lado a lado,
+       encostado nas pontas — o resumo "Contado na gaveta: R$ X" no
+       rodapé de um formulário).
+     - **`caixa.tsx`**: os 5 avisos coloridos da tela (caixa sem fechar há
+       dias, dinheiro esperado revelado, confirmação de fechamento,
+       `ResultadoFechamento`, `ResultadoTroca`) e os 9 números com rótulo
+       viraram `Panel`/`Card`+`panelToneClass`/`Stat`. De quebra: a
+       confirmação de fechamento tinha o destrutivo ANTES do Cancelar
+       (mesma inconsistência de ordem de botão já corrigida nos diálogos
+       na Fase 1, só que esta é inline, não diálogo) — invertido pra
+       Cancelar primeiro, destrutivo por último, igual ao resto do app.
+     - **`vendas.tsx`** ("Pendência fiscal"), **`cash-closures-panel.tsx`**
+       (diferença de caixa não explicada — aqui que mora o segundo bug
+       de opacidade), **`card-settlement-panel.tsx`** (divergência de
+       lote de cartão), **`nfce-readiness-panel.tsx`** (aviso de ambiente
+       de teste, com o lado "muted" quando não há token), e
+       **`crediario-panel.tsx`** (parcela atrasada — aqui o lado "sem
+       tom" é literal, `tone={atrasada ? "destructive" : undefined}`,
+       porque a parcela em dia não tem cor nenhuma, nem `muted`).
+     - **`backup-status-card.tsx`**: só as DUAS instâncias que eram
+       100% `destructive` sozinhas (`border-destructive/50`→`/40` via
+       `panelToneClass`). **Não mexido, de propósito**: o bloco principal
+       (linhas ~100-120) mistura destrutivo com um terceiro estado
+       `border-primary/40` sem fundo nenhum — um "aviso brando" deliberado
+       e bem documentado no próprio arquivo (comentário: alarme todo dia
+       vira decoração), não uma inconsistência a resolver; forçar esse
+       estado dentro do vocabulário do `Panel` arriscava apagar uma nuance
+       de design que já foi pensada com cuidado, por um ganho de DRY que
+       não compensa o risco.
+
+     **Verificação**: `typecheck`/`lint`/`test` (522) limpos (mesmos
+     avisos pré-existentes de sempre, incluindo o mesmo
+     `react-refresh/only-export-components` que `badge.tsx`/`button.tsx`
+     já tinham — `panel.tsx` exporta componente + função auxiliar, mesmo
+     padrão aceito ali). Deploy e verificação ao vivo a seguir.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

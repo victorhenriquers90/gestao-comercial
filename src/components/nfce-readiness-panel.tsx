@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { QueryError } from "@/components/shared";
 import { nfceReadinessFn } from "@/lib/server/nfce";
 
@@ -53,16 +54,10 @@ export function NfceReadinessPanel() {
       {/* O estado perigoso e o do meio: sem pendencia nenhuma, emitindo, e
           nada valendo. A lista vazia nao pode parecer aprovacao. */}
       {d.aviso ? (
-        <div
-          className={`mt-block rounded-lg border p-3 text-sm ${
-            d.tokenPresent
-              ? "border-destructive/40 bg-destructive/5"
-              : "border-border bg-muted/40 text-muted-foreground"
-          }`}
-        >
+        <Panel tone={d.tokenPresent ? "destructive" : "muted"} className="mt-block text-sm">
           {d.tokenPresent ? <p className="font-medium">Ambiente de teste (homologação)</p> : null}
           <p className={d.tokenPresent ? "mt-1" : ""}>{d.aviso}</p>
-        </div>
+        </Panel>
       ) : null}
 
       {d.blockers.length === 0 ? (

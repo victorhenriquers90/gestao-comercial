@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
+import { Panel } from "@/components/ui/panel";
 import { RECEIPT_METHOD_LABELS, RECEIPT_METHODS, type ReceiptMethod } from "@/lib/constants";
 import { EmptyState, KpiCard } from "@/components/shared";
 import { AGING_LABELS, type AgingBucket } from "@/lib/crediario-aging";
@@ -169,11 +170,10 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                 {c.parcelas.map((p) => {
                   const atrasada = p.faixa !== "a_vencer" && p.faixa !== "hoje";
                   return (
-                    <div
+                    <Panel
                       key={p.id}
-                      className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
-                        atrasada ? "border-destructive/40 bg-destructive/5" : "border-border"
-                      }`}
+                      tone={atrasada ? "destructive" : undefined}
+                      className="flex flex-wrap items-center justify-between gap-3 text-sm"
                     >
                       <div className="min-w-0">
                         <p className="truncate">{p.descricao}</p>
@@ -254,7 +254,7 @@ export function CrediarioPanel({ storeId }: { storeId: number | null }) {
                           </Button>
                         )}
                       </div>
-                    </div>
+                    </Panel>
                   );
                 })}
               </div>

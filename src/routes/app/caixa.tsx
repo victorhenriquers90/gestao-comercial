@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
+import { Panel, panelToneClass } from "@/components/ui/panel";
 import { CashClosuresPanel } from "@/components/cash-closures-panel";
 import { CashCountSheet, type CountMode } from "@/components/cash-count-sheet";
-import { ConfirmBar, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { ConfirmBar, KpiCard, PageHeader, PageSkeleton, QueryError, Stat } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
 import {
   CASH_DIFFERENCE_TOLERANCE,
@@ -34,7 +35,7 @@ import {
   revealExpectedCashFn,
 } from "@/lib/server/finance";
 import { getTenantFn } from "@/lib/server/session";
-import { num } from "@/lib/utils";
+import { cn, num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/caixa")({ component: CaixaPage });
 
@@ -297,12 +298,13 @@ function CaixaPage() {
               />
             </div>
 
-            <div className="mt-block flex items-baseline justify-between border-t border-border pt-3">
-              <span className="ed-label">Contado na gaveta</span>
-              <span className="tabular font-display text-2xl font-semibold">
-                {aberturaValida ? formatBRL(aberturaContado) : "—"}
-              </span>
-            </div>
+            <Stat
+              layout="row"
+              size="xl"
+              label="Contado na gaveta"
+              value={aberturaValida ? formatBRL(aberturaContado) : "—"}
+              className="mt-block border-t border-border pt-3"
+            />
 
             <Button
               className="mt-block"
@@ -333,7 +335,7 @@ function CaixaPage() {
               desta tela e um acumulado de varios dias, e ler qualquer um
               deles como "o turno" e ler errado. */}
           {isRegisterStale(d.register.days_open) ? (
-            <Card className="mb-4 border-destructive/40 bg-destructive/5 p-4">
+            <Card className={cn("mb-4 p-4", panelToneClass("destructive"))}>
               <p className="ed-title">
                 Caixa {registerAgeLabel(d.register.days_open)}, sem fechar
               </p>
@@ -365,14 +367,9 @@ function CaixaPage() {
               pode revelar — e o fechamento passa a registrar que foi
               revelado. */}
           {esperado != null ? (
-            <Card className="mt-4 border-warning/40 bg-warning/5 p-4">
+            <Card className={cn("mt-4 p-4", panelToneClass("warning"))}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="ed-label">Dinheiro esperado na gaveta</p>
-                  <p className="tabular mt-1 font-display text-2xl font-semibold">
-                    {formatBRL(esperado)}
-                  </p>
-                </div>
+                <Stat size="xl" label="Dinheiro esperado na gaveta" value={formatBRL(esperado)} />
                 <p className="max-w-sm text-sm text-muted-foreground">
                   A conferência deste turno deixou de ser cega. O fechamento vai registrar isso.
                 </p>
@@ -476,12 +473,13 @@ function CaixaPage() {
               />
             </div>
 
-            <div className="mt-block flex items-baseline justify-between border-t border-border pt-3">
-              <span className="ed-label">Total contado</span>
-              <span className="tabular font-display text-2xl font-semibold">
-                {contagemValida ? formatBRL(contado) : "—"}
-              </span>
-            </div>
+            <Stat
+              layout="row"
+              size="xl"
+              label="Total contado"
+              value={contagemValida ? formatBRL(contado) : "—"}
+              className="mt-block border-t border-border pt-3"
+            />
 
             {/* Quanto fica na gaveta nao e informacao cega: e uma decisao de
                 quem fecha, sobre dinheiro que ele acabou de contar. Vazio =
@@ -512,7 +510,7 @@ function CaixaPage() {
             </div>
 
             {confirmandoFechamento ? (
-              <div className="mt-block rounded-lg border border-warning/40 bg-warning/10 p-3">
+              <Panel tone="warning" className="mt-block">
                 <p className="text-sm">
                   Fechar o caixa com {formatBRL(contado)} contados?
                   {trocaValor > 0
@@ -523,15 +521,15 @@ function CaixaPage() {
                   Depois de confirmar, o sistema mostra o esperado — e a contagem não pode mais
                   ser alterada. É isso que faz a conferência valer.
                 </p>
-                <div className="mt-block flex gap-2">
-                  <Button variant="destructive" disabled={fechando} onClick={() => void fechar()}>
-                    {fechando ? "Fechando…" : "Sim, fechar"}
-                  </Button>
+                <div className="mt-block flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setConfirmandoFechamento(false)}>
                     Cancelar
                   </Button>
+                  <Button variant="destructive" disabled={fechando} onClick={() => void fechar()}>
+                    {fechando ? "Fechando…" : "Sim, fechar"}
+                  </Button>
                 </div>
-              </div>
+              </Panel>
             ) : (
               <Button
                 className="mt-block"
@@ -579,13 +577,10 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
   const { kind } = classifyDifference(r.diff);
   return (
     <Card
-      className={`mb-4 p-5 ${
-        kind === "exato"
-          ? "border-success/40 bg-success/5"
-          : r.precisaExplicacao
-            ? "border-destructive/40 bg-destructive/5"
-            : "border-warning/40 bg-warning/5"
-      }`}
+      className={cn(
+        "mb-4 p-5",
+        panelToneClass(kind === "exato" ? "success" : r.precisaExplicacao ? "destructive" : "warning"),
+      )}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="ed-title">Caixa fechado</p>
@@ -607,24 +602,9 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
           "R$ 1.170,00" quebrava em duas linhas ("R$" / "1.170,00") nos tres
           numeros -- justo os numeros que a tela existe pra deixar obvios. */}
       <div className="mt-block grid gap-3 sm:grid-cols-3">
-        <div>
-          <p className="ed-label">Contado</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(r.counted)}
-          </p>
-        </div>
-        <div>
-          <p className="ed-label">Esperado</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(r.expected)}
-          </p>
-        </div>
-        <div>
-          <p className="ed-label">Diferença</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(r.diff)}
-          </p>
-        </div>
+        <Stat label="Contado" value={formatBRL(r.counted)} />
+        <Stat label="Esperado" value={formatBRL(r.expected)} />
+        <Stat label="Diferença" value={formatBRL(r.diff)} />
       </div>
       <p className="mt-block text-sm text-muted-foreground">
         {r.ficaNaGaveta > 0 ? (
@@ -662,11 +642,7 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
 function ResultadoTroca({ h }: { h: HandoverCheck }) {
   const bateu = h.kind === "confere" || h.dentroDaTolerancia;
   return (
-    <Card
-      className={`mb-4 p-5 ${
-        bateu ? "border-success/40 bg-success/5" : "border-destructive/40 bg-destructive/5"
-      }`}
-    >
+    <Card className={cn("mb-4 p-5", panelToneClass(bateu ? "success" : "destructive"))}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="ed-title">Gaveta recebida</p>
         <Badge variant={bateu ? "success" : "danger"}>
@@ -675,24 +651,9 @@ function ResultadoTroca({ h }: { h: HandoverCheck }) {
         </Badge>
       </div>
       <div className="mt-block grid gap-3 sm:grid-cols-3">
-        <div>
-          <p className="ed-label">Você contou</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(h.recebido)}
-          </p>
-        </div>
-        <div>
-          <p className="ed-label">Turno anterior deixou</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(h.deixado)}
-          </p>
-        </div>
-        <div>
-          <p className="ed-label">Diferença</p>
-          <p className="tabular mt-0.5 font-display text-xl font-semibold">
-            {formatBRL(h.diferenca)}
-          </p>
-        </div>
+        <Stat label="Você contou" value={formatBRL(h.recebido)} />
+        <Stat label="Turno anterior deixou" value={formatBRL(h.deixado)} />
+        <Stat label="Diferença" value={formatBRL(h.diferenca)} />
       </div>
       {bateu ? null : (
         <p className="mt-block text-sm">

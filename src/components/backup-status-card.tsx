@@ -7,6 +7,7 @@ import {
   ShieldQuestion,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { panelToneClass } from "@/components/ui/panel";
 import { formatBackupAge, type SecondaryStatus } from "@/lib/backup-status";
 import { formatDateTime } from "@/lib/format";
 import { getBackupStatusFn } from "@/lib/server/backup";
@@ -44,7 +45,7 @@ export function BackupStatusCard() {
     return (
       <Card
         role="status"
-        className="mb-block flex items-start gap-3 border-destructive/50 bg-destructive/5 p-4"
+        className={`mb-block flex items-start gap-3 p-4 ${panelToneClass("destructive")}`}
       >
         <ShieldQuestion className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
         <div className="space-y-1">
@@ -156,7 +157,7 @@ function CopiaExterna({ s, dir }: { s: SecondaryStatus; dir: string }) {
   return (
     <Card
       role="status"
-      className="mb-block flex items-start gap-3 border-destructive/50 bg-destructive/5 p-4"
+      className={`mb-block flex items-start gap-3 p-4 ${panelToneClass("destructive")}`}
     >
       <ShieldAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
       <div className="space-y-1">

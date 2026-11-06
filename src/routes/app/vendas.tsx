@@ -6,6 +6,7 @@ import { Badge, statusBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { Receipt, type ReceiptCompany, type ReceiptData } from "@/components/receipt";
 import { TaxBreakdown } from "@/components/tax-breakdown";
 import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
@@ -347,10 +348,10 @@ function VendasPage() {
                       sino: quem abre esta venda depois precisa ver que a
                       nota continua valendo pra algo que não existe. */}
                   {pendencia ? (
-                    <div className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                    <Panel tone="destructive" className="mt-2 text-sm">
                       <p className="font-medium">Pendência fiscal</p>
                       <p className="mt-1 text-muted-foreground">{pendencia}</p>
-                    </div>
+                    </Panel>
                   ) : null}
 
                   {autorizada ? (

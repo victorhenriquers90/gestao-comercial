@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { EmptyState, KpiCard } from "@/components/shared";
 import { BATCH_STATUS_LABELS, compareDeposit, effectiveFeePct } from "@/lib/card-settlement";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -126,13 +127,7 @@ export function CardSettlementPanel({ storeId }: { storeId: number | null }) {
             </div>
 
             {cmp && cmp.relevante ? (
-              <div
-                className={`mt-block rounded-lg border p-3 text-sm ${
-                  cmp.diferenca < 0
-                    ? "border-destructive/40 bg-destructive/5"
-                    : "border-warning/40 bg-warning/5"
-                }`}
-              >
+              <Panel tone={cmp.diferenca < 0 ? "destructive" : "warning"} className="mt-block text-sm">
                 <p className="font-medium">
                   Diferença de {formatBRL(Math.abs(cmp.diferenca))}{" "}
                   {cmp.diferenca < 0 ? "a menos" : "a mais"} que o esperado.
@@ -151,7 +146,7 @@ export function CardSettlementPanel({ storeId }: { storeId: number | null }) {
                     </>
                   )}
                 </p>
-              </div>
+              </Panel>
             ) : null}
           </Card>
         );
