@@ -8945,6 +8945,62 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `background-color` primário, confirmado por `getComputedStyle`), com
      foco/hover herdados de graça do componente.
 
+175. **Continuação do item 174: achada a causa exata do cabeçalho
+     `sticky` que não gruda — é só `overflow-x-auto` em `TableWrap`, sozinho,
+     nada mais (a investigação anterior achou "combinação de fatores"
+     porque bisectava junto com `.content-pane`; isolando de verdade, a
+     causa é uma linha só). Ainda não corrigido — as opções de conserto
+     são decisão de produto, não técnica.**
+
+     Pedido pra continuar o item 174. Com um repro mínimo (3 `<div>`
+     isolados fora da página, sem React/Tailwind/container query nenhum)
+     em vez de bisectar a árvore real cheia de classes, ficou provado:
+     `overflow-x: auto` num ancestral captura o `position: sticky` de
+     QUALQUER descendente — pros DOIS eixos, não só o horizontal — não
+     importa o que `overflow-y` for (`visible`/`hidden`/`clip`, testados
+     os três, todos travam igual). **Não é sobre promoção de "visible"
+     pra "auto"** (a teoria do item 174, errada) — é mais simples e mais
+     duro de contornar: qualquer `overflow-x` que não seja `visible` já
+     basta, sozinho. Confirmado no DOM real (`vendas.tsx`): removendo só
+     a classe `overflow-x-auto` de `TableWrap` (mantendo
+     `enter-fade border-y border-border bg-card` e `.content-pane`
+     intocado), o cabeçalho passou a grudar perfeitamente
+     (`top: 0` depois de rolar 600px). `container-type`/animação
+     residual/promoção de overflow — tudo isso que o item 174 suspeitou
+     era ruído; não tinha nada a ver.
+
+     **Por que não é um conserto de uma linha mesmo assim**: a MESMA
+     classe (`overflow-x-auto`) é o que permite a tabela larga rolar só
+     na horizontal sem arrastar o resto da tela junto — é o comportamento
+     que o sweep do item 145 já registrou como aceito, não bug. CSS puro
+     não dá pra ter as duas coisas ao mesmo tempo no MESMO elemento
+     (cabeçalho grudando no scroll da página E rolagem horizontal
+     isolada da tabela) — são fundamentalmente incompatíveis assim que
+     estão estruturados hoje. Os três jeitos de resolver de verdade, cada
+     um uma decisão de produto diferente, não só técnica:
+     1. Cabeçalho e corpo da tabela em elementos SEPARADOS, largura
+        sincronizada por JS no scroll horizontal (o jeito "certo" pra
+        manter EXATAMENTE o comportamento atual nos dois eixos, mas é
+        reescrever `DataTable` inteiro, não uma classe).
+     2. Tabela ganha altura própria (`max-height` + scroll interno nos
+        dois eixos, tipo planilha) — o cabeçalho gruda DENTRO dessa caixa
+        (sticky funciona aí, porque aí faz sentido ser o scroll
+        container). Muda a sensação de "a página cresce com a lista"
+        pra "a tabela tem sua própria caixa de rolagem" — mudança de UX
+        visível, não só código.
+     3. Deixar como está (decisão já tomada no item 174): sem cabeçalho
+        grudento, aceitar que listas longas perdem a referência da
+        coluna rolando. Custo zero, mas não resolve o problema original.
+
+     Nenhuma das três é "pequena" o bastante pra decidir sozinho; fica
+     como achado registrado, não implementado, até o dono da loja decidir
+     se/qual delas vale o investimento.
+
+     **Verificação**: achado confirmado ao vivo em produção (não precisou
+     de deploy novo — o teste reproduz e desfaz via JS no console, sem
+     mudar nenhum arquivo). Nenhum código alterado neste item, só
+     diagnóstico.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
