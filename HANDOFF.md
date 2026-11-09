@@ -9259,6 +9259,60 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      dois botões de 50% cada; F6 (Desconto) mostra "Aplicar desconto"
      no mesmo padrão.
 
+180. **Fase 4 do plano de comercialização: modo escuro — controles nativos
+     e sombra.** Continuação dos itens 177-179 (plano completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`).
+
+     **Achados (confirmados ao vivo por `getComputedStyle`, não só
+     lendo o código — mesmo cuidado dos itens anteriores desta
+     sessão)**:
+     - `.dark` (`styles.css`) nunca definia `color-scheme: dark` —
+       `.login-page` já fazia o espelho pro lado claro
+       (`color-scheme: light`), mas faltava o lado escuro. Sem isso, o
+       navegador desenha inputs de data, `<select>` nativo e checkbox
+       com a aparência do tema CLARO do sistema operacional, mesmo com o
+       resto da tela em modo escuro.
+     - `--shadow-soft`/`--shadow-pop` (bloco `@theme`) eram tingidas por
+       `var(--foreground)` — certo no tema claro (texto quase preto,
+       sombra quase preta), errado no escuro: confirmado ao vivo em
+       produção que a variável resolvia pra
+       `color-mix(in oklab, #edeae2 6%, transparent)` — `#edeae2` é
+       quase branco, então todo `Card`/diálogo/toast com `shadow-soft`
+       ou `shadow-pop` tinha um brilho claro ao redor em vez de sombra.
+     - `<select>` nativo (`ui/select.tsx`) usava `appearance: auto` — o
+       único campo do app ainda com a seta crua do navegador/SO, sem
+       nenhuma ligação com `--muted-foreground` ou o resto da paleta.
+
+     **Fix**:
+     - `color-scheme: dark` adicionado em `.dark`.
+     - Token `--shadow-color` novo (`:root` = `var(--foreground)`,
+       mesmo valor de antes; `.dark` = `#000000` fixo, não derivado de
+       `--foreground`) — `--shadow-soft`/`--shadow-pop` passaram a usar
+       `var(--shadow-color)`. Tema claro fica bit-a-bit idêntico; tema
+       escuro passa a escurecer de verdade.
+     - `ui/select.tsx`: `appearance-none` + seta embutida via
+       `background-image` (SVG em `data:` URI, calculada em
+       `chevronDataUri()`), com DUAS cores pré-computadas (uma por
+       tema) escolhidas em JS via `useTheme()` (hook que já existia,
+       usado por `ThemeToggle`/`Toaster`) — `currentColor` não funciona
+       dentro de um `background-image` carregado como recurso isolado,
+       não dava pra deixar a cor certa só no CSS. Zero mudança de
+       estrutura (continua um `<select>` só, sem `<div>` em volta) —
+       os 25 arquivos que importam `Select` não precisaram de nenhum
+       ajuste, os ~150 usos continuam funcionando com qualquer
+       `className` de largura/altura/raio que já passavam.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando.
+     Deploy `ca1a304` "Ready". Confirmado ao vivo em produção (tema
+     escuro, que é o padrão desta sessão) por `getComputedStyle`:
+     `document.documentElement` com `color-scheme: dark` e
+     `--shadow-color: #000` (antes `#edeae2`); visualmente, o calendário
+     dos campos de data em Vendas ficou visível contra o fundo escuro
+     (antes seria o ícone do tema claro, provavelmente ilegível), e o
+     `<select>` "Todos" do filtro de Estoque e o seletor de loja no
+     topbar mostram a seta nova, cinza-esverdeada, no mesmo tom de
+     `--muted-foreground` do resto da tela.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
