@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { BadgePercent } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CommissionRulesTab, CommissionSimTab } from "@/components/commission-panel";
@@ -326,6 +327,7 @@ function VendedoresPage() {
           />
           {rankedFiltered.length === 0 ? (
             <EmptyState
+              icon={equipeTermo ? undefined : BadgePercent}
               title={equipeTermo ? `Nenhum vendedor encontrado para “${equipeQ.trim()}”.` : "Nenhum vendedor cadastrado."}
               description={
                 equipeTermo ? undefined : "Cadastre o primeiro vendedor para simular comissão, receber e pagar."

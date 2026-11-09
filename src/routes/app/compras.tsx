@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Truck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
@@ -175,8 +176,10 @@ function ComprasPage() {
       />
       {!purchases.length ? (
         <EmptyState
+          icon={listTermo ? undefined : Truck}
           title={listTermo ? `Nenhum pedido encontrado para “${listTermo}”.` : "Nenhum pedido de compra."}
           description={listTermo ? undefined : "Crie o primeiro pedido para abastecer o estoque."}
+          action={listTermo ? undefined : <Button onClick={() => setOpen(true)}>Novo pedido</Button>}
         />
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>

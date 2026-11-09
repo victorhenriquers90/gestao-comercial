@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Factory } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { SupplierPanel } from "@/components/supplier-panel";
@@ -124,7 +125,12 @@ function FornecedoresPage() {
             }
           />
         ) : (
-          <EmptyState title="Você ainda não possui fornecedores cadastrados." description="Cadastre o primeiro fornecedor para emitir pedidos de compra." />
+          <EmptyState
+            icon={Factory}
+            title="Você ainda não possui fornecedores cadastrados."
+            description="Cadastre o primeiro fornecedor para emitir pedidos de compra."
+            action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro fornecedor</Button>}
+          />
         )
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>

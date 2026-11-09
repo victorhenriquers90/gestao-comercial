@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Printer } from "lucide-react";
+import { Package, Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageField } from "@/components/image-editor";
@@ -347,7 +347,7 @@ function ProdutosPage() {
             }
           />
         ) : (
-          <EmptyState title="Você ainda não possui produtos cadastrados." description="Cadastre o primeiro item para vender no PDV." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro produto</Button>} />
+          <EmptyState icon={Package} title="Você ainda não possui produtos cadastrados." description="Cadastre o primeiro item para vender no PDV." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro produto</Button>} />
         )
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>

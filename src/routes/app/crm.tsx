@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { CustomerPanel } from "@/components/customer-panel";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NativeCheckbox, Select } from "@/components/ui/select";
-import { clickableRow, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { clickableRow, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
 import { CRM_STAGE_LABELS, CRM_STAGES, type CrmStage } from "@/lib/constants";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -50,6 +52,11 @@ function CrmPage() {
   const { stages, openTasks, overdueTasks } = list.data;
   const pipelineCount = FUNNEL_STAGES.reduce((a, s) => a + stages[s].count, 0);
   const pipelineValue = FUNNEL_STAGES.reduce((a, s) => a + stages[s].totalBought, 0);
+  // Soma TODAS as colunas (inclusive venda/perdido), nao so o funil: o
+  // quadro so faz sentido ter zero cartoes se a empresa nao tem cliente
+  // NENHUM ainda -- com 1 cliente so em "venda", o funil fica 0 mas o CRM
+  // nao esta vazio de verdade.
+  const totalCustomers = CRM_STAGES.reduce((a, s) => a + stages[s].count, 0);
 
   return (
     <div>
@@ -114,6 +121,18 @@ function CrmPage() {
         </Card>
       ) : null}
 
+      {totalCustomers === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="Você ainda não possui clientes no CRM."
+          description="Cadastre o primeiro cliente para começar a organizar o funil de vendas, follow-ups e tarefas."
+          action={
+            <Button asChild>
+              <Link to="/app/clientes">Cadastrar primeiro cliente</Link>
+            </Button>
+          }
+        />
+      ) : (
       <div className="board-grid">
         {CRM_STAGES.map((stage) => {
           const col = stages[stage];
@@ -180,6 +199,7 @@ function CrmPage() {
           );
         })}
       </div>
+      )}
 
       <CustomerPanel
         customerId={detailId}

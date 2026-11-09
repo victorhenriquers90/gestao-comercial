@@ -38,6 +38,39 @@ export const RETURN_BY_SALE = `
      where si.sale_id = s.id
   ) ret on true`;
 
+/**
+ * Preenche com zero todo dia do periodo sem venda -- a consulta so devolve
+ * linha pra dia que teve venda (`group by` em `insight.ts`), entao um
+ * periodo com pouco historico (loja nova, so 1 venda no mes) virava uma
+ * serie com 1 ponto so. Area/linha do Recharts nao desenha nada visivel com
+ * 1 ponto isolado (sem vizinho pra tracar a linha); com a serie completa,
+ * cai numa linha reta em zero com um pico no dia de verdade -- informativo
+ * mesmo com pouco dado, em vez de parecer quebrado.
+ *
+ * Date.UTC/getUTC* de proposito, nao `new Date(iso)` local: "yyyy-MM-dd"
+ * teria sido interpretado como meia-noite UTC e, em fuso negativo, voltado
+ * um dia ao formatar de volta com metodos locais (mesma classe de bug ja
+ * vista com colunas `@db.Date` do Prisma noutro projeto).
+ */
+function fillDailySeries(
+  rows: { date: string; total: number; n: number }[],
+  from: string,
+  to: string,
+): { date: string; total: number; n: number }[] {
+  const byDate = new Map(rows.map((r) => [r.date, r]));
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const cur = new Date(Date.UTC(fy, fm - 1, fd));
+  const end = new Date(Date.UTC(ty, tm - 1, td));
+  const out: { date: string; total: number; n: number }[] = [];
+  while (cur.getTime() <= end.getTime()) {
+    const d = `${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, "0")}-${String(cur.getUTCDate()).padStart(2, "0")}`;
+    out.push(byDate.get(d) ?? { date: d, total: 0, n: 0 });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
 export const dashboardFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
@@ -392,7 +425,11 @@ export const dashboardFn = createServerFn({ method: "POST" })
         ticket: pct(num(cur?.ticket), num(prev?.ticket)),
         profit: pct(num(cur?.profit), num(prev?.profit)),
       },
-      series: series.map((s) => ({ date: s.d, total: num(s.total), n: num(s.n) })),
+      series: fillDailySeries(
+        series.map((s) => ({ date: s.d, total: num(s.total), n: num(s.n) })),
+        range.from,
+        range.to,
+      ),
       monthly: monthly.map((m) => ({ month: m.m, total: num(m.total) })),
       topProducts: topProducts.map((p) => ({ name: p.name, qty: num(p.qty), total: num(p.total) })),
       topSellers: topSellers.map((p) => ({ name: p.name, total: num(p.total), n: num(p.n) })),

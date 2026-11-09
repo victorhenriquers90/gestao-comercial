@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
@@ -167,7 +168,7 @@ function ClientesPage() {
             }
           />
         ) : (
-          <EmptyState title="Você ainda não possui clientes cadastrados." description="Cadastre o primeiro cliente para vender a prazo e usar o CRM." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro cliente</Button>} />
+          <EmptyState icon={Users} title="Você ainda não possui clientes cadastrados." description="Cadastre o primeiro cliente para vender a prazo e usar o CRM." action={<Button onClick={() => setOpen(true)}>Cadastrar primeiro cliente</Button>} />
         )
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>

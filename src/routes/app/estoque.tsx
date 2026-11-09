@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Warehouse } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -183,7 +184,16 @@ function EstoquePage() {
                 }
               />
             ) : (
-              <EmptyState title="Nenhum item em estoque." description="Cadastre produtos e dê entrada para ver os saldos." />
+              <EmptyState
+                icon={Warehouse}
+                title="Nenhum item em estoque."
+                description="Cadastre produtos e dê entrada para ver os saldos."
+                action={
+                  <Button asChild variant="outline">
+                    <Link to="/app/produtos">Ir para Produtos</Link>
+                  </Button>
+                }
+              />
             )
           ) : (
             <div className={stock.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={stock.isPlaceholderData}>
@@ -231,7 +241,7 @@ function EstoquePage() {
         </TabsContent>
         <TabsContent value="mov">
           {!movItems.length ? (
-            <EmptyState title="Nenhuma movimentação ainda." description="Entradas, saídas, ajustes e transferências aparecem aqui." />
+            <EmptyState icon={Warehouse} title="Nenhuma movimentação ainda." description="Entradas, saídas, ajustes e transferências aparecem aqui." />
           ) : (
             <div className={moves.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={moves.isPlaceholderData}>
               <DataTable

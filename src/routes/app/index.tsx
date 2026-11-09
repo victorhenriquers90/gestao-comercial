@@ -76,7 +76,7 @@ function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="Painel"
+        title="Dashboard"
         description={`${tenant.data?.companyName ?? "Sua loja"}`}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -125,15 +125,19 @@ function DashboardPage() {
         <KpiCard
           label="Lucro estimado"
           value={formatBRL(d.profit)}
-          tone="success"
+          tone={d.profit > 0 ? "success" : d.profit < 0 ? "danger" : "default"}
           trend={{ value: d.trend.profit, label: "vs anterior" }}
         />
         <KpiCard label="Contas a receber" value={formatBRL(d.receivables)} />
-        <KpiCard label="Contas a pagar" value={formatBRL(d.payables)} tone="warning" />
+        <KpiCard
+          label="Contas a pagar"
+          value={formatBRL(d.payables)}
+          tone={d.payables > 0 ? "warning" : "default"}
+        />
         <KpiCard
           label="Saldo financeiro"
           value={formatBRL(d.balance)}
-          tone={d.balance >= 0 ? "success" : "danger"}
+          tone={d.balance > 0 ? "success" : d.balance < 0 ? "danger" : "default"}
         />
       </div>
 
@@ -142,27 +146,29 @@ function DashboardPage() {
             <CardTitle>Vendas do período</CardTitle>
           </CardHeader>
           <CardContent className="h-full min-h-0">
-            {chart.length === 0 ? (
-              <div className="flex h-full items-center justify-center">
-                <p className="text-sm text-muted-foreground">Ainda não há vendas neste período.</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                  <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="var(--color-chart-1)"
-                    fill="var(--color-chart-1)"
-                    fillOpacity={0.15}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+            {/* `chart` vem de `d.series`, que o servidor agora preenche com
+                zero em todo dia sem venda do período (insight.ts) -- sempre
+                tem pelo menos 1 entrada, nunca mais fica vazio. */}
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chart}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  stroke="var(--color-muted-foreground)"
+                  tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                />
+                <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  stroke="var(--color-chart-1)"
+                  fill="var(--color-chart-1)"
+                  fillOpacity={0.15}
+                  dot={{ r: 3, strokeWidth: 0, fill: "var(--color-chart-1)" }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
         <Card className="dash-metas dash-fill">
@@ -268,7 +274,7 @@ function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-block">
             {d.topSellers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma comissão neste período.</p>
+              <p className="text-sm text-muted-foreground">Nenhuma venda por vendedor neste período.</p>
             ) : (
               d.topSellers.map((p) => (
                 <div key={p.name} className="flex items-center justify-between gap-3 text-sm">
@@ -316,9 +322,15 @@ function DashboardPage() {
               <BarChart data={monthly}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-                <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  stroke="var(--color-muted-foreground)"
+                  tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                />
                 <Tooltip {...chartTooltip} formatter={(v: number) => formatBRL(v)} />
-                <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
+                {/* maxBarSize: sem teto, 1 unico mes de historico (loja nova)
+                    virava uma barra ocupando ~90% da largura do grafico. */}
+                <Bar dataKey="total" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} maxBarSize={56} />
               </BarChart>
             </ResponsiveContainer>
           )}

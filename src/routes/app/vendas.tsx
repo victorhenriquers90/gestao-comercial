@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
@@ -220,7 +221,16 @@ function VendasPage() {
         />
       </div>
       {!items.length ? (
-        <EmptyState title="Nenhuma venda neste filtro." description="Ajuste o período ou registre a primeira venda no PDV." />
+        <EmptyState
+          icon={ShoppingBag}
+          title="Nenhuma venda neste filtro."
+          description="Ajuste o período ou registre a primeira venda no PDV."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/app/pdv">Abrir o PDV</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className={list.isPlaceholderData ? "opacity-60 transition-opacity" : undefined} aria-busy={list.isPlaceholderData}>
         <DataTable

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Target, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmBar, EmptyState, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
@@ -147,6 +147,7 @@ function MetasPage() {
       />
       {rows.length === 0 ? (
         <EmptyState
+          icon={Target}
           title="Nenhuma meta neste período"
           description="Crie uma meta de loja para acompanhar o faturamento, ou uma meta de vendedor com bônus de comissão."
           action={<Button onClick={startCreate}>Nova meta</Button>}

@@ -8,6 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
+import { formatPct } from "@/lib/format";
 import { pageRangeLabel, type SortDir } from "@/lib/paging";
 import { cn } from "@/lib/utils";
 import {
@@ -144,7 +145,7 @@ export function KpiCard({
         >
           {up ? <ArrowUpRight className="size-3.5" /> : <ArrowDownRight className="size-3.5" />}
           {up ? "+" : ""}
-          {trend.value.toFixed(1)}% {trend.label}
+          {formatPct(trend.value)} {trend.label}
         </p>
       ) : null}
     </Card>

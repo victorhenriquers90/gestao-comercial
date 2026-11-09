@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
+import { Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge, statusBadgeVariant } from "@/components/ui/badge";
@@ -391,6 +392,7 @@ function FinanceiroPage() {
           />
           {!payItems.length ? (
             <EmptyState
+              icon={payTermo ? undefined : Wallet}
               title={
                 payTermo
                   ? `Nenhuma conta a pagar encontrada para “${payTermo}”.`
@@ -615,6 +617,7 @@ function FinanceiroPage() {
           />
           {!recItems.length ? (
             <EmptyState
+              icon={recTermo ? undefined : Wallet}
               title={
                 recTermo
                   ? `Nenhuma conta a receber encontrada para “${recTermo}”.`
@@ -944,6 +947,7 @@ function FinanceiroPage() {
           </form>
           {!expenseItems.length ? (
             <EmptyState
+              icon={Wallet}
               title="Nenhuma despesa lançada."
               description="Use o formulário acima para lançar a primeira despesa (aluguel, energia, marketing…)."
             />

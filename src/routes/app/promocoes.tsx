@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Megaphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +156,7 @@ function PromocoesPage() {
       />
       {!promos.length ? (
         <EmptyState
+          icon={termo ? undefined : Megaphone}
           title={
             termo
               ? `Nenhuma promoção encontrada para “${termo}”.`
