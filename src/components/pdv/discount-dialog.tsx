@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -152,7 +153,7 @@ export function DiscountDialog(p: Props) {
             </span>
           </div>
           {acimaDoLimite ? <p className="mt-1 text-xs text-destructive">{motivo}</p> : null}
-          <div className="mt-5 flex gap-2">
+          <DialogFooter>
             {p.onRemove && p.initialValue ? (
               <Button
                 type="button"
@@ -166,14 +167,10 @@ export function DiscountDialog(p: Props) {
                 Remover
               </Button>
             ) : null}
-            <Button
-              type="submit"
-              className="h-11 flex-1 rounded-sm"
-              disabled={!valido || acimaDoLimite}
-            >
+            <Button type="submit" className="h-11 rounded-sm" disabled={!valido || acimaDoLimite}>
               Aplicar desconto
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

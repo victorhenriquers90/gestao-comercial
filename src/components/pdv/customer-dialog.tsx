@@ -3,7 +3,7 @@ import { IdCard, Search } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useDebounced } from "@/hooks/use-debounced";
@@ -141,14 +141,14 @@ export function CustomerDialog(p: Props) {
             </p>
           ) : null}
 
-          <div className="mt-6 flex gap-2">
-            <Button type="button" variant="outline" className="h-11 flex-1 rounded-sm" onClick={p.onSkip}>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="h-11 rounded-sm" onClick={p.onSkip}>
               Pular
             </Button>
-            <Button type="submit" className="h-11 flex-1 rounded-sm">
+            <Button type="submit" className="h-11 rounded-sm">
               Confirmar
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

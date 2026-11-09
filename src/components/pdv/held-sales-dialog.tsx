@@ -47,6 +47,11 @@ export function HeldSalesDialog(p: Props) {
                 {descartarId === h.id ? (
                   <div className="flex shrink-0 items-center gap-1">
                     <span className="text-xs text-muted-foreground">Descartar?</span>
+                    {/* Cancelar/recuar primeiro, destrutivo por ultimo --
+                        mesma ordem do ConfirmBar (shared.tsx). */}
+                    <Button size="sm" variant="outline" className="rounded-sm" onClick={() => setDescartarId(null)}>
+                      Não
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -57,9 +62,6 @@ export function HeldSalesDialog(p: Props) {
                       }}
                     >
                       Sim
-                    </Button>
-                    <Button size="sm" variant="outline" className="rounded-sm" onClick={() => setDescartarId(null)}>
-                      Não
                     </Button>
                   </div>
                 ) : (

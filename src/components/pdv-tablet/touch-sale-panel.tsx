@@ -280,6 +280,15 @@ export function TouchSalePanel(p: SalePanelProps) {
               aria-label="Confirmar cancelamento"
             >
               <span className="text-muted-foreground">Cancelar esta venda?</span>
+              {/* Mesma ordem do twin desktop (sale-panel.tsx): cancelar/
+                  recuar primeiro, destrutivo por ultimo. */}
+              <Button
+                variant="ghost"
+                className="h-11 rounded-sm px-4"
+                onClick={() => setConfirmarCancelar(false)}
+              >
+                Não
+              </Button>
               <Button
                 variant="destructive"
                 className="h-11 rounded-sm px-4"
@@ -289,13 +298,6 @@ export function TouchSalePanel(p: SalePanelProps) {
                 }}
               >
                 Sim, cancelar
-              </Button>
-              <Button
-                variant="ghost"
-                className="h-11 rounded-sm px-4"
-                onClick={() => setConfirmarCancelar(false)}
-              >
-                Não
               </Button>
             </div>
           ) : (

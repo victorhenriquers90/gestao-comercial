@@ -155,7 +155,11 @@ export function AppShell({ tenant, children }: { tenant: Tenant; children: React
                 <BrandMark className={cn("size-7", !isPdv && "md:hidden")} />
                 {current ? <p className="ed-label truncate">{current.label}</p> : null}
               </div>
-              <GlobalSearch />
+              {/* O PDV ja tem a propria busca de produto (maior, otimizada
+                  pra leitor de codigo de barras) logo abaixo deste topbar --
+                  as duas juntas pareciam dois campos de busca de produto na
+                  mesma tela, com estilos diferentes. */}
+              {isPdv ? null : <GlobalSearch />}
               <div className="topbar-end">
                 <StorePicker tenant={tenant} />
                 <NotifBell />

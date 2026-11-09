@@ -329,6 +329,17 @@ export function SalePanel(p: SalePanelProps) {
               aria-label="Confirmar cancelamento"
             >
               <span className="text-muted-foreground">Cancelar esta venda?</span>
+              {/* Cancelar/recuar primeiro, destrutivo por ultimo -- mesma
+                  ordem que ConfirmBar (shared.tsx) ja usa em todo o
+                  back-office; aqui estava invertido. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 rounded-sm"
+                onClick={() => setConfirmarCancelar(false)}
+              >
+                Não
+              </Button>
               <Button
                 size="sm"
                 variant="destructive"
@@ -339,14 +350,6 @@ export function SalePanel(p: SalePanelProps) {
                 }}
               >
                 Sim, cancelar
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 rounded-sm"
-                onClick={() => setConfirmarCancelar(false)}
-              >
-                Não
               </Button>
             </div>
           ) : (
