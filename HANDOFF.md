@@ -9313,6 +9313,71 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      topbar mostram a seta nova, cinza-esverdeada, no mesmo tom de
      `--muted-foreground` do resto da tela.
 
+181. **Fase 5 do plano de comercialização: documentos impressos (recibo,
+     etiqueta, relatórios fiscais).** Continuação dos itens 177-180
+     (plano completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`).
+
+     **Achados e fix**:
+     - Nenhuma regra `@page` em `src` — o navegador reserva espaço pro
+       PRÓPRIO cabeçalho/rodapé de impressão (data, URL do deploy,
+       título da aba) em cima do conteúdo, grave principalmente no
+       recibo térmico de 80mm. `@page { margin: 0; }` adicionado fora do
+       `@media print` (é a folha de estilo da página impressa em si, não
+       uma regra condicional).
+     - "Imprimir fechamento" (`caixa.tsx`) chamava `window.print()` sem
+       isolar nada — diferente do recibo/etiqueta, essa tela tem muito
+       conteúdo não relacionado ao redor (abrir caixa, histórico de
+       movimentações, fechamentos recentes) que também imprimiria
+       junto. Novo `.closure-sheet` (`styles.css`) replica o mesmo truque
+       de `visibility` que `.receipt-sheet`/`.tags-sheet` já usam,
+       aplicado só no cartão do resultado (`ResultadoFechamento` em
+       `caixa.tsx`); o próprio botão "Imprimir fechamento" ganhou
+       `no-print`.
+     - Recibo (`receipt.tsx:69`) e contracheque de comissão
+       (`commission-slip.tsx:37`) caíam pro nome do software (`APP_NAME`)
+       quando a empresa não carregava — imprimia "Gestão Comercial" como
+       se fosse o nome da LOJA. Fallback removido (import de `APP_NAME`
+       também, agora sem uso nos dois arquivos); depois da fase 2 o nome
+       da empresa é sempre real, e sem ele um campo em branco confunde
+       menos que o nome do software.
+       **Não coberto**: `price-tag.tsx` estava citado no item original do
+       plano junto com os outros dois, mas na prática a etiqueta de
+       preço não tem NENHUMA linha de nome de loja (não é um caso de
+       "cai pro nome errado", é "nunca mostrou nome nenhum") — corrigir
+       isso é adicionar um campo novo (busca `tenant`/`companyName` e
+       redesenha o layout de 58mm), não remover um fallback. Decisão:
+       deixar como achado registrado para uma fase/tarefa futura
+       dedicada, não implementado às pressas aqui.
+     - Colunas numéricas sem `col-num` (alinhamento à direita) em dois
+       documentos fiscais: guia de retenção (`retention-guide.tsx`, 8
+       colunas × 2 — cabeçalho e corpo) e painel de comissão
+       (`commission-panel.tsx`, duas tabelas — regras e simulador).
+       Aplicado nos `<Th>`/`<Td>` numéricos dos dois.
+     - Token de cor obsoleto no bloco `@media print`:
+       `--muted-foreground: #6b675e` ficou atrás do valor atual de
+       `:root` (`#5a5650`, trocado no item 96) — atualizado.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando.
+     Deploy `eb747f5` "Ready". Confirmado ao vivo em produção: as três
+     regras CSS novas (`.closure-sheet`, `@page`, `--shadow-color`)
+     presentes no stylesheet compilado e servido (checado via
+     `document.styleSheets`); o recibo de uma venda real continua
+     mostrando "VICTOR COMÉRCIO" normalmente (nome da empresa já
+     carregava antes, então a remoção do fallback não muda nada quando
+     os dados existem — só o caso de falha que mudou, não dá pra simular
+     isso ao vivo sem quebrar o carregamento de propósito). **Não
+     verificado ao vivo**: o alinhamento `col-num` na guia de retenção e
+     no painel de comissão — o piloto não tem nenhuma comissão paga no
+     período nem nenhuma regra de comissão cadastrada agora, as duas
+     tabelas caem no estado vazio e não renderizam linha nenhuma pra
+     olhar. `col-num` é a mesma classe já confirmada funcionando em
+     várias outras tabelas nesta sessão (vendas, clientes, produtos…),
+     risco baixo. O isolamento do `.closure-sheet` também não foi
+     exercitado ao vivo (fechar o caixa de verdade é uma ação real no
+     registro do piloto) — confiança vem de ser cópia estrutural exata
+     do `.tags-sheet`, já em produção.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
