@@ -9030,6 +9030,108 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      topo da caixa, com a barra de rolagem própria da tabela visível na
      lateral — não mais a da página.
 
+177. **Plano de melhoria de design pensando em comercialização — Fase 1
+     (primeira impressão: dashboard e CRM vazios).** Pedido novo do dono
+     da loja: não é mais só consistência interna (itens 165-176), é
+     "profissional o bastante pra vender pra outras lojas". Três agentes
+     Explore auditaram marca/identidade, onboarding/primeiro uso e
+     polimento visual geral; plano completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`
+     (6 fases). Decisões já tomadas com o usuário antes de começar: (1)
+     o selo "Created with Grok" e o manifesto do PWA como "Grok App" são
+     injetados pela plataforma Grok App Builder e o `AGENTS.md` proíbe
+     mexer nisso por código — aceito como restrição, nenhuma fase deste
+     plano toca nisso; (2) bugs pontuais do PDV entram, mas a linguagem
+     visual própria dele (raio 8px, densidade) não muda; (3) ajustes
+     leves de onboarding entram (texto, campo que falta, cor
+     condicional), wizard/checklist/billing ficam fora.
+
+     **Achados da Fase 1** (dashboard e CRM vazios — a pior primeira
+     impressão catalogada pelo agente de onboarding):
+     - `KpiCard` formatava a tendência com `trend.value.toFixed(1)` em
+       vez de `formatPct` (`shared.tsx`) — "+0.0%" com PONTO, não
+       vírgula, a única formatação em inglês no meio de uma tela em
+       português.
+     - Cor da tendência fixa por KPI, não pelo valor real: "Lucro
+       estimado" sempre verde, "Saldo financeiro" verde mesmo em zero,
+       "Contas a pagar" sempre laranja mesmo com nada em aberto
+       (`index.tsx`).
+     - CRM (`crm.tsx`) nunca tinha um `EmptyState` — uma empresa nova via
+       6 colunas coloridas "Novo contato · 0 / R$ 0,00" sem nenhuma
+       explicação nem botão, pior experiência das ~30 telas do app.
+     - Card "Vendedores" do painel dizia "Nenhuma comissão neste
+       período" mas é um ranking de vendas, não de comissão.
+     - Página se chamava "Painel", item do menu lateral "Dashboard" —
+       nome diferente pra mesma tela.
+     - Gráfico de área ("Vendas do período") só recebia os dias que
+       tiveram venda — com pouco histórico (loja nova, 1-2 vendas no
+       mês), virava 1 ponto solto sem linha nem área visível, parecia
+       quebrado. Eixo Y sem formatação (números crus tipo "1500"), e a
+       barra de "Evolução mensal" sem teto de largura enchia ~90% do
+       gráfico com só 1 mês de dado.
+     - `EmptyState` sempre usa o ícone padrão `Inbox` — nenhuma das ~30
+       telas usava a prop `icon` que o componente já tinha. E quatro
+       telas (Fornecedores, Vendas, Compras, Estoque) tinham o estado
+       vazio "nada cadastrado ainda" sem nenhum botão de ação, ao
+       contrário de Produtos/Clientes/Promoções/Metas.
+
+     **Fix**:
+     - `KpiCard` passou a usar `formatPct` (`shared.tsx`).
+     - Tom do KPI agora segue o valor real: `d.profit > 0 ? "success" :
+       d.profit < 0 ? "danger" : "default"` (Lucro estimado), mesma
+       lógica em Contas a pagar (`> 0` vira "warning", senão neutro) e
+       Saldo financeiro (`> 0`/`< 0`/zero neutro, antes zero virava
+       "success").
+     - CRM ganhou `EmptyState` (ícone `Users`, CTA "Cadastrar primeiro
+       cliente" linkando pra Clientes) quando a soma de clientes em
+       TODAS as colunas (não só o funil) é zero — testado ao vivo: com 1
+       cliente só na coluna "Venda" (funil = 0), o quadro continua
+       aparecendo normal, só dispara vazio com zero cliente de verdade.
+     - Texto do card Vendedores corrigido pra "Nenhuma venda por
+       vendedor neste período."
+     - Título da página "Painel" → "Dashboard", igual ao menu.
+     - `insight.ts` ganhou `fillDailySeries`: preenche com zero todo dia
+       do período sem venda antes de devolver a série pro gráfico — a
+       consulta SQL só `group by` dia com venda, então um mês com 1
+       venda virava 1 linha solta; agora vira a série completa do
+       período com um pico no dia real. `Date.UTC`/`getUTC*` de
+       propósito (não `new Date(iso)` local), mesma classe de cuidado já
+       registrada noutro projeto do usuário com coluna `@db.Date` do
+       Prisma — string "yyyy-MM-dd" interpretada como meia-noite local
+       teria voltado um dia em fuso negativo. Os dois eixos Y (área e
+       barra mensal) ganharam o MESMO `tickFormatter` compacto que
+       `relatorios.tsx` já usa (`1200` → `1k`), e a barra mensal ganhou
+       `maxBarSize={56}` pra não encher a largura toda com 1 mês só de
+       histórico.
+     - `EmptyState` ganhou ícone contextual nas telas de "nada cadastrado
+       ainda" (não nas de "sem resultado pra este filtro/busca", que
+       continuam com o `Inbox` genérico — faz sentido lá): `Package`
+       (Produtos), `Users` (Clientes, CRM), `Factory` (Fornecedores),
+       `Truck` (Compras), `Warehouse` (Estoque, 2 estados),
+       `ShoppingBag` (Vendas), `BadgePercent` (Vendedores), `Target`
+       (Metas), `RotateCcw` (Devoluções), `Wallet` (Financeiro, 3
+       estados), `Megaphone` (Promoções).
+     - Fornecedores ganhou botão "Cadastrar primeiro fornecedor"
+       (reusa o `setOpen(true)` que o cabeçalho já tinha), Compras ganhou
+       "Novo pedido" (mesmo padrão), Estoque ganhou link "Ir para
+       Produtos" (pré-requisito real pra ter saldo) e Vendas ganhou link
+       "Abrir o PDV" (só lá que uma venda nasce).
+
+     **Verificação**: `typecheck`/`lint` limpos (0 erros, só os 8
+     warnings pré-existentes de sempre), os 522 testes continuam
+     passando. Deploy `32535dc` "Ready", confirmado ao vivo em produção:
+     título "Dashboard" (era "Painel"), "+100,0% vs período anterior"
+     com vírgula, "LUCRO ESTIMADO" e "SALDO FINANCEIRO" em verde (valores
+     positivos reais), "CONTAS A PAGAR" em R$0,00 sem cor de alerta, e o
+     gráfico "Vendas do período" mostrando uma área contínua com pico em
+     02/11 e zero preenchido no resto do mês (antes ficaria 1 ponto
+     solto). CRM com 1 cliente real (fora do funil) confirmado mostrando
+     o quadro normal, não o `EmptyState` — a branch vazia (ícone/CTA) não
+     testada ao vivo por falta de um tenant com zero clientes no piloto,
+     mas o mesmo mecanismo (`icon={termo ? undefined : X}`) foi
+     confirmado funcionando no branch oposto em Fornecedores (busca sem
+     resultado caiu no `Inbox` padrão como esperado, sem erro de render).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
