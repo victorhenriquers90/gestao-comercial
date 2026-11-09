@@ -62,7 +62,7 @@ async function focusRequest(
   body?: unknown,
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const token = focusToken();
-  if (!token) throw new Error("Emissão de nota fiscal não configurada (FOCUS_NFE_TOKEN ausente).");
+  if (!token) throw new Error("Emissão de nota fiscal não configurada neste servidor.");
   let res: Response;
   try {
     res = await fetch(`${FOCUS_BASE_URL[focusEnv()]}${path}`, {

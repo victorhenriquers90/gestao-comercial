@@ -718,7 +718,7 @@ function ConfigPage() {
                   .
                 </>
               ) : (
-                "Nenhuma credencial configurada no servidor (FOCUS_NFE_TOKEN) — a emissão fica indisponível até isso ser feito."
+                "Nenhuma credencial configurada neste servidor — fale com quem administra a instalação para habilitar a emissão."
               )}
             </p>
             <label className="flex items-center gap-2 text-sm">

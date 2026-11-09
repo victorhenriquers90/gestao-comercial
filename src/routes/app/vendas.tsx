@@ -400,7 +400,7 @@ function VendasPage() {
 
                   {!nfceStatus.data?.available ? (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Emissão não configurada no servidor (FOCUS_NFE_TOKEN).
+                      Emissão de nota fiscal não configurada neste servidor.
                     </p>
                   ) : null}
                   {substituiTeste ? (

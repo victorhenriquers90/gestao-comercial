@@ -5,6 +5,17 @@
 export const INVITE_COOKIE = "gc_invite";
 export const INVITE_TTL_DAYS = 7;
 
+/**
+ * Nome da loja escolhido no cadastro, guardado num cookie ate `ensureTenant`
+ * criar a empresa -- mesmo padrao do `INVITE_COOKIE` acima, pelo mesmo
+ * motivo: o cadastro (login.tsx) nao controla QUAL requisicao dispara
+ * `ensureTenant` primeiro (o efeito de "ja logado" do proprio login.tsx
+ * corre em paralelo, sem ordem garantida). Guardado num cookie em vez de
+ * passado direto pra uma chamada, o nome fica disponivel pra qualquer uma
+ * das duas, nao importa quem vence a corrida.
+ */
+export const PENDING_COMPANY_COOKIE = "gc_company_name";
+
 export const NO_ACCESS_MESSAGE =
   "Sua conta ainda não tem acesso a nenhuma empresa. Peça ao administrador um link de convite.";
 

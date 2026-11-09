@@ -1,5 +1,5 @@
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Store, User } from "lucide-react";
 import { useCallback, useState, type FormEvent, useEffect, useRef } from "react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { authClient, authEnabled, ensureCsrfCookie, multiTenantEnabled } from "@
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME } from "@/lib/constants";
 import { ROLE_LABELS, type Role } from "@/lib/permissions";
-import { acceptInviteFn, openInviteFn } from "@/lib/server/session";
+import { acceptInviteFn, openInviteFn, stashCompanyNameFn } from "@/lib/server/session";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
@@ -107,6 +107,7 @@ function LoginPage() {
     navigate({ to: "/app" });
   }, [isPending, user, conviteToken, navigate]);
   const [name, setName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -193,6 +194,13 @@ function LoginPage() {
     let autenticado = false;
     try {
       if (mode === "up") {
+        // ANTES do signUp, nao depois: ver o comentario de `stashCompanyNameFn`
+        // (session.ts) sobre a corrida com o efeito de "ja logado" deste
+        // componente. So faz sentido pra quem esta criando empresa nova --
+        // quem chega por convite entra numa empresa que ja existe.
+        if (!conviteToken) {
+          await stashCompanyNameFn({ data: { companyName: companyName.trim() } });
+        }
         const res = await authClient.signUp.email({
           name: name.trim() || email.split("@")[0]!,
           email: email.trim(),
@@ -285,7 +293,7 @@ function LoginPage() {
               {signingUp ? (
                 <div className="grid gap-1.5">
                   <Label htmlFor="name" className="ed-label">
-                    Nome
+                    Seu nome
                   </Label>
                   <div className="group relative">
                     <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
@@ -294,8 +302,27 @@ function LoginPage() {
                       className={cn(fieldClass, "pl-11")}
                       value={name}
                       autoComplete="name"
-                      placeholder="Como aparece na loja"
+                      placeholder="Como você quer ser chamado"
                       onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {signingUp && !conviteToken ? (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="companyName" className="ed-label">
+                    Nome da loja
+                  </Label>
+                  <div className="group relative">
+                    <Store className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
+                    <Input
+                      id="companyName"
+                      className={cn(fieldClass, "pl-11")}
+                      value={companyName}
+                      autoComplete="organization"
+                      placeholder="Como aparece para o cliente"
+                      onChange={(e) => setCompanyName(e.target.value)}
                       required
                     />
                   </div>

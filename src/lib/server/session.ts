@@ -9,7 +9,7 @@ import { assertStore, audit, requireTenant } from "./context";
 import { acceptInvite, findOpenInvite } from "./invite-gate";
 import { getSql } from "@/lib/db";
 import { hashInviteToken, inviteExpiry, newInviteToken } from "@/lib/invite";
-import { INVITE_COOKIE, INVITE_TTL_DAYS } from "@/lib/invite-constants";
+import { INVITE_COOKIE, INVITE_TTL_DAYS, PENDING_COMPANY_COOKIE } from "@/lib/invite-constants";
 import { deleteCookie, setCookie } from "@tanstack/react-start/server";
 import { dump, type Row } from "@/lib/json";
 import { ftsPrefix, prefixLike } from "@/lib/search";
@@ -758,6 +758,31 @@ export const revokeInviteFn = createServerFn({ method: "POST" })
        where id = ${data.id} and company_id = ${tenant.companyId} and accepted_at is null
     `;
     await audit(sql, tenant, "revoke", "invite", data.id, null, null);
+    return { ok: true };
+  });
+
+/**
+ * Guarda o nome da loja escolhido no formulario de cadastro, ANTES do
+ * signUp.email() -- sem login ainda, mesmo momento do `openInviteFn`
+ * abaixo. Chamado antes de proposito: o login.tsx tem um efeito que navega
+ * sozinho pra /app assim que a sessao fica logada, sem esperar nada que o
+ * `onEmail` ainda esteja fazendo -- guardando o nome num cookie (em vez de
+ * mandar direto numa chamada que `ensureTenant` so olharia DEPOIS do
+ * signUp), o nome fica pronto pra QUALQUER requisicao que crie a empresa
+ * primeiro, nao importa qual delas vence a corrida.
+ */
+export const stashCompanyNameFn = createServerFn({ method: "POST" })
+  .validator((d: { companyName: string }) => ({
+    companyName: requireLine(d.companyName, "Nome da loja"),
+  }))
+  .handler(async ({ data }) => {
+    setCookie(PENDING_COMPANY_COOKIE, data.companyName, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 1800,
+    });
     return { ok: true };
   });
 

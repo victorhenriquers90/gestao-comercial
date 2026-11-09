@@ -1,6 +1,6 @@
 import { dbSource, getSql, type Sql } from "@/lib/db";
 import { demoSeedEnabled } from "@/lib/demo-seed";
-import { INVITE_COOKIE, NO_ACCESS_MESSAGE, multiTenantEnabled } from "@/lib/invite-constants";
+import { INVITE_COOKIE, NO_ACCESS_MESSAGE, PENDING_COMPANY_COOKIE, multiTenantEnabled } from "@/lib/invite-constants";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
 import { num } from "@/lib/utils";
 import { seedCompany } from "./seed";
@@ -34,13 +34,15 @@ export type Tenant = {
 export async function requireTenant(userId: string): Promise<{ sql: Sql; tenant: Tenant }> {
   const sql = await getSql();
   const convite = await readInviteCookie();
+  const nomeLoja = await readPendingCompanyName();
   try {
-    const tenant = await ensureTenant(sql, userId, convite);
+    const tenant = await ensureTenant(sql, userId, convite, nomeLoja);
     return { sql, tenant };
   } finally {
     // Usado ou recusado, o cookie sai: um convite vencido preso nele
     // repetiria o mesmo erro em toda requisicao.
     if (convite) await clearInviteCookie();
+    if (nomeLoja) await clearPendingCompanyName();
   }
 }
 
@@ -63,6 +65,24 @@ async function clearInviteCookie(): Promise<void> {
   try {
     const { deleteCookie } = await import("@tanstack/react-start/server");
     deleteCookie(INVITE_COOKIE, { path: "/" });
+  } catch {
+    // idem
+  }
+}
+
+async function readPendingCompanyName(): Promise<string | null> {
+  try {
+    const { getCookie } = await import("@tanstack/react-start/server");
+    return getCookie(PENDING_COMPANY_COOKIE) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearPendingCompanyName(): Promise<void> {
+  try {
+    const { deleteCookie } = await import("@tanstack/react-start/server");
+    deleteCookie(PENDING_COMPANY_COOKIE, { path: "/" });
   } catch {
     // idem
   }
@@ -293,6 +313,7 @@ export async function ensureTenant(
   sql: Sql,
   userId: string,
   inviteToken?: string | null,
+  pendingCompanyName?: string | null,
 ): Promise<Tenant> {
   const existing = await loadTenant(sql, userId);
   if (existing) return existing;
@@ -318,7 +339,10 @@ export async function ensureTenant(
   // so onde a flag liga.
   const user = await loadUser(sql, userId);
   const firstName = user.name?.split(" ")[0] || "Minha";
-  const companyName = `${firstName} Comércio`;
+  // Nome escolhido no cadastro (cookie, ver PENDING_COMPANY_COOKIE) tem
+  // prioridade; so cai no nome inventado se o cookie nao chegou por algum
+  // motivo (link direto pra /app sem passar pelo formulario, por exemplo).
+  const companyName = pendingCompanyName?.trim() || `${firstName} Comércio`;
   const demo = demoSeedEnabled(dbSource, process.env.GC_DEMO_SEED);
 
   // Tudo numa transacao so, com lock consultivo por usuario logo no
@@ -378,11 +402,21 @@ export async function ensureTenant(
       values (${companyId}, ${userId}, 'admin', ${storeId})
     `;
 
+    // print_header comeca EM BRANCO, nao com o nome da empresa de novo: o
+    // recibo (receipt.tsx) ja imprime `trade_name || name` como titulo;
+    // duplicar aqui fazia toda loja nova imprimir o proprio nome duas vezes
+    // (uma em CAIXA ALTA como titulo, outra embaixo igual) -- e, pior,
+    // renomear a empresa depois em Configuracoes nao atualiza este campo
+    // separado, entao o recibo passava a imprimir o nome NOVO como titulo
+    // e o nome ANTIGO (inventado no cadastro) logo abaixo, como se fossem
+    // duas coisas diferentes. Em branco, quem quiser uma segunda linha
+    // (slogan, razao social) preenche de proposito em Configuracoes >
+    // Impressao -- nunca mais um valor esquecido que ninguem escolheu.
     await tx`
       insert into company_settings (company_id, print_header, print_footer, receipt_message)
       values (
         ${companyId},
-        ${companyName},
+        null,
         'Obrigado pela preferência.',
         'Trocas em até 7 dias com nota fiscal.'
       )
