@@ -50,10 +50,22 @@
   --radius-xl: 24px;
   --radius-2xl: 32px;
 
-  --shadow-soft: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent),
-    0 8px 24px color-mix(in oklab, var(--foreground) 4%, transparent);
-  --shadow-pop: 0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 16px 40px color-mix(in oklab, var(--foreground) 8%, transparent);
+  /*
+    --shadow-color, nao var(--foreground) direto: a formula original
+    tingia a sombra com a cor do TEXTO, o que da certo no tema claro (texto
+    quase preto, sombra quase preta, mesma intencao) mas quebra no escuro --
+    `--foreground` la e quase branco (#edeae2), entao a "sombra" virava um
+    brilho claro ao redor de cada Card/dialogo/toast em vez de escurecer.
+    Confirmado ao vivo (getComputedStyle em producao): a variavel
+    resolvia pra `color-mix(in oklab, #edeae2 6%, transparent)`. Um token
+    proprio, preto nos dois temas, mantem o tema claro bit-a-bit identico
+    (`--shadow-color` = `var(--foreground)` la, mesmo valor de antes) e
+    corrige o escuro sem reescrever quem usa `shadow-soft`/`shadow-pop`.
+  */
+  --shadow-soft: 0 1px 2px color-mix(in oklab, var(--shadow-color) 6%, transparent),
+    0 8px 24px color-mix(in oklab, var(--shadow-color) 4%, transparent);
+  --shadow-pop: 0 1px 2px color-mix(in oklab, var(--shadow-color) 8%, transparent),
+    0 16px 40px color-mix(in oklab, var(--shadow-color) 8%, transparent);
 
   --kpi-min: 14rem;
   --tile-min: 11rem;
@@ -136,9 +148,19 @@
   --chart-4: #a54827;
   --chart-5: #225f77;
   --radius: 12px;
+  --shadow-color: var(--foreground);
 }
 
 .dark {
+  /*
+    Sem isto, inputs de data, a seta do <select> nativo e checkboxes
+    continuavam com a aparencia do navegador pro tema CLARO, mesmo com o
+    resto da tela em modo escuro -- o navegador so troca a renderizacao
+    nativa desses controles quando o CSS diz qual color-scheme a pagina
+    esta usando ali. `.login-page` ja fazia o mesmo pro lado claro
+    (`color-scheme: light` alguns blocos abaixo).
+  */
+  color-scheme: dark;
   --background: #121110;
   --foreground: #edeae2;
   --card: #1c1b18;
@@ -173,6 +195,9 @@
   --chart-3: #e0bb7b;
   --chart-4: #dd977e;
   --chart-5: #8bbcd0;
+  /* Preto fixo, nao var(--foreground) (quase branco aqui) -- ver o
+     comentario de --shadow-soft/--shadow-pop no @theme. */
+  --shadow-color: #000000;
 }
 
 .login-page {
