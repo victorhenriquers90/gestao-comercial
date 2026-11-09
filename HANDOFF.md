@@ -9378,6 +9378,72 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      registro do piloto) — confiança vem de ser cópia estrutural exata
      do `.tags-sheet`, já em produção.
 
+182. **Fase 6 do plano de comercialização: identidade (favicon, abas,
+     telas de erro) — fase final.** Conclui os itens 177-181 (plano
+     completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`, 6
+     fases, todas implementadas). Escopo desta fase era deliberadamente
+     restrito ao que o PRÓPRIO projeto controla — nada do que o Grok App
+     Builder injeta (selo "Created with Grok", manifesto do PWA,
+     `public/__grok/`), decisão já tomada com o usuário no item 177.
+
+     **Achados e fix**:
+     - `public/favicon.svg` (arquivo do projeto, não gerado pelo Grok)
+       tinha cantos quadrados e a cor antiga `#1F5C4D` (de antes da
+       paleta "mais viva" do item 93) — diferente do `BrandMark` que o
+       app usa de verdade. Redesenhado com a MESMA composição do
+       `BrandMark` (dois retângulos arredondados sobrepostos + barra de
+       destaque), cores atuais (`#165F4D`, mais um tom derivado pra a
+       camada de trás — `color-mix` do primary a 70% sobre o fundo
+       `#f3f0e8`, calculado à mão já que um SVG estático não lê CSS var).
+     - Nenhuma rota definia título de aba — toda página mostrava sempre
+       "Gestão Comercial" (vinha só do `__root.tsx`), sem diferenciar
+       PDV/Vendas/Estoque entre si. Novo `pageTitle()` em `constants.ts`
+       + `head()` nas 17 rotas de `/app` (as 16 do `NAV_ITEMS` mais
+       `pdv-tablet`, que não está no menu mas também merece título
+       próprio) — o TanStack Router já mescla meta tags por tipo entre
+       rota e root, então o título da rota mais específica substitui o
+       do root automaticamente, sem duplicar nada.
+     - Tela de erro (`error-component.tsx`) era a única do sistema em
+       inglês ("Something went wrong"), com paleta própria
+       (zinc/red-500) fora dos tokens do tema, e sem nenhum botão —
+       o texto já dizia "tente recarregar a página" mas deixava isso por
+       conta do visitante (F5 manual). Traduzida, tokens do app
+       (`bg-background`/`text-foreground`/`text-destructive`), e ganhou
+       um botão "Recarregar" que faz o que o texto já pedia.
+     - Não existia página 404 própria — uma URL inválida caía no padrão
+       sem estilo do TanStack Router, em inglês. `not-found-component.tsx`
+       novo, mesmo padrão visual da tela de erro (ícone em círculo
+       discreto, título `font-display`, descrição, botão "Ir para o
+       início"), ligado via `defaultNotFoundComponent` em `router.tsx`.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando,
+     `vite build` local completo sem erros (rodado à parte do
+     `npm run build`, que também dispara `db:migrate` — não queria
+     migração nenhuma só pra validar o bundle). Deploy `76f125c` "Ready".
+     Confirmado ao vivo em produção: `/favicon.svg` servindo o SVG novo
+     (conferido via `fetch` direto, não só visualmente); título da aba
+     "PDV · Gestão Comercial" e "Vendas · Gestão Comercial" em duas
+     rotas diferentes (confirmado pelo próprio metadado da aba, não só
+     lendo `document.title`); página 404 testada em dois casos — uma URL
+     inválida DENTRO de `/app/...` (renderiza aninhada no `AppShell`,
+     com sidebar/topbar, porque a rota-layout `/app` já casou e só o
+     filho que falhou) e uma totalmente fora da árvore de rotas
+     (renderiza standalone, tela inteira) — as duas com o visual novo,
+     nenhuma reversão pro padrão do roteador. **Não verificado ao
+     vivo**: a tela de erro (`error-component.tsx`) — forçar um erro de
+     render de verdade em produção só pra ver a tela seria uma ação
+     desnecessariamente arriscada; confiança vem do `vite build` limpo e
+     de ser estruturalmente idêntica à 404 (que FOI confirmada ao vivo).
+
+     **Com isto, as 6 fases do plano de comercialização (itens 177-182)
+     estão completas.** Pendências conscientes registradas ao longo do
+     caminho, não esquecidas: nome da loja na etiqueta de preço (item
+     181), e tudo que o plano original já tinha marcado como fora de
+     escopo (selo do Grok, PDV além dos bugs pontuais, onboarding além
+     dos ajustes leves, wizard/checklist/billing/e-mail de convite) —
+     ver "O que este plano NÃO cobre" no arquivo do plano.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
