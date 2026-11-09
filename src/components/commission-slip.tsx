@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { APP_NAME } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
 import { slipTitle, type TaxRegime, type TaxResult } from "@/lib/tax";
 
@@ -34,7 +33,8 @@ export function CommissionSlip({
   preview?: boolean;
 }) {
   const title = slipTitle(data.regime);
-  const company = data.companyName || APP_NAME;
+  // Sem fallback pro nome do software -- mesmo motivo do receipt.tsx.
+  const company = data.companyName || "";
   const city = [data.companyCity, data.companyState].filter(Boolean).join(" / ");
   const tax = data.tax;
 

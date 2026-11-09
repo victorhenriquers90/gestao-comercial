@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { APP_NAME, PAYMENT_LABELS } from "@/lib/constants";
+import { PAYMENT_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc, formatQty } from "@/lib/format";
 
 export type ReceiptItem = {
@@ -66,7 +66,10 @@ export function Receipt({
   company?: ReceiptCompany | null;
   onClose?: () => void;
 }) {
-  const title = company?.trade_name || company?.name || APP_NAME;
+  // Sem fallback pro nome do software: um comprovante sem nome de empresa
+  // carregado (falha pontual) imprimia "Gestão Comercial" como se o
+  // SOFTWARE fosse a loja -- confunde mais que uma linha em branco.
+  const title = company?.trade_name || company?.name || "";
   const city = [company?.city, company?.state].filter(Boolean).join(" / ");
 
   return (

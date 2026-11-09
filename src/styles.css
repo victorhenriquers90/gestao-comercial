@@ -1762,6 +1762,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+  Sem margin:0 aqui, o navegador reserva espaço pro PRÓPRIO cabeçalho/rodapé
+  de impressão (data, URL do deploy, título da aba) -- em cima de um recibo
+  térmico de 80mm isso sobra por cima do conteúdo de verdade. Fora do
+  `@media print` de propósito: `@page` não é uma regra condicional, é a
+  folha de estilo da PÁGINA impressa em si.
+*/
+@page {
+  margin: 0;
+}
+
 @media print {
   /* Mesmo bug do commit "rotulos e botao do login ilegiveis", agora no
      papel: `text-foreground`/`text-muted-foreground` etc. leem o alias
@@ -1786,7 +1797,7 @@
     --secondary: #e7e1d6;
     --secondary-foreground: #1a1916;
     --muted: #ece7dc;
-    --muted-foreground: #6b675e;
+    --muted-foreground: #5a5650;
     --accent: #dce8e3;
     --accent-foreground: #165f4d;
     --destructive: #9f2d23;
@@ -1884,5 +1895,33 @@
     left: 0;
     top: 0;
     width: 100%;
+  }
+  /*
+    "Imprimir fechamento" (caixa.tsx) chamava window.print() sem nenhum
+    isolamento -- ao contrario do recibo/etiqueta, essa tela tem MUITO
+    conteudo nao relacionado ao redor (abrir caixa, historico de
+    movimentacoes, fechamentos recentes), entao esconder so a propria
+    chrome do app (sidebar/topbar, que ja usam .no-print) nao bastava.
+    Mesmo truque de visibility do .receipt-sheet/.tags-sheet acima,
+    isolando so o cartao do resultado do fechamento.
+  */
+  .closure-sheet,
+  .closure-sheet * {
+    visibility: visible !important;
+  }
+  body:has(.closure-sheet) * {
+    visibility: hidden;
+  }
+  body:has(.closure-sheet) .closure-sheet,
+  body:has(.closure-sheet) .closure-sheet * {
+    visibility: visible;
+  }
+  .closure-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
   }
 }

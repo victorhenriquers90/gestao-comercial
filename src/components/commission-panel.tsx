@@ -269,7 +269,7 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
               <Th>Regra</Th>
               <Th>Tipo</Th>
               <Th>Aplica em</Th>
-              <Th>%</Th>
+              <Th className="col-num">%</Th>
               <Th>Status</Th>
               <Th></Th>
             </tr>
@@ -295,7 +295,7 @@ export function CommissionRulesTab({ sellers }: { sellers: SellerOpt[] }) {
               </Td>
               <Td>{COMMISSION_KIND_LABELS[r.kind] ?? r.kind}</Td>
               <Td>{scopeLabel(r)}</Td>
-              <Td className="tabular">{rateLabel(r)}</Td>
+              <Td className="tabular col-num">{rateLabel(r)}</Td>
               <Td>
                 <Badge variant={r.isActive ? "success" : "muted"}>{r.isActive ? "Ativa" : "Pausada"}</Badge>
               </Td>
@@ -770,11 +770,11 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
               headers={
                 <tr>
                   <Th>Item</Th>
-                  <Th>Qtd</Th>
+                  <Th className="col-num">Qtd</Th>
                   <Th>Regra aplicada</Th>
-                  <Th>Base</Th>
-                  <Th>%</Th>
-                  <Th>Comissão</Th>
+                  <Th className="col-num">Base</Th>
+                  <Th className="col-num">%</Th>
+                  <Th className="col-num">Comissão</Th>
                   <Th></Th>
                 </tr>
               }
@@ -795,11 +795,11 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
                         <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{line.reason}</span>
                       ) : null}
                     </Td>
-                    <Td className="tabular">{item.quantity}</Td>
+                    <Td className="tabular col-num">{item.quantity}</Td>
                     <Td>{line?.ruleName ?? "…"}</Td>
-                    <Td className="tabular">{line ? (fixed ? line.base : formatBRL(line.base)) : "—"}</Td>
-                    <Td className="tabular">{line ? lineRate(fixed, line.percent) : "—"}</Td>
-                    <Td className="tabular">{line ? formatBRL(line.amount) : "—"}</Td>
+                    <Td className="tabular col-num">{line ? (fixed ? line.base : formatBRL(line.base)) : "—"}</Td>
+                    <Td className="tabular col-num">{line ? lineRate(fixed, line.percent) : "—"}</Td>
+                    <Td className="tabular col-num">{line ? formatBRL(line.amount) : "—"}</Td>
                     <Td>
                       <Button
                         size="sm"
@@ -820,11 +820,11 @@ export function CommissionSimTab({ sellers }: { sellers: SellerOpt[] }) {
                       <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{line.reason}</span>
                     ) : null}
                   </Td>
-                  <Td className="tabular">—</Td>
+                  <Td className="tabular col-num">—</Td>
                   <Td>{line.ruleName}</Td>
-                  <Td className="tabular">{formatBRL(line.base)}</Td>
-                  <Td className="tabular">{line.percent ? `${line.percent}%` : "—"}</Td>
-                  <Td className="tabular">{formatBRL(line.amount)}</Td>
+                  <Td className="tabular col-num">{formatBRL(line.base)}</Td>
+                  <Td className="tabular col-num">{line.percent ? `${line.percent}%` : "—"}</Td>
+                  <Td className="tabular col-num">{formatBRL(line.amount)}</Td>
                   <Td></Td>
                 </tr>
               ))}

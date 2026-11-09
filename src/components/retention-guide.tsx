@@ -89,14 +89,14 @@ export function RetentionGuide({
               <tr>
                 <Th>Vendedor</Th>
                 <Th>Regime</Th>
-                <Th>Bruto</Th>
-                <Th>INSS</Th>
-                <Th>IRRF</Th>
-                <Th>ISS</Th>
-                <Th>Outros</Th>
-                <Th>Líquido</Th>
-                <Th>Patronal</Th>
-                <Th>FGTS</Th>
+                <Th className="col-num">Bruto</Th>
+                <Th className="col-num">INSS</Th>
+                <Th className="col-num">IRRF</Th>
+                <Th className="col-num">ISS</Th>
+                <Th className="col-num">Outros</Th>
+                <Th className="col-num">Líquido</Th>
+                <Th className="col-num">Patronal</Th>
+                <Th className="col-num">FGTS</Th>
               </tr>
             }
           >
@@ -107,27 +107,27 @@ export function RetentionGuide({
                   <p className="text-xs text-muted-foreground">{r.document ? formatDoc(r.document) : "sem CPF"}</p>
                 </Td>
                 <Td>{r.regimeLabel}</Td>
-                <Td className="tabular">{formatBRL(r.gross)}</Td>
-                <Td className="tabular">{formatBRL(r.inss)}</Td>
-                <Td className="tabular">{formatBRL(r.irrf)}</Td>
-                <Td className="tabular">{formatBRL(r.iss)}</Td>
-                <Td className="tabular">{formatBRL(r.other)}</Td>
-                <Td className="tabular font-medium">{formatBRL(r.net)}</Td>
-                <Td className="tabular">{formatBRL(r.employerInss)}</Td>
-                <Td className="tabular">{formatBRL(r.employerFgts)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.gross)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.inss)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.irrf)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.iss)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.other)}</Td>
+                <Td className="tabular col-num font-medium">{formatBRL(r.net)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.employerInss)}</Td>
+                <Td className="tabular col-num">{formatBRL(r.employerFgts)}</Td>
               </tr>
             ))}
             <tr className="border-t border-border font-medium">
               <Td>Totais</Td>
               <Td></Td>
-              <Td className="tabular">{formatBRL(t.gross)}</Td>
-              <Td className="tabular">{formatBRL(t.inss)}</Td>
-              <Td className="tabular">{formatBRL(t.irrf)}</Td>
-              <Td className="tabular">{formatBRL(t.iss)}</Td>
-              <Td className="tabular">{formatBRL(t.other)}</Td>
-              <Td className="tabular">{formatBRL(t.net)}</Td>
-              <Td className="tabular">{formatBRL(t.employerInss)}</Td>
-              <Td className="tabular">{formatBRL(t.employerFgts)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.gross)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.inss)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.irrf)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.iss)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.other)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.net)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.employerInss)}</Td>
+              <Td className="tabular col-num">{formatBRL(t.employerFgts)}</Td>
             </tr>
           </DataTable>
         )}

@@ -578,7 +578,7 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
   return (
     <Card
       className={cn(
-        "mb-4 p-5",
+        "closure-sheet mb-4 p-5",
         panelToneClass(kind === "exato" ? "success" : r.precisaExplicacao ? "destructive" : "warning"),
       )}
     >
@@ -624,7 +624,7 @@ function ResultadoFechamento({ r }: { r: CloseResult }) {
           for explicada, ela fica pendente no sino.
         </p>
       ) : null}
-      <Button className="mt-block" variant="outline" size="sm" onClick={() => window.print()}>
+      <Button className="no-print mt-block" variant="outline" size="sm" onClick={() => window.print()}>
         Imprimir fechamento
       </Button>
     </Card>
