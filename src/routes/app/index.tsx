@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
 import { chartTooltip } from "@/lib/chart";
 import { formatBRL, formatPct, formatQty } from "@/lib/format";
+import { pageTitle } from "@/lib/constants";
 import { PERIOD_OPTIONS, type PeriodKey } from "@/lib/period";
 import { can } from "@/lib/permissions";
 import { NAV_ITEMS } from "@/lib/nav";
@@ -26,7 +27,10 @@ import { dashboardFn } from "@/lib/server/insight";
 import { listSellersFn } from "@/lib/server/party";
 import { getTenantFn } from "@/lib/server/session";
 
-export const Route = createFileRoute("/app/")({ component: DashboardPage });
+export const Route = createFileRoute("/app/")({
+  head: () => ({ meta: [{ title: pageTitle("Dashboard") }] }),
+  component: DashboardPage,
+});
 
 function DashboardPage() {
   const storeId = useSelection((s) => s.storeId);

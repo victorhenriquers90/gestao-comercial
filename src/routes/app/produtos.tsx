@@ -17,7 +17,7 @@ import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { labelColor, labelTileStyle } from "@/lib/chart";
-import { UNITS } from "@/lib/constants";
+import { UNITS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatQty, marginPct } from "@/lib/format";
 import {
   getProductFn,
@@ -29,7 +29,10 @@ import {
 } from "@/lib/server/catalog";
 import { parseBarcode } from "@/lib/check-digit";
 
-export const Route = createFileRoute("/app/produtos")({ component: ProdutosPage });
+export const Route = createFileRoute("/app/produtos")({
+  head: () => ({ meta: [{ title: pageTitle("Produtos") }] }),
+  component: ProdutosPage,
+});
 
 const PAGE_SIZE = 100;
 

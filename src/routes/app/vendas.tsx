@@ -14,7 +14,7 @@ import { clickableRow, ConfirmBar, DataTable, EmptyState, KpiCard, PageHeader, P
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
-import { SALE_STATUS_LABELS, ACCOUNT_STATUS_LABELS, NFCE_STATUS_LABELS } from "@/lib/constants";
+import { SALE_STATUS_LABELS, ACCOUNT_STATUS_LABELS, NFCE_STATUS_LABELS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc, formatPct } from "@/lib/format";
 import { parseTaxBreakdown } from "@/lib/tax";
 import { cancelSaleFn, getSaleFn, listSalesFn } from "@/lib/server/commerce";
@@ -28,6 +28,7 @@ import {
 import { num } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/vendas")({
+  head: () => ({ meta: [{ title: pageTitle("Vendas") }] }),
   component: VendasPage,
 });
 

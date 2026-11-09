@@ -38,6 +38,7 @@ import {
   CASH_ACCOUNT_LABELS,
   EXPENSE_CATEGORIES,
   PAYMENT_LABELS,
+  pageTitle,
   RECEIPT_METHOD_LABELS,
   RECEIPT_METHODS,
   type ReceiptMethod,
@@ -65,7 +66,10 @@ import {
 } from "@/lib/server/finance";
 import { cn, num } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/financeiro")({ component: FinanceiroPage });
+export const Route = createFileRoute("/app/financeiro")({
+  head: () => ({ meta: [{ title: pageTitle("Financeiro") }] }),
+  component: FinanceiroPage,
+});
 
 type CancelTarget = {
   kind: "pagar" | "receber" | "despesa" | "estorno-pagar" | "estorno-receber";

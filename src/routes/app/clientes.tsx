@@ -12,12 +12,15 @@ import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSk
 import { CustomerPanel } from "@/components/customer-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId, useSearchParam } from "@/hooks/use-search-id";
-import { CRM_STAGE_LABELS, CRM_STAGES, isCrmStage, type CrmStage } from "@/lib/constants";
+import { CRM_STAGE_LABELS, CRM_STAGES, isCrmStage, pageTitle, type CrmStage } from "@/lib/constants";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { parseBrDocument, maskCnpj, maskCpf } from "@/lib/document";
 import { listCustomersFn, saveCustomerFn } from "@/lib/server/party";
 
-export const Route = createFileRoute("/app/clientes")({ component: ClientesPage });
+export const Route = createFileRoute("/app/clientes")({
+  head: () => ({ meta: [{ title: pageTitle("Clientes") }] }),
+  component: ClientesPage,
+});
 
 const PAGE_SIZE = 100;
 

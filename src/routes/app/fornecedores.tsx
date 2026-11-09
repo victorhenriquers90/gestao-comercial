@@ -10,11 +10,15 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { clickableRow, DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
+import { pageTitle } from "@/lib/constants";
 import { formatBRL, formatDoc } from "@/lib/format";
 import { parseCnpj, maskCnpj } from "@/lib/document";
 import { listSuppliersFn, saveSupplierFn } from "@/lib/server/party";
 
-export const Route = createFileRoute("/app/fornecedores")({ component: FornecedoresPage });
+export const Route = createFileRoute("/app/fornecedores")({
+  head: () => ({ meta: [{ title: pageTitle("Fornecedores") }] }),
+  component: FornecedoresPage,
+});
 
 const PAGE_SIZE = 100;
 

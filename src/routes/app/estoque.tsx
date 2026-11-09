@@ -13,13 +13,16 @@ import { DataTable, EmptyState, KpiCard, PageHeader, Pager, PageSkeleton, QueryE
 import { StockCountPanel } from "@/components/stock-count-panel";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSelection } from "@/hooks/use-selection";
-import { STOCK_TYPE_LABELS } from "@/lib/constants";
+import { STOCK_TYPE_LABELS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
 import { adjustStockFn, listMovementsFn, listStockFn, transferStockFn } from "@/lib/server/catalog";
 import { getTenantFn } from "@/lib/server/session";
 import { num } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/estoque")({ component: EstoquePage });
+export const Route = createFileRoute("/app/estoque")({
+  head: () => ({ meta: [{ title: pageTitle("Estoque") }] }),
+  component: EstoquePage,
+});
 
 const PAGE_SIZE = 100;
 

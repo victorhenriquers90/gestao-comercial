@@ -16,9 +16,13 @@ import { Receipt } from "@/components/receipt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { pageTitle } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 
-export const Route = createFileRoute("/app/pdv")({ component: PdvPage });
+export const Route = createFileRoute("/app/pdv")({
+  head: () => ({ meta: [{ title: pageTitle("PDV") }] }),
+  component: PdvPage,
+});
 
 function PdvPage() {
   const pdv = usePdvSale();

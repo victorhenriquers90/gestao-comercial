@@ -17,7 +17,7 @@ import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmBar, DataTable, EmptyState, KpiCard, Pager, PageHeader, PageSkeleton, QueryError, Td, Th, toggleSort, type SortState } from "@/components/shared";
 import { useSelection } from "@/hooks/use-selection";
-import { ACCOUNT_STATUS_LABELS } from "@/lib/constants";
+import { ACCOUNT_STATUS_LABELS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatDoc } from "@/lib/format";
 import { parseBrDocument, sellerDocKind, maskCnpj } from "@/lib/document";
 import { parseTaxBreakdown, TAX_REGIME_LABELS, TAX_REGIMES, clampIss, ISS_DEFAULT, issSellerHint, MEI_ISS_NOTE, type TaxRegime } from "@/lib/tax";
@@ -27,7 +27,10 @@ import { retentionGuideFn } from "@/lib/server/retention";
 import { getSettingsFn } from "@/lib/server/session";
 import { resolvePeriod } from "@/lib/period";
 
-export const Route = createFileRoute("/app/vendedores")({ component: VendedoresPage });
+export const Route = createFileRoute("/app/vendedores")({
+  head: () => ({ meta: [{ title: pageTitle("Vendedores") }] }),
+  component: VendedoresPage,
+});
 
 function companyHeader(settings: Awaited<ReturnType<typeof getSettingsFn>> | undefined) {
   const c = (settings?.company ?? {}) as Record<string, unknown>;

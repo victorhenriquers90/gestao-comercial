@@ -10,13 +10,16 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { TARGET_BONUS_KINDS, TARGET_BONUS_LABELS, type TargetBonusKind } from "@/lib/constants";
+import { pageTitle, TARGET_BONUS_KINDS, TARGET_BONUS_LABELS, type TargetBonusKind } from "@/lib/constants";
 import { formatBRL, formatPct } from "@/lib/format";
 import { deleteTargetFn, listTargetsFn, saveTargetFn } from "@/lib/server/finance";
 import { listSellersFn } from "@/lib/server/party";
 import { getTenantFn } from "@/lib/server/session";
 
-export const Route = createFileRoute("/app/metas")({ component: MetasPage });
+export const Route = createFileRoute("/app/metas")({
+  head: () => ({ meta: [{ title: pageTitle("Metas") }] }),
+  component: MetasPage,
+});
 
 type TargetRow = Awaited<ReturnType<typeof listTargetsFn>>[number];
 

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { clickableRow, EmptyState, KpiCard, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
-import { CRM_STAGE_LABELS, CRM_STAGES, type CrmStage } from "@/lib/constants";
+import { CRM_STAGE_LABELS, CRM_STAGES, pageTitle, type CrmStage } from "@/lib/constants";
 import { runAction } from "@/lib/run-action";
 import { formatBRL, formatDate } from "@/lib/format";
 import { crmBoardFn, listCrmTasksFn, moveCrmFn, toggleCrmTaskFn } from "@/lib/server/party";
@@ -30,7 +30,10 @@ const CRM_STAGE_ACCENT: Record<CrmStage, string> = {
   perdido: "var(--destructive)",
 };
 
-export const Route = createFileRoute("/app/crm")({ component: CrmPage });
+export const Route = createFileRoute("/app/crm")({
+  head: () => ({ meta: [{ title: pageTitle("CRM") }] }),
+  component: CrmPage,
+});
 
 function CrmPage() {
   const qc = useQueryClient();

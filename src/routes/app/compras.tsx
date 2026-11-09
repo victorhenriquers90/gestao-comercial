@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDebounced } from "@/hooks/use-debounced";
 import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
-import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS } from "@/lib/constants";
+import { PURCHASE_STATUS, PURCHASE_STATUS_LABELS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatDate, formatDateTime, formatQty } from "@/lib/format";
 import { checkUndoReceiveWindow } from "@/lib/purchase-undo";
 import {
@@ -27,7 +27,10 @@ import {
   undoReceivePurchaseFn,
 } from "@/lib/server/catalog";
 
-export const Route = createFileRoute("/app/compras")({ component: ComprasPage });
+export const Route = createFileRoute("/app/compras")({
+  head: () => ({ meta: [{ title: pageTitle("Compras") }] }),
+  component: ComprasPage,
+});
 
 function ComprasPage() {
   const storeId = useSelection((s) => s.storeId);

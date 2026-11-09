@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useSelection } from "@/hooks/use-selection";
 import { chartColor, chartTooltip } from "@/lib/chart";
+import { pageTitle } from "@/lib/constants";
 import { formatBRL, formatDate, formatDateTime, formatPct, formatQty } from "@/lib/format";
 import { PERIOD_OPTIONS, resolvePeriod, type PeriodKey } from "@/lib/period";
 import { listSellersFn } from "@/lib/server/party";
@@ -31,7 +32,10 @@ import { reportFn, type ColKind } from "@/lib/server/reports";
 import { getTenantFn } from "@/lib/server/session";
 import { cn, num } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/relatorios")({ component: RelatoriosPage });
+export const Route = createFileRoute("/app/relatorios")({
+  head: () => ({ meta: [{ title: pageTitle("Relatórios") }] }),
+  component: RelatoriosPage,
+});
 
 const GROUPS: { label: string; items: { id: string; label: string }[] }[] = [
   {

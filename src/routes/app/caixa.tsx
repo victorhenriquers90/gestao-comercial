@@ -21,7 +21,7 @@ import {
   parseQty,
   registerAgeLabel,
 } from "@/lib/cash-count";
-import { CASH_MOVE_LABELS } from "@/lib/constants";
+import { CASH_MOVE_LABELS, pageTitle } from "@/lib/constants";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { parseMoneyInput } from "@/lib/money-input";
 import { HANDOVER_LABELS, safeAmount, type HandoverCheck } from "@/lib/shift-handover";
@@ -37,7 +37,10 @@ import {
 import { getTenantFn } from "@/lib/server/session";
 import { cn, num } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/caixa")({ component: CaixaPage });
+export const Route = createFileRoute("/app/caixa")({
+  head: () => ({ meta: [{ title: pageTitle("Caixa") }] }),
+  component: CaixaPage,
+});
 
 type CloseResult = {
   expected: number;

@@ -22,12 +22,15 @@ import {
   type SortState,
 } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
-import { RETURN_KIND_LABELS } from "@/lib/constants";
+import { pageTitle, RETURN_KIND_LABELS } from "@/lib/constants";
 import { formatBRL, formatDateTime, formatQty } from "@/lib/format";
 import { createReturnFn, getSaleFn, listReturnsFn, listSalesFn } from "@/lib/server/commerce";
 import { num } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/devolucoes")({ component: DevolucoesPage });
+export const Route = createFileRoute("/app/devolucoes")({
+  head: () => ({ meta: [{ title: pageTitle("Devoluções") }] }),
+  component: DevolucoesPage,
+});
 
 type Line = {
   saleItemId: number;

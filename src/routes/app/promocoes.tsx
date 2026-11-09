@@ -23,7 +23,7 @@ import {
   type SortState,
 } from "@/components/shared";
 import { useDebounced } from "@/hooks/use-debounced";
-import { PROMO_KIND_LABELS } from "@/lib/constants";
+import { PROMO_KIND_LABELS, pageTitle } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { listCategoriesFn } from "@/lib/server/catalog";
 import {
@@ -34,7 +34,10 @@ import {
 import { isPromoLive, type Promo } from "@/lib/promo";
 import { ymdLocal } from "@/lib/local-date";
 
-export const Route = createFileRoute("/app/promocoes")({ component: PromocoesPage });
+export const Route = createFileRoute("/app/promocoes")({
+  head: () => ({ meta: [{ title: pageTitle("Promoções") }] }),
+  component: PromocoesPage,
+});
 
 /**
  * "Ativa" aqui mostrava só `isActive` (a flag), nunca o período -- uma

@@ -1,6 +1,18 @@
 export const APP_NAME = "Gestão Comercial";
 export const APP_TAGLINE = "Vendas, estoque e financeiro com clareza.";
 
+/**
+ * Titulo de aba por rota -- antes TODA pagina do app mostrava sempre
+ * "Gestão Comercial", sem diferenciar PDV/Vendas/Estoque entre si. Nenhuma
+ * rota tinha `head()` proprio; so o root definia (ver __root.tsx), e o
+ * TanStack Router mescla por tipo de tag -- o `title` da rota mais
+ * especifica substitui o do root automaticamente, sem precisar repetir
+ * nada alem do label de cada pagina.
+ */
+export function pageTitle(label: string): string {
+  return `${label} · ${APP_NAME}`;
+}
+
 export const PAYMENT_METHODS = [
   "dinheiro",
   "pix",

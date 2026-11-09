@@ -14,6 +14,7 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { NativeCheckbox, Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmBar, PageHeader, PageSkeleton, QueryError } from "@/components/shared";
+import { pageTitle } from "@/lib/constants";
 import { can, ROLE_LABELS, ROLES } from "@/lib/permissions";
 import {
   closeStoreFn,
@@ -47,7 +48,10 @@ function isConfigTab(v: string | null | undefined): v is ConfigTab {
   return !!v && (CONFIG_TABS as readonly string[]).includes(v);
 }
 
-export const Route = createFileRoute("/app/configuracoes")({ component: ConfigPage });
+export const Route = createFileRoute("/app/configuracoes")({
+  head: () => ({ meta: [{ title: pageTitle("Configurações") }] }),
+  component: ConfigPage,
+});
 
 function ConfigPage() {
   const qc = useQueryClient();

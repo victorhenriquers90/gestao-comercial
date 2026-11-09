@@ -16,6 +16,7 @@ import { Receipt } from "@/components/receipt";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { pageTitle } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { signOut } from "@/lib/auth/client";
 import { useFullscreen } from "@/hooks/use-fullscreen";
@@ -27,7 +28,10 @@ import "@/styles/pdv-tablet.css";
 // (isPdvTablet em app-shell.tsx) -- kiosk de balcao, sem troca de loja pela
 // tela. "Sair" continua existindo (SaleBar.onSignOut), so que reduzido a um
 // botao discreto em vez do menu do usuario completo.
-export const Route = createFileRoute("/app/pdv-tablet")({ component: PdvTabletPage });
+export const Route = createFileRoute("/app/pdv-tablet")({
+  head: () => ({ meta: [{ title: pageTitle("PDV Tablet") }] }),
+  component: PdvTabletPage,
+});
 
 function PdvTabletPage() {
   const { isFullscreen, enter: enterFullscreen } = useFullscreen();
