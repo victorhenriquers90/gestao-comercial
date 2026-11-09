@@ -9214,6 +9214,51 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      código linha a linha e do mecanismo ser um espelho estrutural do
      `INVITE_COOKIE`, já em produção e funcionando.
 
+179. **Fase 3 do plano de comercialização: bugs visuais pontuais do PDV.**
+     Continuação dos itens 177-178 (plano completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`). O
+     raio de 8px, a densidade e a tipografia dos totais continuam
+     exclusivos do PDV — só os três bugs catalogados abaixo entraram.
+
+     **Achados e fix**:
+     - `/app/pdv` renderizava a `GlobalSearch` do topbar (16px de raio,
+       "Buscar produto, cliente ou venda…") JUNTO com a busca de produto
+       própria do PDV (8px de raio, "Código de barras, SKU ou nome…"),
+       uma embaixo da outra — lia como duas caixas de busca de produto
+       na mesma tela, com estilos diferentes. `app-shell.tsx` agora não
+       renderiza a `GlobalSearch` na rota do PDV (`isPdv`); a busca
+       própria já cobre o caso. O grid de 3 colunas do topbar
+       (`start search end`) não precisou de ajuste — com a coluna do
+       meio vazia, marca fica à esquerda e os controles à direita,
+       layout limpo, confirmado ao vivo.
+     - Ordem do botão destrutivo invertida em 3 confirmações inline
+       (confirmação dentro da própria tela, não um `AlertDialog`): "Sim,
+       cancelar"/"Sim" vinha ANTES de "Não", ao contrário do `ConfirmBar`
+       que o resto do app usa (cancelar primeiro, destrutivo por
+       último). Corrigido em `sale-panel.tsx` (cancelar venda, desktop),
+       `touch-sale-panel.tsx` (idem, tablet — mesmo bug no arquivo-gêmeo,
+       não listado no plano mas corrigido junto por ser o mesmo padrão
+       no mesmo componente espelhado) e `held-sales-dialog.tsx`
+       (descartar venda guardada).
+     - `customer-dialog.tsx` (F4) e `discount-dialog.tsx` (F6) ainda
+       usavam o rodapé antigo (botões `flex-1` de largura total,
+       catalogado pela fase 1 do plano anterior como um dos 4 padrões
+       divergentes de rodapé de diálogo). Migrados pro `DialogFooter`
+       (`ui/dialog.tsx`) que aquela fase já criou — botões em largura
+       automática, alinhados à direita, secundário antes do primário.
+       Altura (`h-11`) e raio (`rounded-sm`) dos botões, que são a
+       linguagem própria do PDV, continuam exatamente como estavam.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando.
+     Deploy `046f3ad` "Ready". Confirmado ao vivo em produção, com item
+     de teste (ZZTESTE) adicionado e a venda cancelada ao final (PDV
+     devolvido ao estado "Nova venda", nada ficou pendente no caixa):
+     `/app/pdv` mostra só uma caixa de busca; "Cancelar venda" mostra
+     "Não" antes de "Sim, cancelar"; F4 (Cliente da venda) mostra "Pular"
+     e "Confirmar" em largura automática alinhados à direita, não mais
+     dois botões de 50% cada; F6 (Desconto) mostra "Aplicar desconto"
+     no mesmo padrão.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
