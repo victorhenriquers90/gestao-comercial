@@ -9132,6 +9132,88 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      confirmado funcionando no branch oposto em Fornecedores (busca sem
      resultado caiu no `Inbox` padrão como esperado, sem erro de render).
 
+178. **Fase 2 do plano de comercialização: cadastro e identidade da loja.**
+     Continuação do item 177 (plano completo em
+     `C:\Users\victo\.claude\plans\stateless-chasing-stallman.md`).
+
+     **Achados**:
+     - Cadastro (`login.tsx`) nunca perguntava o nome da loja — só Nome
+       (da pessoa), E-mail e Senha. `ensureTenant` (`context.ts:320-321`)
+       inventava `` `${firstName} Comércio` ``, ex. "Victor Comércio".
+     - O placeholder do campo "Nome" dizia "Como aparece na loja" — texto
+       pensado pro nome da EMPRESA, no campo errado (o da pessoa).
+     - `company_settings.print_header` nascia com o MESMO texto do nome
+       da empresa (`context.ts`, antes do fix). O recibo (`receipt.tsx:69,
+       87`) imprime `trade_name || name` como título E, logo abaixo,
+       `print_header` se existir — toda loja nova imprimia o próprio nome
+       duas vezes seguidas desde o primeiro dia. Confirmado ao vivo no
+       piloto: o comprovante da venda nº 40 mostra "VICTOR COMÉRCIO"
+       (título) e "Victor Comércio" (print_header) uma embaixo da outra.
+       Renomear a empresa depois em Configurações não atualiza esse
+       segundo campo (são dois campos independentes no formulário,
+       `saveCompanyFn` grava os dois só se os dois forem enviados) — ia
+       ficar pior com o tempo, não só no dia 1.
+     - Três lugares mostravam o nome da variável de ambiente do servidor
+       pro lojista/operador: "Nenhuma credencial configurada no servidor
+       (FOCUS_NFE_TOKEN)…" em `configuracoes.tsx:721` e `vendas.tsx:403`,
+       e a mesma citação no `throw` de `nfce.ts:65`.
+
+     **Fix**:
+     - Cadastro ganhou campo "Nome da loja" (`login.tsx`), visível só pra
+       quem está criando empresa nova (`signingUp && !conviteToken`) —
+       quem entra por convite junta-se a uma empresa que já existe, não
+       faz sentido perguntar. Campo obrigatório, ícone `Store` no mesmo
+       padrão visual dos outros campos do login.
+     - O nome digitado viaja até `ensureTenant` por um cookie httpOnly
+       (`PENDING_COMPANY_COOKIE`, `stashCompanyNameFn` em `session.ts`),
+       setado ANTES do `signUp.email()`, não depois — de propósito. O
+       `login.tsx` tem um efeito que navega sozinho pra `/app` assim que
+       a sessão loga (`redirected` ref, linha ~104), sem esperar nada que
+       o resto do `onEmail` ainda esteja fazendo; se o nome fosse mandado
+       numa chamada separada DEPOIS do signUp, esse efeito podia vencer a
+       corrida e carregar `/app` (disparando `ensureTenant` sem o nome)
+       antes da chamada terminar. Cookie resolve isso por construção:
+       fica pronto pra QUALQUER requisição que crie a empresa primeiro,
+       não só a que o formulário dispara — mesmo mecanismo que
+       `INVITE_COOKIE` já usa pra convite, mesmas funções-espelho
+       (`readPendingCompanyName`/`clearPendingCompanyName` ao lado de
+       `readInviteCookie`/`clearInviteCookie` em `context.ts`).
+     - `print_header` agora nasce `null`, não duplicando o nome da
+       empresa — quem quiser uma segunda linha no recibo (slogan, razão
+       social) preenche de propósito em Configurações → Impressão.
+     - Placeholder do campo "Nome" corrigido pra "Como você quer ser
+       chamado"; o texto antigo ("Como aparece na loja") foi pro campo
+       novo, onde faz sentido de verdade.
+     - As três mensagens de FOCUS_NFE_TOKEN pro lojista/operador viraram
+       "…neste servidor — fale com quem administra a instalação…" (ou
+       equivalente), sem citar a variável. O painel técnico de checklist
+       (`NfceReadinessPanel`, "Pronto para emitir?") continua citando
+       `FOCUS_NFE_TOKEN` por nome — ali é instrução pra quem instala o
+       servidor, não vazamento.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando.
+     Deploy `52568d1` "Ready". Confirmado ao vivo em produção: a
+     mensagem nova sem o nome da variável aparece em Configurações →
+     Impostos ("Nenhuma credencial configurada neste servidor — fale com
+     quem administra a instalação…"), e o painel "Pronto para emitir?"
+     logo abaixo continua citando `FOCUS_NFE_TOKEN` corretamente (é o
+     lugar certo). O bug do recibo duplicado foi reproduzido ao vivo no
+     piloto (venda nº 40, "VICTOR COMÉRCIO" + "Victor Comércio" uma
+     embaixo da outra) — isso CONFIRMA que o bug era real, mas não
+     verifica o fix: `ensureTenant` só roda uma vez por empresa, então o
+     `print_header` já gravado no piloto (criado antes deste fix)
+     continua do jeito que estava; o fix vale pra empresas criadas DAQUI
+     PRA FRENTE. Quem quiser tirar a duplicata do piloto específico pode
+     limpar o campo "Cabeçalho do comprovante" em Configurações →
+     Impressão manualmente. O fluxo de cadastro completo (campo novo →
+     cookie → `ensureTenant` com o nome certo) não foi testado criando
+     uma conta de verdade em produção — faria isso numa aba nova do
+     MESMO navegador desta sessão, que já está autenticado como o admin
+     do piloto, e sair da conta dele exigiria a senha dele (regra:
+     nunca mexer em credencial do usuário). Confiança vem da revisão de
+     código linha a linha e do mecanismo ser um espelho estrutural do
+     `INVITE_COOKIE`, já em produção e funcionando.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
