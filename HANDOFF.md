@@ -9550,6 +9550,27 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Nada foi alterado no banco** — auditoria 100% leitura; as
      recomendações P1-P3 são decisões do dono, não executadas.
 
+185. **Tela de login maior (pedido direto, com screenshot).** No desktop
+     o cartão de 26rem/416px com campos de 48px lia pequeno no painel de
+     meia tela. Escala inteira subiu junto, não um knob só: cartão
+     26→30rem (`styles.css`), padding `p-7 sm:p-9`→`p-8 sm:p-12`, campos
+     e botão `h-12`→`h-14`, ícones `size-4`→`size-5` (com `pl-13`/
+     `left-5`), olho da senha `w-12`→`w-14`, título `sm:[2.75rem]`→
+     `sm:text-5xl`, subtítulo `text-sm`→`text-base`, form `gap-4`→
+     `gap-5` (`login.tsx`). Celular só ganha campos mais altos (toque
+     melhor) — a largura lá já era 100%.
+
+     **Verificação**: produção logada redireciona `/login`→`/app` (não
+     deslogo o admin — regra de credencial), e a URL por-deployment do
+     Vercel trava em "Abrindo a loja…" (o `BETTER_AUTH_URL` é fixo no
+     domínio de produção, a checagem de sessão não resolve noutro host
+     — anotado pra não tentar de novo). Verificado então no dev server
+     local (PGLite zerado, sem sessão): visual conferido + medidas
+     computadas — maxWidth 480px, campo/botão 56px, paddingLeft 52px,
+     exatamente as classes novas (prova de que o HMR estava servindo o
+     código editado). Deploy `d15db88` "Ready" em produção com o mesmo
+     build. Typecheck/lint limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
