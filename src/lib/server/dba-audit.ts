@@ -23,7 +23,7 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
     `;
 
     const tableStats = await sql<{
-      table: string;
+      table_name: string;
       total_size: string;
       total_bytes: number;
       live_rows: number;
@@ -36,7 +36,7 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
       last_autoanalyze: string | null;
     }>`
       select
-        relname as table,
+        relname as table_name,
         pg_size_pretty(pg_total_relation_size(relid)) as total_size,
         pg_total_relation_size(relid) as total_bytes,
         n_live_tup as live_rows,
@@ -51,14 +51,14 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
     `;
 
     const unusedIndexes = await sql<{
-      table: string;
-      index: string;
+      table_name: string;
+      index_name: string;
       size: string;
       idx_scan: number;
       is_unique: boolean;
     }>`
       select
-        sui.relname as table, sui.indexrelname as index,
+        sui.relname as table_name, sui.indexrelname as index_name,
         pg_size_pretty(pg_relation_size(sui.indexrelid)) as size,
         sui.idx_scan,
         ix.indisunique as is_unique
@@ -69,10 +69,10 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
       limit 40
     `;
 
-    const missingFkIndexes = await sql<{ table: string; column: string; fk_name: string }>`
+    const missingFkIndexes = await sql<{ table_name: string; column_name: string; fk_name: string }>`
       select distinct
-        con.conrelid::regclass::text as table,
-        a.attname as column,
+        con.conrelid::regclass::text as table_name,
+        a.attname as column_name,
         con.conname as fk_name
       from pg_constraint con
       join pg_attribute a on a.attrelid = con.conrelid and a.attnum = any(con.conkey)
@@ -81,11 +81,11 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
           select 1 from pg_index i
           where i.indrelid = con.conrelid and i.indkey[0] = a.attnum
         )
-      order by table, column
+      order by table_name, column_name
     `;
 
-    const tenantTablesWithoutIndex = await sql<{ table: string }>`
-      select distinct c.relname as table
+    const tenantTablesWithoutIndex = await sql<{ table_name: string }>`
+      select distinct c.relname as table_name
       from pg_class c
       join pg_attribute a on a.attrelid = c.oid and a.attname = 'company_id'
       where c.relkind = 'r' and c.relnamespace = 'public'::regnamespace
@@ -93,21 +93,21 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
           select 1 from pg_index i
           where i.indrelid = c.oid and i.indkey[0] = a.attnum
         )
-      order by table
+      order by table_name
     `;
 
-    const duplicateIndexes = await sql<{ table: string; indexes: string[] }>`
-      select indrelid::regclass::text as table, array_agg(indexrelid::regclass::text) as indexes
+    const duplicateIndexes = await sql<{ table_name: string; indexes: string[] }>`
+      select indrelid::regclass::text as table_name, array_agg(indexrelid::regclass::text) as indexes
       from pg_index
       group by indrelid, indkey, indclass
       having count(*) > 1
     `;
 
-    const notValidConstraints = await sql<{ table: string; constraint: string }>`
-      select conrelid::regclass::text as table, conname as constraint
+    const notValidConstraints = await sql<{ table_name: string; constraint_name: string }>`
+      select conrelid::regclass::text as table_name, conname as constraint_name
       from pg_constraint
       where contype = 'c' and not convalidated
-      order by table
+      order by table_name
     `;
 
     const connectionStats = await sql<{ state: string | null; count: number }>`
@@ -129,11 +129,11 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
       from pg_roles where rolname = current_user
     `;
 
-    const publicGrants = await sql<{ table: string; privilege: string }>`
-      select table_name as table, privilege_type as privilege
+    const publicGrants = await sql<{ table_name: string; privilege: string }>`
+      select table_name, privilege_type as privilege
       from information_schema.table_privileges
       where grantee = 'PUBLIC' and table_schema = 'public'
-      order by table, privilege
+      order by table_name, privilege
     `;
 
     type SlowQuery = {
