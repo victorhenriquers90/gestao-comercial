@@ -27,6 +27,7 @@ import {
   saveCategoryFn,
   saveProductFn,
 } from "@/lib/server/catalog";
+import { getTenantFn } from "@/lib/server/session";
 import { parseBarcode } from "@/lib/check-digit";
 
 export const Route = createFileRoute("/app/produtos")({
@@ -97,6 +98,7 @@ function ProdutosPage() {
   const [novaCategoria, setNovaCategoria] = useState("");
   const [criandoCategoria, setCriandoCategoria] = useState(false);
 
+  const tenant = useQuery({ queryKey: ["tenant"], queryFn: () => getTenantFn() });
   const cats = useQuery({ queryKey: ["categories"], queryFn: () => listCategoriesFn() });
   const ncmPend = useQuery({
     queryKey: ["ncm-pending"],
@@ -611,7 +613,7 @@ function ProdutosPage() {
           {tagsProduct.isPending ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : (
-            <PriceTags items={tagItems} onClose={() => setTagsFor(null)} />
+            <PriceTags items={tagItems} storeName={tenant.data?.companyName} onClose={() => setTagsFor(null)} />
           )}
         </DialogContent>
       </Dialog>

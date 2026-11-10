@@ -13,9 +13,13 @@ export type PriceTagItem = {
 
 export function PriceTags({
   items,
+  storeName,
   onClose,
 }: {
   items: PriceTagItem[];
+  /** Nome da loja, impresso em cada etiqueta. Sem isto a etiqueta nao
+   * identificava de qual loja ela e -- so o produto e o preco. */
+  storeName?: string | null;
   onClose?: () => void;
 }) {
   return (
@@ -32,14 +36,14 @@ export function PriceTags({
       </div>
       <div className="tags-sheet flex flex-wrap gap-3 bg-white p-2">
         {items.map((item) => (
-          <PriceTagCard key={item.key} item={item} />
+          <PriceTagCard key={item.key} item={item} storeName={storeName} />
         ))}
       </div>
     </div>
   );
 }
 
-function PriceTagCard({ item }: { item: PriceTagItem }) {
+function PriceTagCard({ item, storeName }: { item: PriceTagItem; storeName?: string | null }) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -68,6 +72,11 @@ function PriceTagCard({ item }: { item: PriceTagItem }) {
 
   return (
     <div className="flex w-[58mm] flex-col items-center gap-1 border border-dashed border-black/30 p-2 text-black">
+      {storeName ? (
+        <p className="line-clamp-1 text-center text-[8px] font-medium tracking-wide text-black/60 uppercase">
+          {storeName}
+        </p>
+      ) : null}
       <p className="line-clamp-2 text-center text-[10px] leading-tight font-medium uppercase">{item.title}</p>
       {item.subtitle ? <p className="text-[9px] text-black/70">{item.subtitle}</p> : null}
       <p className="font-display text-lg font-semibold tabular">{formatBRL(item.price)}</p>
