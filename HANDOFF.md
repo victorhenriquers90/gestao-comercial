@@ -9461,6 +9461,95 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      de "ZZTESTE Calca QA" mostrando "VICTOR COMÉRCIO" acima do nome do
      produto e do preço, layout de 58mm sem quebra nem corte.
 
+184. **Auditoria de DBA sênior no Postgres de produção (saúde geral,
+     performance, integridade, segurança — os 4 pilares pedidos).**
+     Método: `DATABASE_URL` é Sensitive no Vercel (nem `vercel env pull`
+     lê — proteção deliberada, respeitada, não contornada). O acesso foi
+     por um endpoint temporário admin-only (`dbaAuditFn` +
+     `/app/dba-audit`, commits `cbf6713`/`e0903c4`/`fa18e3a`), só
+     leitura (`pg_stat_*`, `pg_constraint`, `information_schema` + 11
+     contagens de invariante de negócio), chamado pela sessão
+     autenticada do navegador e **removido depois** (`2b1970e`) — a
+     connection string nunca foi vista nem materializada.
+
+     **Ambiente**: PostgreSQL 18.6 (Neon, aarch64), banco `neondb`,
+     12 MB, 37/37 migrations aplicadas (zero órfã), 2 conexões no
+     momento da leitura.
+
+     **Saudável (confirmado com dado real, não suposição)**:
+     - Integridade: 11/11 checagens com ZERO violação — `company_id` de
+       filho × pai em 5 relações (sale_items/payments/receivables ×
+       sales, variants × products, inventories × stores — o teste real
+       de isolamento multi-tenant), estoque negativo, título recebido/
+       pago acima do valor, soma de pagamentos × total da venda, soma de
+       itens × subtotal, dinheiro negativo nas tabelas de CHECK
+       NOT VALID.
+     - Injeção de SQL: nenhuma encontrada. Tudo parametrizado; ORDER BY
+       dinâmico passa pela whitelist central (`parseSort`,
+       `lib/paging.ts`); nenhum identificador cru do cliente no SQL.
+     - Todo dinheiro em `numeric(14,2)`; 107 FKs reais; CHECKs de
+       dinheiro/quantidade no banco (0010/0036); unique parcial
+       race-safe de caixa aberto; zero grant pra PUBLIC.
+     - Os 4 pares de "índice duplicado" que o detector flagou são
+       FALSOS POSITIVOS (full × parcial deliberados do
+       `0012_index_tune.sql`, e expressões diferentes em name/sku que o
+       agrupador por indkey não distingue). Conferido contra as
+       migrations antes de concluir.
+     - Autovacuum funcionando; os `dead_pct` altos (350%, 2650%…) são
+       percentuais sobre tabelas de 2-15 linhas — absolutos triviais,
+       abaixo do threshold, normal.
+
+     **Achados, por prioridade**:
+     - **P1a**: 10 CHECK constraints seguem `NOT VALID` desde que
+       nasceram (0025/0027/0036 etc.) — protegem só escrita nova; o
+       Postgres nunca carimbou o histórico. O dado atual JÁ passa
+       (contagens zeradas acima), então `ALTER TABLE … VALIDATE
+       CONSTRAINT` é barato (12 MB, lock leve) e trava a garantia de
+       vez. Lista exata: accounts_payable_money_nonneg,
+       accounts_receivable_money_nonneg, cash_registers_close_sane,
+       cash_registers_handover_sane, commission_rules_percent_range,
+       memberships_discount_limit_range, product_variants_money_nonneg,
+       products_money_nonneg, purchases_money_nonneg,
+       sales_nfce_env_valid.
+     - **P1b**: `pg_stat_statements` NÃO está habilitado — zero
+       visibilidade de query lenta em produção (o Neon suporta,
+       é um `CREATE EXTENSION`). Hoje nada é lento (12 MB), mas sem isso
+       ninguém saberá QUAL query degradou quando crescer.
+     - **P2a**: 60 colunas de FK sem índice próprio (Postgres não
+       indexa FK sozinho). Zero impacto hoje; em escala, os quentes
+       viram gargalo: `accounts_receivable.sale_id`,
+       `commissions.seller_id`, `sale_items.product_id/variant_id`,
+       `cash_movements.store_id`, `payments company/sale`. Recomendação:
+       indexar os ~10 quentes quando o volume justificar, não os 60
+       (índice custa escrita). Nuance: toda query filtra `company_id`,
+       então compostos liderados por company_id mitigam parte.
+     - **P2b**: 10 tabelas multi-tenant sem índice LIDERADO por
+       company_id (brands, cash_accounts, cash_movements,
+       customer_notes, inventories, payments, pending_invites,
+       purchase_items, return_items, stock_count_items) — mesmo
+       raciocínio do P2a.
+     - **P3a**: o runtime roda como `neondb_owner` — rolsuper NÃO, mas
+       CREATEDB + CREATEROLE + REPLICATION + BYPASSRLS. Mesma string
+       serve migrations e app (scripts/migrate.mjs). Comprometimento da
+       aplicação = controle total do banco. Mitigantes reais: zero SQLi
+       encontrado + URL Sensitive no Vercel. Upgrade de médio prazo:
+       role só-DML pro runtime, owner só no build/migrate.
+     - **P3b**: isolamento multi-tenant é 100% aplicação — nenhuma RLS
+       no schema inteiro. Funciona HOJE (zero vazamento medido), mas um
+       único `where company_id` esquecido numa query futura = vazamento
+       silencioso. RLS como cinto de segurança é o investimento
+       estrutural se o SaaS escalar.
+     - **P4**: conferir se a DATABASE_URL usa o endpoint `-pooler` do
+       Neon (não dá pra ver o valor; `pg.Pool` max 10 por instância
+       serverless × N instâncias em pico pode esgotar conexão direta).
+       `customers` com 91,6% seq scan e `rateLimit` com 12.820 seq
+       scans são comportamento NORMAL de tabela minúscula (planner
+       prefere seq scan); os índices FTS/trgm estão prontos esperando
+       volume — não remover por "não usados".
+
+     **Nada foi alterado no banco** — auditoria 100% leitura; as
+     recomendações P1-P3 são decisões do dono, não executadas.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
