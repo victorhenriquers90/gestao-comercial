@@ -171,6 +171,39 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
     `;
     const [migrationCount] = await sql<{ n: number }>`select count(*)::int as n from _migrations`;
 
+    // Invariantes de negocio que o schema NAO garante sozinho -- cada um
+    // devolve a CONTAGEM de linhas violando (0 = saudavel). Os cinco
+    // primeiros sao o teste real de isolamento multi-tenant: company_id de
+    // linha filha divergindo do pai.
+    const integrity: Record<string, number> = {};
+    const checks: Record<string, string> = {
+      sale_items_cross_tenant:
+        "select count(*)::int as n from sale_items si join sales s on s.id = si.sale_id where si.company_id <> s.company_id",
+      payments_cross_tenant:
+        "select count(*)::int as n from payments p join sales s on s.id = p.sale_id where p.company_id <> s.company_id",
+      receivables_cross_tenant:
+        "select count(*)::int as n from accounts_receivable ar join sales s on s.id = ar.sale_id where ar.company_id <> s.company_id",
+      variants_cross_tenant:
+        "select count(*)::int as n from product_variants v join products p on p.id = v.product_id where v.company_id <> p.company_id",
+      inventories_cross_tenant:
+        "select count(*)::int as n from inventories i join stores st on st.id = i.store_id where i.company_id <> st.company_id",
+      negative_stock: "select count(*)::int as n from inventories where quantity < 0",
+      receivable_overpaid:
+        "select count(*)::int as n from accounts_receivable where received_amount > amount + 0.009",
+      payable_overpaid:
+        "select count(*)::int as n from accounts_payable where paid_amount > amount + 0.009",
+      sale_payments_mismatch:
+        "select count(*)::int as n from sales s where s.status in ('finalizada','devolvida_parcial','devolvida') and abs((select coalesce(sum(p.amount),0) from payments p where p.sale_id = s.id) - s.total) > 0.05",
+      sale_items_vs_subtotal:
+        "select count(*)::int as n from sales s where s.status <> 'cancelada' and abs((select coalesce(sum(i.total),0) from sale_items i where i.sale_id = s.id) - s.subtotal) > 0.05",
+      not_valid_rows_money:
+        "select (select count(*)::int from products where cost < 0 or price < 0) + (select count(*)::int from accounts_receivable where amount < 0 or discount < 0 or received_amount < 0) + (select count(*)::int from accounts_payable where amount < 0 or discount < 0 or paid_amount < 0) as n",
+    };
+    for (const [name, text] of Object.entries(checks)) {
+      const [row] = await sql.query<{ n: number }>(text);
+      integrity[name] = row?.n ?? -1;
+    }
+
     return {
       env,
       dbSize: size?.db_size,
@@ -187,5 +220,6 @@ export const dbaAuditFn = createServerFn({ method: "GET" })
       slowQueries,
       migrationCount: migrationCount?.n,
       recentMigrations: orphanMigrations,
+      integrity,
     };
   });
