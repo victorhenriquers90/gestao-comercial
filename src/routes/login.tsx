@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
 const fieldClass =
-  "h-12 rounded-2xl border-transparent bg-muted px-4 text-base transition-[background-color,border-color,box-shadow] focus-visible:border-input focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-primary/15";
+  "h-14 rounded-2xl border-transparent bg-muted px-4 text-base transition-[background-color,border-color,box-shadow] focus-visible:border-input focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-primary/15";
 
 // Better Auth's client returns an error `code` (e.g. "INVALID_EMAIL_OR_PASSWORD")
 // alongside its own English `message` — key off `code` so this never depends on
@@ -265,16 +265,16 @@ function LoginPage() {
         ref={formPanelRef}
         className="login-form-panel flex items-center justify-center px-6 py-10"
       >
-        <div className="login-card animate-in fade-in-0 duration-300 p-7 sm:p-9">
+        <div className="login-card animate-in fade-in-0 duration-300 p-8 sm:p-12">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
               <BrandMark className="size-10" />
               <p className="ed-label">{APP_NAME}</p>
             </div>
 
-            <h1 className="font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-[2.75rem]">
+            <h1 className="font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl">
               {signingUp ? "Criar a loja" : "Abrir a loja"}
             </h1>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-base leading-relaxed text-muted-foreground">
               {convite
                 ? `Você foi convidado para ${convite.companyName} como ${ROLE_LABELS[convite.role as Role] ?? convite.role}. ${signingUp ? "Crie sua conta para entrar." : "Entre com sua conta para aceitar."}`
                 : signingUp
@@ -289,17 +289,17 @@ function LoginPage() {
 
             {authEnabled ? (
               <>
-                <form className="mt-7 grid gap-4" onSubmit={onEmail}>
+                <form className="mt-8 grid gap-5" onSubmit={onEmail}>
               {signingUp ? (
                 <div className="grid gap-1.5">
                   <Label htmlFor="name" className="ed-label">
                     Seu nome
                   </Label>
                   <div className="group relative">
-                    <User className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
+                    <User className="pointer-events-none absolute top-1/2 left-5 size-5 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                     <Input
                       id="name"
-                      className={cn(fieldClass, "pl-11")}
+                      className={cn(fieldClass, "pl-13")}
                       value={name}
                       autoComplete="name"
                       placeholder="Como você quer ser chamado"
@@ -315,10 +315,10 @@ function LoginPage() {
                     Nome da loja
                   </Label>
                   <div className="group relative">
-                    <Store className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
+                    <Store className="pointer-events-none absolute top-1/2 left-5 size-5 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                     <Input
                       id="companyName"
-                      className={cn(fieldClass, "pl-11")}
+                      className={cn(fieldClass, "pl-13")}
                       value={companyName}
                       autoComplete="organization"
                       placeholder="Como aparece para o cliente"
@@ -333,11 +333,11 @@ function LoginPage() {
                   E-mail
                 </Label>
                 <div className="group relative">
-                  <Mail className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
+                  <Mail className="pointer-events-none absolute top-1/2 left-5 size-5 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                   <Input
                     id="email"
                     type="email"
-                    className={cn(fieldClass, "pl-11")}
+                    className={cn(fieldClass, "pl-13")}
                     autoComplete="email"
                     placeholder="voce@loja.com"
                     value={email}
@@ -351,11 +351,11 @@ function LoginPage() {
                   Senha
                 </Label>
                 <div className="group relative">
-                  <Lock className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
+                  <Lock className="pointer-events-none absolute top-1/2 left-5 size-5 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    className={cn(fieldClass, "pr-12 pl-11")}
+                    className={cn(fieldClass, "pr-14 pl-13")}
                     autoComplete={signingUp ? "new-password" : "current-password"}
                     placeholder={signingUp ? "Mínimo 8 caracteres" : "Sua senha"}
                     value={password}
@@ -365,7 +365,7 @@ function LoginPage() {
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-2xl text-muted-foreground hover:text-foreground"
+                    className="absolute inset-y-0 right-0 flex w-14 items-center justify-center rounded-r-2xl text-muted-foreground hover:text-foreground"
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     onClick={() => setShowPassword((v) => !v)}
                   >
@@ -378,7 +378,7 @@ function LoginPage() {
                   {error}
                 </p>
               ) : null}
-              <Button type="submit" size="lg" className="group mt-1 w-full rounded-2xl" disabled={busy}>
+              <Button type="submit" size="lg" className="group mt-1 h-14 w-full rounded-2xl" disabled={busy}>
                 {busy ? "Aguarde…" : signingUp ? "Criar conta" : "Entrar"}
                 {busy ? null : (
                   <ArrowRight className="-translate-x-1 opacity-0 transition-[transform,opacity] duration-200 group-hover:translate-x-0 group-hover:opacity-100" />

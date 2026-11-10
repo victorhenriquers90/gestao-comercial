@@ -411,7 +411,11 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 26rem;
+  /* 30rem, nao 26rem: no desktop (painel de meia tela) o cartao de 416px
+     lia pequeno demais, boiando num mar de fundo vazio -- pedido direto
+     do usuario com screenshot. Em celular nada muda (width: 100% ja
+     manda antes do teto). */
+  max-width: 30rem;
   overflow: hidden;
   /* Cantos retos (0px) contra os 32px dos campos/botao (--radius-2xl) por
      baixo era a maior inconsistencia visual do cartao -- o continer
