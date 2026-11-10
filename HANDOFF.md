@@ -9444,6 +9444,23 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      dos ajustes leves, wizard/checklist/billing/e-mail de convite) —
      ver "O que este plano NÃO cobre" no arquivo do plano.
 
+183. **Pendência da fase 5 fechada: nome da loja na etiqueta de preço.**
+     O item 181 tinha registrado isso como achado separado, não
+     implementado na hora (etiqueta nunca mostrou nenhuma identificação
+     de loja — não era "cai pro nome errado" como o recibo, era "nunca
+     teve nome nenhum", exigia campo novo em vez de só tirar um
+     fallback). `PriceTags`/`PriceTagCard` (`price-tag.tsx`) ganharam
+     prop `storeName` opcional, impressa como linha pequena e muted
+     acima do nome do produto. `produtos.tsx` passou a buscar o tenant
+     (`useQuery(["tenant"], getTenantFn)`, mesmo padrão usado em quase
+     toda tela do app — cache compartilhado, sem custo extra de rede na
+     prática) e repassa `companyName` pra tela de etiquetas.
+
+     **Verificação**: `typecheck`/`lint` limpos, 522 testes passando.
+     Deploy `849592d` "Ready". Confirmado ao vivo em produção: etiqueta
+     de "ZZTESTE Calca QA" mostrando "VICTOR COMÉRCIO" acima do nome do
+     produto e do preço, layout de 58mm sem quebra nem corte.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
