@@ -44,6 +44,11 @@ async function main() {
 
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
+  // RAISE WARNING/NOTICE de dentro de uma migration (ex.: os DO blocks de
+  // 0038 que degradam pra aviso em vez de quebrar o deploy) chega como
+  // evento 'notice' do pg -- sem este listener, sumia em silencio e o log
+  // de build dizia "applied" sem contar que algo foi pulado.
+  client.on("notice", (msg) => console.warn(`[migrate] aviso do banco: ${msg.message}`));
   try {
     await client.query(
       "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
