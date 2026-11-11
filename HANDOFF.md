@@ -9571,6 +9571,34 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      código editado). Deploy `d15db88` "Ready" em produção com o mesmo
      build. Typecheck/lint limpos.
 
+186. **P1 da auditoria de DBA executado (migration 0038): as 10 CHECKs
+     NOT VALID validadas + `pg_stat_statements` ligado.** Fecha as duas
+     recomendações baratas do item 184; P2 (índices de FK/company_id) e
+     P3 (role só-DML, RLS) seguem como decisões de escala, não
+     executadas.
+
+     Desenho defensivo, pra nunca travar deploy: cada `VALIDATE
+     CONSTRAINT` num `DO` próprio que degrada pra `RAISE WARNING` em
+     `check_violation` (a constraint ficaria NOT VALID como estava —
+     nada pior que antes); o `CREATE EXTENSION pg_stat_statements` em
+     `WHEN OTHERS` porque o PGLite do preview não embarca a extensão.
+     Junto, `scripts/migrate.mjs` ganhou um listener de `notice` do pg —
+     sem ele, os RAISE WARNING chegavam como evento e sumiam em
+     silêncio, e o log de build diria "applied" sem contar o que foi
+     pulado.
+
+     **Verificação**: 522 + 199 testes passando, lint limpo. Deploy
+     `95ce403` "Ready". Log de build (via `vercel inspect --logs`):
+     `[migrate] applied 0038...`, o listener capturou o aviso inócuo de
+     `_migrations already exists` (prova de que avisos APARECEM), e
+     nenhum dos 11 blocos emitiu aviso — as 10 constraints validaram
+     com o histórico limpo (consistente com as contagens zeradas do
+     item 184) e a extensão subiu no Neon. A partir de agora
+     `pg_stat_statements` acumula estatísticas de query em produção —
+     numa futura rodada de performance, consultar
+     `select query, calls, mean_exec_time from pg_stat_statements
+     order by mean_exec_time desc`.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
