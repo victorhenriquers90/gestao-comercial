@@ -18,7 +18,12 @@ import { dirname, join } from "node:path";
 import pg from "pg";
 import { orphanMigrations, pendingMigrations } from "./migration-plan.mjs";
 
-const databaseUrl = process.env.DATABASE_URL;
+// MIGRATE_DATABASE_URL separado do DATABASE_URL do runtime, com fallback:
+// e o que permite o P3a da auditoria de DBA (HANDOFF item 184/188) -- o
+// app rodando com uma role so-DML enquanto as migrations continuam com a
+// role dona (DDL). Sem a variavel nova definida, nada muda: mesmo
+// comportamento de sempre, uma string so pra tudo.
+const databaseUrl = process.env.MIGRATE_DATABASE_URL || process.env.DATABASE_URL;
 if (!databaseUrl) {
   console.log(
     "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",

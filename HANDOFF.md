@@ -9637,6 +9637,30 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      índice novo** — a lista de "faltando" de uma auditoria mecânica
      inclui o que já foi removido de propósito.
 
+188. **P3 da auditoria de DBA preparado (não executado): guia em
+     `GUIA_P3_SEGURANCA_BANCO.md` + `MIGRATE_DATABASE_URL` no
+     migrador.** Os dois itens restantes do relatório 184 dependem dos
+     painéis do Neon/Vercel (credenciais são do dono), então o
+     entregável é o guia passo a passo, não a mudança:
+     - **P3a** (role `app_runtime` só-DML): console do Neon cria a role,
+       script de GRANT pronto no guia — incluindo `alter default
+       privileges`, sem o qual cada migration futura criaria tabela que
+       o runtime não enxerga —, e a troca de variáveis no Vercel com um
+       aviso de ORDEM (criar `MIGRATE_DATABASE_URL` com a string atual
+       ANTES de sobrescrever `DATABASE_URL`: ela é Sensitive, ilegível
+       depois de salva). O código já suporta: `scripts/migrate.mjs` usa
+       `MIGRATE_DATABASE_URL || DATABASE_URL` — sem a variável nova,
+       comportamento idêntico ao de sempre (confirmado no deploy deste
+       commit: `[migrate] up to date.` com uma string só).
+     - **P3b** (RLS): descrito no guia como projeto próprio, não passo —
+       ~40 políticas + `set local app.company_id` por requisição (mexe
+       no caminho de toda query) + só funciona DEPOIS do P3a
+       (`neondb_owner` tem BYPASSRLS; RLS sem role limitada é
+       decoração). Recomendação registrada: fazer quando houver mais de
+       um cliente pagante no banco.
+     O guia também amarra o P4 (conferir `-pooler` no host) ao passo 3
+     do P3a, já que é a mesma tela de variável.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
