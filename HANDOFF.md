@@ -9599,6 +9599,44 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `select query, calls, mean_exec_time from pg_stat_statements
      order by mean_exec_time desc`.
 
+187. **P2-quente da auditoria de DBA (migrations 0039+0040) — com um
+     erro meu no meio, pego e corrigido no mesmo deploy-ciclo.** A 0039
+     criou índices nos caminhos quentes de FK/company_id apontados no
+     item 184. Saldo EFETIVO em produção: 8 índices novos
+     (`return_items_sale_item_idx` — o lateral RETURN_BY_SALE roda por
+     venda em todo agregado de faturamento, o join mais quente do
+     sistema —, `returns_sale_idx`, `accounts_receivable_sale_idx`,
+     `accounts_payable_purchase_idx`, `accounts_payable_supplier_idx`,
+     `purchase_items_purchase_idx`, `cash_movements_store_idx`,
+     `payments_company_idx`). O resto das 60 colunas de FK espera
+     gargalo MEDIDO pelo `pg_stat_statements` (0038), não suposto.
+
+     **O erro**: a 0039 também recriou `sale_items_product_idx` e
+     `inventories_company_idx` — dois índices que a
+     `0018_drop_redundant_indexes.sql` tinha DERRUBADO de propósito, com
+     justificativa escrita ("cut write amplification on F10"; "product_id
+     no item é coberto pelo join"; "company_id sozinho não discrimina").
+     Saí da lista mecânica da auditoria (coluna de FK sem índice) sem
+     cruzar o histórico de drops. Quem pegou foi o listener de `notice`
+     adicionado na 0038: o log de build mostrou DUAS colisões de nome
+     (`commissions_seller_idx`, `sale_items_variant_idx` — essas
+     inofensivas, o IF NOT EXISTS preservou as versões compostas da
+     0011, que são melhores) e a AUSÊNCIA de colisão nas outras duas é
+     que entregou que a 0018 as tinha removido. A `0040` derruba as duas
+     de novo, com a regra registrada no próprio arquivo: decisão
+     documentada vence achado mecânico; se o pg_stat_statements um dia
+     provar o contrário, volta POR ESCRITO revogando a 0018, não por
+     acidente.
+
+     **Verificação**: 199 testes de scripts + lint ok nos dois ciclos.
+     Deploys `8cb2104` (0039) e `3ce461b` (0040) "Ready"; logs de build
+     via `vercel inspect --logs` mostram `applied` nos dois e, na 0040,
+     nenhum aviso de "does not exist" nos drops — os dois índices
+     errados existiam e caíram. Lição pra próxima rodada de índice:
+     **grep em `drop index` nas migrations ANTES de criar qualquer
+     índice novo** — a lista de "faltando" de uma auditoria mecânica
+     inclui o que já foi removido de propósito.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
