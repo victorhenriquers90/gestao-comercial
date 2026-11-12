@@ -19,3 +19,6 @@ installer/vendor/
 installer-gui/**/bin/
 installer-gui/**/obj/
 installer-gui/publish*/
+
+.vercel
+.env*
