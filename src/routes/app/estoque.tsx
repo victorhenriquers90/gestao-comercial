@@ -325,7 +325,9 @@ function EstoquePage() {
               }}
             >
               <option value="">Não transferir</option>
-              {(tenant.data?.stores ?? []).map((s) => (
+              {(tenant.data?.stores ?? [])
+                .filter((s) => String(s.id) !== String(storeId))
+                .map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>

@@ -9723,6 +9723,36 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      coluna de margem não tinha produto pra exibir — troca mecânica
      (`formatPct(marginPct(...))`), typecheck/lint limpos.
 
+192. **Primeiro ciclo de venda de uma loja NOVA, de ponta a ponta — sem
+     bug; 1 ajuste de UX.** Continuação dos itens 190/191, na empresa
+     ZZTESTE do PGLite local (porta 5181): Produtos → "Novo produto"
+     (Caderno, SKU ZZ-001, custo 5, preço 12,50 → tabela mostra margem
+     "60,0%", a correção do 191 com dado real) → PDV → "Abrir caixa"
+     (fundo 100) → item no carrinho → Pagamento → "Finalizar venda":
+     **bloqueado com o toast "Estoque insuficiente: … (sem estoque)"** —
+     correto, a loja nova nasce com `allow_negative_stock` desligado e o
+     produto sem saldo (o cadastro de produto não tem campo de estoque
+     inicial; o caminho é Estoque → Ajustar → Entrada). Dei entrada de 10
+     ("Estoque inicial"): saldo 10, valor R$ 50,00 (10 × custo). De volta
+     ao PDV: item, "Cliente e documento na nota" → Pular, Dinheiro 12,50
+     → "Venda nº 1 concluída · R$ 12,50". Comprovante: "ZZTESTE
+     ARMARINHOS" UMA vez (sem o cabeçalho duplicado do 178), "Não é
+     documento fiscal", Venda nº 1, item, Dinheiro, rodapé padrão.
+     Reflexos conferidos: Vendas lista a nº 1 "Finalizada"; Dashboard
+     faturamento 12,50, lucro estimado 7,50 (= 12,50 − 5,00), "+100,0%"
+     com vírgula, produto mais vendido e gráfico com o ponto do dia;
+     Estoque 9 un / R$ 45,00; Caixa fundo 100, 1 venda no turno. Console
+     sem erro em nenhuma etapa.
+     **Ajuste** (`estoque.tsx`, diálogo "Movimentar"): o select
+     "Transferir para loja" listava a PRÓPRIA loja de origem como destino
+     — numa empresa nova (uma loja só) a lista era "Não transferir / Loja
+     principal", transferência pra si mesma. Filtrado
+     `String(s.id) !== String(storeId)`; confirmado ao vivo (só "Não
+     transferir" com uma loja). Cuidado registrado: `npx prettier --write`
+     nesse arquivo gera 285 linhas de ruído (o arquivo não está no formato
+     do prettier) — revertido e reaplicado só o diff de 3 linhas; não
+     rodar prettier solto em arquivo antigo sem conferir o `--stat`.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
