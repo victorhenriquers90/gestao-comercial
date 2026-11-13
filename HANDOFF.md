@@ -9825,6 +9825,38 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      regressão do campo novo. Nenhum CSS tocado; achado é a ausência de
      achado, verificado dos dois lados antes de descartar.
 
+196. **Fundo do login: removidas as duas manchas de cor desfocadas com
+     paralaxe — pedido direto do usuário com screenshot ("esse fundo
+     precisa de melhoria... não está legal").** As manchas (`--chart-1`/
+     `--chart-3`, `blur(90px)`, deriva animada + paralaxe no
+     `pointermove`) tinham sido adicionadas numa sessão anterior pra
+     preencher o vazio atrás do cartão em telas altas, mas na prática
+     liam como gradiente mal acabado, não como acabamento — exatamente
+     o que a screenshot mostrou. Perguntado ao usuário entre as três
+     direções possíveis (fundo liso / cartão ocupando a área toda /
+     manchas mais sutis); escolheu **fundo liso**, a opção mais alinhada
+     com o resto do app, que já é chapado por escolha (Invariante #11,
+     `.kpi-card`).
+     - `styles.css`: `.login-form-panel::before/::after`,
+       `@keyframes login-blob-drift-a/b` e as custom properties
+       `--mx`/`--my` removidos; a regra ficou só com
+       `background: var(--background)` (já existia, nunca mudou).
+     - `login.tsx`: removido o `pointerCleanupRef`/`formPanelRef`
+       (listener de `pointermove` que escrevia `--mx`/`--my` no estilo
+       do elemento) e o `ref={formPanelRef}` na seção — sem as manchas
+       pra mover, o código não tinha mais efeito nenhum. Import de
+       `useCallback` removido (ficou sem uso); `useRef` permanece (usado
+       por `redirected`, sem relação com isto).
+     - A barra gradiente fina no topo do cartão (`.login-card::before`)
+       **não mudou** — não fazia parte da reclamação, lê como detalhe de
+       marca, não como "inacabado".
+     - **Verificação**: typecheck/lint limpos. Visual confirmado no
+       servidor local (porta 5180): fundo liso atrás do cartão, sem
+       manchas, igual com e sem a classe `.dark` forçada via DOM (o
+       login já é tema claro fixo por desenho — comentário existente em
+       `.login-card { color: #1a1916 }` confirma que isso é proposital,
+       não desta mudança).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

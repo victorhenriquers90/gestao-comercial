@@ -338,73 +338,16 @@
   background: linear-gradient(0deg, rgb(26 25 22 / 0.72) 0%, rgb(26 25 22 / 0) 55%);
 }
 
+/* Fundo liso de proposito -- chegou a ter duas manchas de cor desfocadas
+   com paralaxe (pra preencher o vazio em telas altas), mas na pratica
+   lia como um gradiente mal acabado, nao como acabamento (pedido direto
+   do usuario com screenshot). O resto do app ja e chapado por escolha
+   (`.kpi-card`, Invariante #11) -- aqui segue a mesma linha: so a cor de
+   fundo padrao atras do cartao. */
 .login-form-panel {
   position: relative;
   overflow: hidden;
   background: var(--background);
-  /* Lidas por `calc()` nas manchas abaixo -- numero (0-100), nao
-     porcentagem, pra dar pra fazer conta com `px` sem precisar de
-     `calc(var(--mx) * 1%)` aninhado. `login.tsx` atualiza isto no
-     `pointermove` sobre o painel; sem JS (ou com JS desligado) fica
-     parado no centro (50/50), o que so desativa o paralaxe -- a deriva
-     continua abaixo e o fluxo da barra do cartao independem disto. */
-  --mx: 50;
-  --my: 50;
-}
-
-/* Duas manchas de cor desfocadas atras do cartao -- o lado do formulario
-   e so texto sobre fundo liso (a foto/marca ficam do outro lado), e sem
-   isto o vazio em volta do cartao (bem visivel em telas altas, onde o
-   `justify-center` sobra bastante espaco acima/abaixo) lia como "sem
-   acabamento". As cores saem dos tokens de grafico (--chart-1/--chart-3)
-   que a dashboard ja usa, entao nao introduz cor nova no sistema.
-
-   `translate` anima a deriva lenta (propriedade separada de `transform`
-   desde CSS Motion Path/Transforms Level 2, com suporte amplo ha anos --
-   nao e gambiarra) enquanto `transform` reage ao mouse via --mx/--my; as
-   duas compoem sem conflito porque sao propriedades diferentes. Se
-   fossem a mesma propriedade, o `@keyframes` da deriva sobrescreveria o
-   deslocamento do mouse a cada quadro. */
-.login-form-panel::before,
-.login-form-panel::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  border-radius: 9999px;
-  filter: blur(90px);
-  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.login-form-panel::before {
-  top: -9rem;
-  right: -7rem;
-  width: 24rem;
-  height: 24rem;
-  background: var(--chart-1);
-  opacity: 0.35;
-  transform: translate(calc((var(--mx) - 50) * 0.5px), calc((var(--my) - 50) * 0.5px));
-  animation: login-blob-drift-a 22s ease-in-out infinite;
-}
-.login-form-panel::after {
-  bottom: -8rem;
-  left: -8rem;
-  width: 20rem;
-  height: 20rem;
-  background: var(--chart-3);
-  opacity: 0.3;
-  transform: translate(calc((var(--mx) - 50) * -0.35px), calc((var(--my) - 50) * -0.35px));
-  animation: login-blob-drift-b 26s ease-in-out infinite;
-}
-
-/* Direcoes diferentes pras duas manchas (uma "persegue" o mouse, a outra
-   foge de leve na direcao oposta, em velocidade menor) -- paralaxe de
-   verdade, nao as duas coladas se movendo iguais. */
-@keyframes login-blob-drift-a {
-  0%, 100% { translate: 0 0; }
-  50% { translate: -1.75rem 1.25rem; }
-}
-@keyframes login-blob-drift-b {
-  0%, 100% { translate: 0 0; }
-  50% { translate: 1.5rem -1rem; }
 }
 
 .login-card {
