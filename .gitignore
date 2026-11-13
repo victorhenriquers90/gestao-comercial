@@ -22,3 +22,7 @@ installer-gui/publish*/
 
 .vercel
 .env*
+
+# Transcript do update manual on-premise (Tee-Object/Start-Transcript do
+# instalador) -- saida local, nunca versionada.
+update-log.txt

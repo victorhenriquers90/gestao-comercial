@@ -9661,6 +9661,22 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      O guia também amarra o P4 (conferir `-pooler` no host) ao passo 3
      do P3a, já que é a mesma tela de variável.
 
+189. **Resíduo do item 178 no piloto: `print_header` duplicado zerado à
+     mão.** O fix do 178 (`print_header` nasce `null`) vale só pra loja
+     NOVA; a empresa #4 (Victor Comércio) seguia com "Victor Comércio"
+     em Configurações → Impressão → Cabeçalho do comprovante, igual ao
+     título — ou seja, cada recibo do piloto ainda imprimia o nome duas
+     vezes. Confirmado ao vivo lendo o valor do campo em produção;
+     campo limpo e salvo pela própria UI ("Modelo de impressão salvo."),
+     persistência confirmada recarregando a página (cabeçalho vazio,
+     rodapé "Obrigado pela preferência." e mensagem da nota intactos).
+     Não é mudança de código — é dado da loja, reversível em 10 s digitando
+     de novo. De carona: `update-log.txt` (transcript do update manual
+     on-premise de 20/10, UTF-16, aparecia como untracked) entrou no
+     `.gitignore`. Estado do P3a nesta data: ainda não executado pelo
+     usuário (`vercel env ls` lista só `DATABASE_URL`, sem
+     `MIGRATE_DATABASE_URL` — nomes apenas, valor nunca lido).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
