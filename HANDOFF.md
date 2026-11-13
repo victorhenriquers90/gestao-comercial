@@ -9805,6 +9805,26 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      produto → primeira venda → fechamento de caixa) está validado de
      ponta a ponta no PGLite local, zero bug encontrado nesta etapa.
 
+195. **Verificação visual do campo "Nome da loja" (item 178) — fecha a
+     última ressalva daquele item ("revisão de código, não testado
+     visualmente"); nenhum bug.** No formulário de cadastro (modo SaaS
+     local, item 190), os quatro campos — "Seu nome", "Nome da loja",
+     "E-mail", "Senha" — têm `getComputedStyle` IDÊNTICO: `height: 56px`
+     (a escala do item 185), mesma cor e mesmo tamanho de ícone (20px),
+     checado nos dois temas (claro e escuro, alternando a classe `.dark`
+     e `localStorage.theme` direto no DOM de teste). O campo novo não
+     ficou "torto" nem com ícone de tamanho diferente dos outros três.
+     **Descartado um falso positivo no caminho**: a primeira screenshot
+     mostrava o card de login com o texto cortado à esquerda ("riar a
+     loja" em vez de "Criar a loja", `getBoundingClientRect().left` do
+     card em -60/-65px); comparando com a tela de ENTRAR normal (sem o
+     campo novo, existe desde antes desta sessão) na MESMA largura, o
+     corte é idêntico — confirma que é o artefato já conhecido do pane
+     em viewport emulado desta ferramenta (já registrado em sessões
+     anteriores como limitação conhecida, não do produto), não uma
+     regressão do campo novo. Nenhum CSS tocado; achado é a ausência de
+     achado, verificado dos dois lados antes de descartar.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
