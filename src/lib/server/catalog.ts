@@ -270,6 +270,12 @@ export const saveProductFn = createServerFn({ method: "POST" })
       isActive?: boolean;
       ncm?: string;
       cfop?: string;
+      // Saldo de abertura, so na CRIACAO de produto sem grade: vira uma
+      // movimentacao "entrada" na loja informada, na mesma transacao do
+      // produto. Loja nova nao precisa passar por Estoque -> Ajustar antes
+      // da primeira venda (HANDOFF item 192).
+      initialStock?: number | null;
+      initialStockStoreId?: number | null;
       variants?: {
         id?: number;
         sku?: string;
@@ -282,6 +288,10 @@ export const saveProductFn = createServerFn({ method: "POST" })
       }[];
     }) => ({
       ...d,
+      initialStock:
+        d.initialStock == null || d.initialStock === 0
+          ? undefined
+          : parseStockQuantity(d.initialStock),
       name: requireLine(d.name, "Nome"),
       internalCode: sanitizeCode(d.internalCode) ?? undefined,
       barcode: parseBarcode(d.barcode) ?? undefined,
@@ -495,10 +505,28 @@ export const saveProductFn = createServerFn({ method: "POST" })
           select id from product_variants where product_id = ${productId} and company_id = ${tenant.companyId} and deleted_at is null
         `;
         if (!existing.length) {
-          await sql`
+          const [variant] = await sql<{ id: number }>`
             insert into product_variants (company_id, product_id, sku, barcode, cost, price)
             values (${tenant.companyId}, ${productId}, ${data.sku ?? null}, ${data.barcode ?? null}, ${cost}, ${price})
+            returning id
           `;
+          // Estoque inicial so aqui, no produto novo de variante unica: com
+          // grade nao da pra saber de qual variante seria o saldo, e no
+          // produto existente o caminho continua sendo Estoque -> Ajustar
+          // (com motivo e auditoria proprios).
+          if (data.initialStock && data.initialStockStoreId) {
+            await assertStore(sql, tenant, data.initialStockStoreId);
+            await applyStockChange(sql, {
+              companyId: tenant.companyId,
+              storeId: data.initialStockStoreId,
+              variantId: variant!.id,
+              delta: data.initialStock,
+              type: "entrada",
+              userId: tenant.userId,
+              note: "Estoque inicial (cadastro do produto)",
+              allowNegative: false,
+            });
+          }
         }
       } else if (!hasVariants) {
         /*

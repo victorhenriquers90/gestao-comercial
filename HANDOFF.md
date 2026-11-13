@@ -9753,6 +9753,33 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      do prettier) — revertido e reaplicado só o diff de 3 linhas; não
      rodar prettier solto em arquivo antigo sem conferir o `--stat`.
 
+193. **Campo "Estoque inicial nesta loja" no cadastro de produto.** A
+     melhoria de onboarding apontada no item 192: até aqui, produto novo
+     nascia com saldo zero e a primeira venda era barrada ("Estoque
+     insuficiente") até alguém descobrir Estoque → Ajustar → Entrada.
+     - **Servidor** (`saveProductFn`, `catalog.ts`): dois campos novos no
+       payload, `initialStock` (passa por `parseStockQuantity`, zero/vazio
+       vira `undefined`) e `initialStockStoreId`. Honrados SÓ no produto
+       NOVO de variante única — o insert da variante default ganhou
+       `returning id` e, logo depois, `assertStore` + `applyStockChange`
+       (tipo "entrada", motivo "Estoque inicial (cadastro do produto)",
+       `allowNegative: false`) na MESMA transação do produto: ou grava
+       produto+variante+saldo, ou nada. Com grade (`variants`) não se
+       aplica (não dá pra saber de qual variação seria o saldo); em edição
+       não se aplica (o caminho continua Estoque → Ajustar, com motivo e
+       auditoria próprios).
+     - **Tela** (`produtos.tsx`): campo `type="number"` ao lado de "Estoque
+       mínimo", só quando `!editId`; com texto em "Variações" o campo
+       desabilita e o rótulo vira "Estoque inicial (por variação, em
+       Estoque)"; sem loja selecionada também desabilita. O save manda
+       `initialStockStoreId: storeId` e invalida `["stock"]` além de
+       `["products"]`.
+     - **Verificação** (PGLite local, empresa ZZTESTE): "Novo produto"
+       Lapis ZZ-002, custo 1, preço 2,50, estoque inicial 7 → "Produto
+       salvo.", tabela de Produtos já com estoque 7; Estoque mostra 2 itens,
+       R$ 52,00 (= 45 + 7 × 1), linha do lápis com 9/7 certos. typecheck,
+       lint e `test:scripts` (199) limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -48,6 +48,7 @@ const empty = {
   price: 0,
   promoPrice: "" as string | number,
   minStock: 0,
+  initialStock: "" as string | number,
   location: "",
   imageUrl: "",
   isActive: true,
@@ -249,6 +250,9 @@ function ProdutosPage() {
           price: Number(form.price),
           promoPrice: form.promoPrice === "" ? null : Number(form.promoPrice),
           minStock: Number(form.minStock),
+          initialStock:
+            editId || variants.length || form.initialStock === "" ? undefined : Number(form.initialStock),
+          initialStockStoreId: storeId ?? undefined,
           location: form.location || undefined,
           imageUrl: form.imageUrl || null,
           isActive: form.isActive,
@@ -265,6 +269,7 @@ function ProdutosPage() {
       setEditId(undefined);
       void qc.invalidateQueries({ queryKey: ["products"] });
       void qc.invalidateQueries({ queryKey: ["product-picker"] });
+      void qc.invalidateQueries({ queryKey: ["stock"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar");
     } finally {
@@ -570,6 +575,21 @@ function ProdutosPage() {
             <Field label="Estoque mínimo">
               <Input type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: Number(e.target.value) })} />
             </Field>
+            {!editId ? (
+              <Field
+                label={form.variantsText.trim() ? "Estoque inicial (por variação, em Estoque)" : "Estoque inicial nesta loja"}
+              >
+                <Input
+                  type="number"
+                  min={0}
+                  step="1"
+                  placeholder="0"
+                  disabled={Boolean(form.variantsText.trim()) || !storeId}
+                  value={form.initialStock}
+                  onChange={(e) => setForm({ ...form, initialStock: e.target.value })}
+                />
+              </Field>
+            ) : null}
             <Field label="Localização" className="sm:col-span-2">
               <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </Field>
