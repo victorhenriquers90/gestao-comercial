@@ -9677,6 +9677,32 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      usuário (`vercel env ls` lista só `DATABASE_URL`, sem
      `MIGRATE_DATABASE_URL` — nomes apenas, valor nunca lido).
 
+190. **Cadastro com "Nome da loja" (item 178) testado de ponta a ponta —
+     funciona, nenhum bug.** O 178 tinha ficado com a ressalva honesta de
+     que o fluxo novo (cookie `PENDING_COMPANY_COOKIE` setado ANTES do
+     `signUp.email()`, lido em `ensureTenant`) não fora exercitado de
+     verdade — em produção o cadastro é só por convite pra quem já está
+     logado, e o dev server local sobe sem `GC_MULTI_TENANT`. Subi um
+     segundo dev server local (PGLite, porta 5181) com
+     `GC_MULTI_TENANT=1` + `VITE_MULTI_TENANT=true` (configuração
+     `gestao-comercial-saas` no `launch.json` do harness, fora do repo) e
+     fiz o caminho do comprador: link "Cadastre a sua" apareceu →
+     formulário com os 4 campos (Nome "Como você quer ser chamado", Nome
+     da loja "Como aparece para o cliente", e-mail, senha) → "Criar conta"
+     → caiu direto no `/app` (Dashboard). Em Configurações → Empresa,
+     "Razão / nome" E "Nome fantasia" = exatamente o nome digitado
+     ("ZZTESTE Armarinhos"), não o `${firstName} Comércio` antigo — ou
+     seja, o cookie venceu a corrida com o efeito de redirect do
+     `login.tsx`, como o desenho previa. Em Impressão, "Cabeçalho do
+     comprovante" nasceu vazio (o `null` do 178), rodapé e mensagem com os
+     padrões. Log do servidor sem erro de aplicação (só `ECONNRESET` de
+     navegações abortadas pelo próprio browser de teste). Conta e empresa
+     de teste existem só no PGLite local (`.pglite`/dados do dev), nada
+     tocou a produção. Receita pra repetir: a config `gestao-comercial-saas`
+     roda `pwsh -Command "$env:GC_MULTI_TENANT='1'; $env:VITE_MULTI_TENANT='true';
+     npm --prefix <repo> run dev -- --port 5181"` (o `--port` repetido
+     vence o `8080` fixo do script `dev`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
