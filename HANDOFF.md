@@ -9780,6 +9780,31 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        R$ 52,00 (= 45 + 7 × 1), linha do lápis com 9/7 certos. typecheck,
        lint e `test:scripts` (199) limpos.
 
+194. **Fechamento de caixa da loja ZZTESTE testado de ponta a ponta —
+     sem bug.** Continuação do ciclo dos itens 190-193 (cadastro → estoque
+     inicial → primeira venda): no turno aberto com fundo R$ 100,00 e a
+     venda nº 1 em dinheiro (R$ 12,50) do item 192, usei "Só o total" →
+     "Total contado na gaveta" R$ 112,50 → "Fechar caixa e conferir" →
+     diálogo de confirmação ("Fechar o caixa com R$ 112,50 contados? …
+     não pode mais ser alterado") → "Sim, fechar". Resultado: "Caixa
+     fechado.", CONTADO R$ 112,50, ESPERADO R$ 112,50, DIFERENÇA R$ 0,00
+     ("Bateu certo"), "Gaveta recolhida inteira: R$ 112,50 saem para o
+     cofre" (deixei o campo "fica na gaveta" vazio = fim do dia). O cartão
+     em "Fechamentos recentes" registrou "Abriu Teste Zz · Fechou Teste
+     Zz", esperado/contado/diferença corretos e "Abriu sem conferir a
+     gaveta" (não usei "Revelar o dinheiro esperado" antes de contar —
+     rótulo correto pra uma conferência cega de verdade). Conta de 100
+     (fundo) + 12,50 (a única venda do turno, em dinheiro) = 112,50
+     confere com PIX R$ 0,00 e Cartões R$ 0,00 mostrados antes do
+     fechamento. Todas as chamadas ao servidor (`closeRegisterFn` e
+     companhia) voltaram 200; botão "Imprimir fechamento" tem `.no-print`
+     e o `.closure-sheet` (Fase 5, item 181) não está dentro de nenhum
+     ancestral `.no-print` — isolamento de impressão intacto, não cliquei
+     de verdade (abriria o diálogo nativo de impressão do SO). Com isso o
+     ciclo completo de uma loja nova (cadastro de empresa → primeiro
+     produto → primeira venda → fechamento de caixa) está validado de
+     ponta a ponta no PGLite local, zero bug encontrado nesta etapa.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
