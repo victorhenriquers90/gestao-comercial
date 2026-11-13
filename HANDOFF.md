@@ -9857,6 +9857,26 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
        `.login-card { color: #1a1916 }` confirma que isso é proposital,
        não desta mudança).
 
+197. **Fundo do login, 2ª rodada: o liso do item 196 ficou "sem graça" —
+     usuário pediu de volta uma cor ("ainda não está legal, e se colocar
+     uma cor").** `var(--background)` (`#f3f0e8`) e `var(--card)`
+     (`#fbf9f4`) são quase o mesmo creme — fundo liso igual à cor do
+     próprio cartão lia como página inacabada por FALTA de contraste,
+     não por excesso (o problema do item 196 era o oposto: manchas
+     demais). Trocado `.login-form-panel { background: var(--background)
+     }` → `background: var(--primary)` — o MESMO verde do botão
+     "Entrar", da marca e da faixa gradiente do topo do cartão, não um
+     tom novo (nenhuma cor fora do sistema, mesma restrição de sempre).
+     Resultado: cartão creme com contraste de verdade sobre fundo verde
+     sólido, continua CHAPADO (uma cor só, sem gradiente/blur — não
+     revive o problema do item 196). Nada mais no painel depende do
+     fundo pra contraste (único filho de `.login-form-panel` é o próprio
+     `.login-card`; texto do lado da foto, se houver, fica em
+     `.login-hero`, outra coluna). Verificado ao vivo no servidor local:
+     card bem definido contra o fundo verde, botão "Entrar" (mesmo tom)
+     ainda se distingue por estar dentro do cartão claro. typecheck/lint
+     limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

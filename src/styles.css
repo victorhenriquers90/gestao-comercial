@@ -340,14 +340,20 @@
 
 /* Fundo liso de proposito -- chegou a ter duas manchas de cor desfocadas
    com paralaxe (pra preencher o vazio em telas altas), mas na pratica
-   lia como um gradiente mal acabado, nao como acabamento (pedido direto
-   do usuario com screenshot). O resto do app ja e chapado por escolha
-   (`.kpi-card`, Invariante #11) -- aqui segue a mesma linha: so a cor de
-   fundo padrao atras do cartao. */
+   lia como um gradiente mal acabado, nao como acabamento. A troca por
+   `var(--background)` (a mesma cor do cartao, quase sem contraste)
+   resolveu o "mal acabado" mas trouxe outro problema: pagina inteira num
+   só creme, sem nenhum ponto de cor -- pedido direto do usuario (duas
+   rodadas de screenshot) foi "bota uma cor". `--primary` (o verde do
+   botao "Entrar", da marca e da faixa do topo do cartao) em vez de um
+   tom novo: cria contraste de verdade com o cartao claro sem introduzir
+   cor fora do sistema (seguindo a mesma restricao do resto do app --
+   nada de paleta nova). Continua CHAPADO (Invariante #11): uma cor so,
+   sem gradiente nem blur. */
 .login-form-panel {
   position: relative;
   overflow: hidden;
-  background: var(--background);
+  background: var(--primary);
 }
 
 .login-card {
