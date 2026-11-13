@@ -208,7 +208,7 @@ export const reportFn = createServerFn({ method: "POST" })
           {
             label: "Faturamento",
             value: formatBRL(revenue),
-            hint: `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}% vs período anterior`,
+            hint: `${trend >= 0 ? "+" : ""}${formatPct(trend)} vs período anterior`,
           },
           { label: "Vendas", value: formatQty(num(cur?.sales)) },
           { label: "Ticket médio", value: formatBRL(num(cur?.ticket)) },

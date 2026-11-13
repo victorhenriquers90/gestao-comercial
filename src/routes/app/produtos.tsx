@@ -18,7 +18,7 @@ import { useSearchId } from "@/hooks/use-search-id";
 import { useSelection } from "@/hooks/use-selection";
 import { labelColor, labelTileStyle } from "@/lib/chart";
 import { UNITS, pageTitle } from "@/lib/constants";
-import { formatBRL, formatQty, marginPct } from "@/lib/format";
+import { formatBRL, formatPct, formatQty, marginPct } from "@/lib/format";
 import {
   getProductFn,
   listCategoriesFn,
@@ -411,7 +411,7 @@ function ProdutosPage() {
               </Td>
               <Td className="tabular col-num">{formatBRL(p.cost)}</Td>
               <Td className="tabular col-num">{formatBRL(p.price)}</Td>
-              <Td className="tabular col-num">{marginPct(p.price, p.cost).toFixed(1)}%</Td>
+              <Td className="tabular col-num">{formatPct(marginPct(p.price, p.cost))}</Td>
               <Td className="tabular col-num">
                 {p.stock <= p.minStock && p.minStock > 0 ? (
                   <Badge variant="warning">{formatQty(p.stock)}</Badge>

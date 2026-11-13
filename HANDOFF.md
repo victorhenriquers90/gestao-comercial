@@ -9703,6 +9703,26 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      npm --prefix <repo> run dev -- --port 5181"` (o `--port` repetido
      vence o `8080` fixo do script `dev`).
 
+191. **Varredura "comprador de primeira viagem" numa empresa recém-criada
+     e vazia (a do item 190): 16 telas, 1 achado, corrigido.** Com a
+     empresa ZZTESTE do PGLite local, passei por Dashboard, CRM, Clientes,
+     Produtos, Vendas, Compras, Estoque, Fornecedores, Caixa, Devoluções,
+     Financeiro, Metas, Promoções, Relatórios, Vendedores, PDV e PDV
+     Tablet lendo o texto renderizado. Todas mostraram estado vazio com
+     texto e CTA (o ramo vazio do CRM — "Você ainda não possui clientes no
+     CRM… Cadastrar primeiro cliente" — que o item 177 tinha deixado como
+     não testável, renderiza certo); nenhuma tela de erro, console sem
+     erro de aplicação. **Achado**: Relatórios → Resumo executivo mostrava
+     "+0.0% vs período anterior" com PONTO — a mesma classe do bug que o
+     177 corrigiu no `KpiCard` do Dashboard, mas numa segunda cópia,
+     server-side (`reports.ts:211`, `trend.toFixed(1)`; o arquivo já
+     importava `formatPct` e usava nas outras margens). Grep por
+     `toFixed(1)}%` achou mais uma: a coluna Margem da tabela de Produtos
+     (`produtos.tsx:414`). As duas passaram a `formatPct` (vírgula
+     pt-BR). Confirmado ao vivo no local: "+0,0% vs período anterior". A
+     coluna de margem não tinha produto pra exibir — troca mecânica
+     (`formatPct(marginPct(...))`), typecheck/lint limpos.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
