@@ -10011,6 +10011,46 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      como admin, a mesma venda: `cost_total: "5.00"` (valor real,
      confirmado = custo do Caderno × 1 unidade) — sem regressão.
 
+200. **Terceiro eixo do pedido "acesso limitado para funcionários":
+     isolamento por LOJA (não por papel) — já estava correto; verificado
+     ao vivo com duas lojas de verdade, nenhum código mudado.** Depois de
+     fechar os vazamentos de dado por papel (itens 198/199), faltava
+     checar um ângulo diferente: quando um funcionário é vinculado a UMA
+     loja específica (campo "Loja" que o convite e a edição de membro já
+     tinham), ele realmente só vê dados dela, ou o vínculo é decorativo?
+
+     **O que a leitura de código mostrou** (já existia, de uma sessão
+     anterior): `assertStore`/`assertStoreOptional` (`context.ts`) são o
+     único ponto de entrada de `storeId` de quase todo módulo (compras,
+     estoque, caixa, PDV, financeiro) — quem tem `homeStoreId` preenchido
+     e não é admin só passa pra ESSA loja; pedir outra (de propósito,
+     payload direto) recusa com "Você só tem acesso à loja onde está
+     cadastrado." No lado do cliente, `AppShell` tem um `useEffect` que
+     FORÇA `storeId` de volta pra `homeStoreId` sempre que o tenant
+     carrega (cobre as ~9 telas que leem `storeId` direto, não só o
+     seletor), e o `StorePicker` vira um `<div>` com o nome fixo da loja
+     — sem `<select>` nenhum — pra quem tem loja fixa; só admin (e quem
+     não tem loja fixa no cadastro) vê o seletor de verdade.
+
+     **Verificação ao vivo** (não só leitura): criei uma segunda loja
+     ("ZZTESTE Filial") na empresa de teste e atribuí a vendedora do
+     item 198 explicitamente à "Loja principal" (antes estava "Todas as
+     lojas", herdado do convite original). Logada como ela: o seletor de
+     loja no topo é mesmo um `<div>` sem `<select>` (`querySelector
+     ('select')` dentro do `.store-picker` retorna null), mostrando só
+     "Loja principal" — nunca aparece a Filial como opção, nem pra
+     tentar. Não reproduzi a tentativa de burlar com uma chamada de rede
+     manual (o formato de serialização do RPC do TanStack Start não vale
+     o tempo de reconstruir à mão); a confiança vem de ler `assertStore`
+     e confirmar que `homeStoreId` da vendedora é 29 (Loja principal) no
+     banco — o mesmo valor que qualquer chamada direta precisaria bater
+     pra passar.
+
+     **Conclusão**: os dois eixos que "acesso limitado" podia significar
+     — por CARGO (o que itens 198/199 fecharam) e por LOJA (este item,
+     já correto) — estão cobertos. Nenhuma mudança de código nesta
+     entrada; é documentação de verificação, mesmo padrão do item 194.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
