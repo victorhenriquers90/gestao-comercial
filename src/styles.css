@@ -343,22 +343,27 @@
   background: linear-gradient(0deg, rgb(26 25 22 / 0.72) 0%, rgb(26 25 22 / 0) 55%);
 }
 
-/* Fundo liso de proposito -- chegou a ter duas manchas de cor desfocadas
-   com paralaxe (pra preencher o vazio em telas altas), mas na pratica
-   lia como um gradiente mal acabado, nao como acabamento. A troca por
-   `var(--background)` (a mesma cor do cartao, quase sem contraste)
-   resolveu o "mal acabado" mas trouxe outro problema: pagina inteira num
-   só creme, sem nenhum ponto de cor -- pedido direto do usuario (duas
-   rodadas de screenshot) foi "bota uma cor". `--primary` (o verde do
-   botao "Entrar", da marca e da faixa do topo do cartao) em vez de um
-   tom novo: cria contraste de verdade com o cartao claro sem introduzir
-   cor fora do sistema (seguindo a mesma restricao do resto do app --
-   nada de paleta nova). Continua CHAPADO (Invariante #11): uma cor so,
-   sem gradiente nem blur. */
+/* Terceira rodada deste fundo, cada uma corrigindo a anterior:
+   1) duas manchas de cor desfocadas com paralaxe -- lia como gradiente
+      mal acabado.
+   2) cor so (`var(--primary)`) -- resolveu o "mal acabado" mas ficou sem
+      graca, chapado demais (pedido do usuario: "bota uma cor" -> depois
+      "ainda nao esta legal").
+   3) esta aqui: "mesclar essa cor, criando um efeito suavizado" -- um
+      gradiente DIAGONAL dentro da MESMA cor (`--primary` misturado com
+      preto/branco via `color-mix`, nao um tom novo), suave o bastante
+      pra nao repetir o erro da rodada 1. `color-mix` em vez de hex fixo:
+      se `--primary` mudar de novo (ja mudou duas vezes nesta sessao), o
+      gradiente acompanha sozinho, sem precisar recalcular stops à mao. */
 .login-form-panel {
   position: relative;
   overflow: hidden;
-  background: var(--primary);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--primary) 72%, black) 0%,
+    var(--primary) 55%,
+    color-mix(in oklab, var(--primary) 80%, white) 100%
+  );
 }
 
 .login-card {

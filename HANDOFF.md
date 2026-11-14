@@ -10099,6 +10099,29 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      reconstruído em azul — nenhuma mancha verde sobrando em nenhuma
      tela conferida.
 
+202. **Fundo do login, 3ª rodada: de cor chapada pra gradiente diagonal
+     suave — ainda dentro do azul-marinho, não um tom novo.** Pedido do
+     usuário com screenshot: "vamos mesclar essa cor, criando um efeito
+     suavizado". Histórico das três rodadas (109/196/197/202, mesma
+     regra `.login-form-panel`): manchas desfocadas multicoloridas (item
+     196: "mal acabado") → cor chapada única (item 197: "sem graça") →
+     agora, gradiente diagonal (135deg) DENTRO da própria `--primary`,
+     via `color-mix(in oklab, var(--primary) 72%, black)` no início e
+     `color-mix(in oklab, var(--primary) 80%, white)` no fim, com
+     `var(--primary)` puro no meio — nunca introduz uma cor fora do
+     token. `color-mix` em vez de três hex fixos: se `--primary` mudar
+     de novo (já mudou duas vezes nesta sessão, itens 201/197), o
+     gradiente acompanha sozinho. Diferente da rodada 1 (duas manchas
+     *com blur* e paralaxe de mouse, cores *diferentes* entre si) — aqui
+     é uma única transição linear, sem blur, dentro de UMA família de
+     cor, o que evita o "mal acabado" original.
+
+     **Verificação**: `typecheck`/`npm test` (522) limpos (mudança é só
+     CSS). Visual ao vivo no servidor local: fundo com transição visível
+     do azul-marinho mais escuro (canto superior) pro mais claro (canto
+     inferior), cartão de login continua com contraste de sobra contra
+     qualquer ponto do gradiente. Console sem erro.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
