@@ -1009,6 +1009,10 @@ export const listSalesFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "sales.read");
+    // `s.cost_total` (selecionado abaixo) nunca aparece na tela de Vendas
+    // hoje, mas o payload vai pro cliente do mesmo jeito -- mascarado logo
+    // abaixo, mesmo corte do item 198 (Produtos) e de getSaleFn.
+    const canSeeCost = can(tenant.role, "purchases.read");
     // Antes: `limit 200` fixo e sem total -- a partir da 201a venda o historico
     // simplesmente nao mostrava as mais antigas (a nao ser que alguem filtrasse
     // por data), sem nenhum aviso de que havia mais.
@@ -1112,7 +1116,8 @@ export const listSalesFn = createServerFn({ method: "POST" })
       avgTicket: salesCount ? revenue / salesCount : 0,
       cancelledCount: num(kpiRow?.cancelled_count ?? 0),
     };
-    return { items: dump(rows.map(({ row_count: _rc, ...r }) => r)), total, kpis };
+    const items = rows.map(({ row_count: _rc, ...r }) => (canSeeCost ? r : { ...r, cost_total: 0 }));
+    return { items: dump(items), total, kpis };
   });
 
 export const getSaleFn = createServerFn({ method: "POST" })
@@ -1139,6 +1144,14 @@ export const getSaleFn = createServerFn({ method: "POST" })
     // informacao de performance que o ranking do Dashboard ja mostra pra
     // qualquer um com dashboard.read.
     const podeVerFolha = can(tenant.role, "sellers.write");
+    // `sale` (abaixo) e o `s.*` cru da query -- inclui `cost_total`, que a
+    // tela de Vendas nunca renderiza hoje, mas o payload da função vai pro
+    // cliente do mesmo jeito (visível inspecionando a rede). Mesmo corte de
+    // custo do item 198 (Produtos): zera pra quem não tem purchases.read,
+    // antes que um dia alguém renderize esse campo sem perceber que
+    // precisava mascarar.
+    const canSeeCost = can(tenant.role, "purchases.read");
+    if (!canSeeCost) sale.cost_total = 0;
     const items = await sql<Row>`select * from sale_items where sale_id = ${data.id}`;
     const payments = await sql<Row>`select * from payments where sale_id = ${data.id}`;
     const returned = await sql<{ sale_item_id: number; qty: string | number }>`

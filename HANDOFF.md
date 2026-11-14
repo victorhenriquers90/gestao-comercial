@@ -9963,6 +9963,54 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      exaustiva de TODAS as telas fica como próximo passo se o usuário
      quiser ir além dos dois achados concretos desta rodada.
 
+199. **Varredura completa prometida no item 198 — feita. Achado 1 vazamento
+     a mais (não visível na tela, só inspecionando a rede) e confirmado
+     que 3 outros já tinham sido fechados numa sessão anterior.**
+
+     **Correção**: o item 198 dizia que Vendas foi conferida "por grep e
+     leitura" sem achar o padrão — impreciso. `listSalesFn` e `getSaleFn`
+     (`commerce.ts`) selecionam `s.cost_total` e devolviam a coluna
+     inteira pro cliente (`s.*`/spread), sem máscara — "vendedor" e
+     "caixa" (têm `sales.read`) recebem esse número no payload de
+     QUALQUER venda da empresa, mesmo a tela de Vendas nunca renderizando
+     custo/lucro em lugar nenhum hoje. Não é um vazamento visível
+     olhando a tela (por isso o grep de texto renderizado não achou),
+     mas um funcionário abrindo as ferramentas de desenvolvedor do
+     navegador veria o custo de qualquer peça vendida. Corrigido com o
+     mesmo `canSeeCost = can(tenant.role, "purchases.read")` do item 198
+     (zera `cost_total` quando falso, nas duas funções) — antes que um
+     dia alguém renderize esse campo na tela sem perceber que precisava
+     mascarar.
+
+     **3 vazamentos da MESMA classe (`sellers.read` sem `sellers.write`)
+     já achados e fechados numa sessão ANTERIOR a esta, confirmados
+     revisando `commission.ts`/`finance.ts`/`retention.ts`**:
+     `listSellersFn` (salário/CPF/documento), `retentionGuideFn` (guia de
+     retenção inteira — CPF + líquido + INSS/IRRF/ISS de cada vendedor,
+     hoje exige `sellers.write`) e `listCommissionsFn` (líquido e imposto
+     retido de qualquer vendedor, venda a venda — idem). Os três têm
+     comentário no código citando uns aos outros, confirmando que já
+     houve uma rodada de auditoria dedicada a esse padrão específico
+     antes desta sessão — eu só precisei confirmar que continuam
+     corretos, não refazer o trabalho.
+
+     **Telas confirmadas limpas nesta varredura** (grep + leitura do
+     componente, sem achado): Clientes, CRM (sem cálculo de LTV/margem),
+     Caixa (KPIs são Fundo/Vendas no turno/PIX/Cartões — operacional, a
+     conferência cega de `cash.reveal` já é cuidadosa desde antes),
+     Metas, PDV/PDV Tablet (sem custo/margem em nenhum componente do
+     carrinho), Vendedores (a aba "Pagamentos"/"Retenções" chama as
+     funções já fechadas acima; o cadastro de vendedor fora do formulário
+     vem do MESMO array já mascarado da listagem, sem busca separada —
+     diferente do furo que o item 198 achou em `getProductFn`).
+
+     **Verificação**: `typecheck`/lint/`npm test` (522) limpos. Ao vivo
+     no PGLite local, com a mesma conta de vendedora do item 198
+     (convite → cadastro): abri o comprovante da venda nº 1 e inspecionei
+     a resposta de rede do `getSaleFn` — `cost_total: 0`. Logado de volta
+     como admin, a mesma venda: `cost_total: "5.00"` (valor real,
+     confirmado = custo do Caderno × 1 unidade) — sem regressão.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
