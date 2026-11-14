@@ -262,39 +262,159 @@
   --color-destructive-foreground: var(--destructive-foreground);
 }
 
+/* Quarta rodada, mudanca de eixo (nao so de cor): a foto de banco de
+   imagens (familia sorrindo na maquininha) saiu de vez -- pedido direto
+   do usuario depois de ver como sistemas grandes (Linx/TOTVS e outros)
+   fazem essa tela: nunca foto de cliente do cliente, sempre o PRODUTO.
+   `LoginTabletMock`/`LoginPhoneMock` (login.tsx) entram no lugar, com o
+   MESMO gradiente do `.login-form-panel` ao lado -- `180deg` (vertical),
+   nao `135deg` (diagonal): as duas colunas ficam lado a lado na mesma
+   altura, e um gradiente que so varia em Y bate identico nas duas,
+   sem costura visivel na divisa entre elas (um diagonal criaria um
+   salto claro->escuro bem ali, já que cada coluna reinicia seu proprio
+   0%-100%). */
 .login-hero {
-  background: #1a1916;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--primary) 72%, black) 0%,
+    var(--primary) 55%,
+    color-mix(in oklab, var(--primary) 80%, white) 100%
+  );
 }
 
-.login-hero-img {
+/* Palco dos dois mockups -- cresce pra ocupar o espaco que a foto antiga
+   ocupava, centralizado, com folga nas bordas pra a sombra dos aparelhos
+   (que escapa da caixa deles) nunca cortar contra o `overflow: hidden`
+   do `.login-hero`. */
+.login-mock-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+/* `position:relative` AQUI, nao em `.login-mock-stage` -- precisa
+   encolher exatamente pro tamanho do tablet (`display: inline-block`),
+   senao o celular (absoluto, ancorado neste container) usa as bordas do
+   PALCO inteiro como referencia em vez das bordas do tablet, e some
+   longe do canto onde devia sobrepor. */
+.login-mock-group {
+  position: relative;
+  display: inline-block;
+}
+
+/* Moldura compartilhada pelos dois aparelhos -- so a proporcao/posicao
+   muda entre tablet e celular (abaixo). Bisel um tom mais escuro que o
+   fundo (nao preto puro): sem isto, contra o `--primary` mais escuro
+   (topo do gradiente), o aparelho quase sumia no fundo. */
+.login-mock {
+  position: relative;
+  border-radius: 1.75rem;
+  background: color-mix(in oklab, var(--primary) 40%, black);
+  box-shadow: 0 32px 64px -24px rgb(0 0 0 / 0.45);
+  padding: 0.6rem;
+}
+.login-mock-notch {
   position: absolute;
-  inset: 0;
-  display: block;
+  top: 0.5rem;
+  left: 50%;
+  translate: -50% 0;
+  width: 2.5rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, white 20%, transparent);
+}
+.login-mock-screen {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  /* Foto fonte e paisagem (1672x941) numa coluna retrato -- o navegador
-     escala pra cobrir a ALTURA inteira (nunca recorta em cima/embaixo,
-     1672:941 e bem mais largo que qualquer coluna de metade de tela) e
-     recorta so dos lados. 63% horizontal centra o recorte na familia +
-     o gesto de pagamento por aproximacao (mao com o celular encostando
-     na maquininha), deixando de fora a prateleira de bolsas a esquerda
-     e a atendente/corredor do fundo a direita. 38% vertical (nao 50%)
-     so importa numa janela MUITO baixa e larga o bastante pra inverter
-     o recorte pro eixo horizontal -- favorece ficar com os rostos das
-     criancas e o gesto de pagamento por cima das sacolas no rodape,
-     casa raro de acontecer mas sem custo escolher o lado certo. */
-  object-position: 63% 38%;
-  animation: login-ken-burns 24s ease-in-out infinite alternate;
+  border-radius: 1.2rem;
+  background: var(--card);
+  color: var(--foreground);
+  overflow: hidden;
+  padding: 1.5rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-@keyframes login-ken-burns {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.08);
-  }
+.login-mock-tablet {
+  width: 23rem;
+  aspect-ratio: 4 / 3;
+}
+.login-mock-tablet .login-mock-kpis {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.login-mock-tablet .login-mock-kpis p:first-child {
+  font-size: 0.6rem;
+}
+.login-mock-tablet .login-mock-kpis p:last-child {
+  font-size: 1.05rem;
+}
+/* Silhueta de grafico, puro CSS -- nao precisa ser dado de verdade,
+   so precisa LER como "isto e um painel de BI", a mesma leitura rapida
+   que o Dashboard de verdade pede. */
+.login-mock-chart {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  height: 3.2rem;
+}
+.login-mock-chart span {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in oklab, var(--primary) 70%, transparent);
+}
+
+.login-mock-phone {
+  width: 11.5rem;
+  aspect-ratio: 9 / 16;
+  position: absolute;
+  right: -1.5rem;
+  bottom: -2rem;
+  rotate: -4deg;
+  z-index: 1;
+}
+.login-mock-phone .login-mock-screen {
+  padding: 1.1rem 0.9rem;
+  font-size: 0.7rem;
+}
+.login-mock-cart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.3rem;
+}
+.login-mock-cart > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.login-mock-cart span:first-child {
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.login-mock-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.login-mock-pay {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 999px;
+  text-align: center;
+  padding: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 @keyframes page-enter {
@@ -334,32 +454,24 @@
   }
 }
 
-.login-hero-overlay {
-  position: absolute;
-  inset: 0;
-  /* So pro texto (logo + frase) no rodape do painel ler bem sobre
-     qualquer foto -- nao precisa escurecer o topo, diferente da versao
-     anterior em tela cheia onde o cartao flutuava no meio da foto. */
-  background: linear-gradient(0deg, rgb(26 25 22 / 0.72) 0%, rgb(26 25 22 / 0) 55%);
-}
-
-/* Terceira rodada deste fundo, cada uma corrigindo a anterior:
+/* Quatro rodadas neste fundo, cada uma corrigindo a anterior:
    1) duas manchas de cor desfocadas com paralaxe -- lia como gradiente
       mal acabado.
    2) cor so (`var(--primary)`) -- resolveu o "mal acabado" mas ficou sem
       graca, chapado demais (pedido do usuario: "bota uma cor" -> depois
       "ainda nao esta legal").
-   3) esta aqui: "mesclar essa cor, criando um efeito suavizado" -- um
-      gradiente DIAGONAL dentro da MESMA cor (`--primary` misturado com
-      preto/branco via `color-mix`, nao um tom novo), suave o bastante
-      pra nao repetir o erro da rodada 1. `color-mix` em vez de hex fixo:
-      se `--primary` mudar de novo (ja mudou duas vezes nesta sessao), o
-      gradiente acompanha sozinho, sem precisar recalcular stops à mao. */
+   3) gradiente DIAGONAL (135deg) dentro da MESMA cor (`--primary`
+      misturado com preto/branco via `color-mix`, nao um tom novo).
+   4) esta aqui: `180deg` (vertical) em vez de diagonal, pra bater sem
+      costura com `.login-hero` ao lado (ver comentario la) -- a cor em
+      si nao mudou, so o eixo do gradiente. `color-mix` em vez de hex
+      fixo: se `--primary` mudar de novo (ja mudou duas vezes nesta
+      sessao), o gradiente acompanha sozinho. */
 .login-form-panel {
   position: relative;
   overflow: hidden;
   background: linear-gradient(
-    135deg,
+    180deg,
     color-mix(in oklab, var(--primary) 72%, black) 0%,
     var(--primary) 55%,
     color-mix(in oklab, var(--primary) 80%, white) 100%

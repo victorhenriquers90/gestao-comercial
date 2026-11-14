@@ -10122,6 +10122,68 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      inferior), cartão de login continua com contraste de sobra contra
      qualquer ponto do gradiente. Console sem erro.
 
+203. **Login, 4ª rodada: a foto de banco de imagens saiu, entrou um
+     mockup do próprio produto — pedido do usuário ("ainda acho sem
+     graça... tenta fazer algo parecido com Linx/TOTVS").** As três
+     rodadas anteriores (196/197/202) só mexiam na COR do fundo; o
+     usuário apontou que o problema era estrutural — uma foto de família
+     sorridente ao lado do cartão não tem cara de software corporativo.
+     Pesquisa rápida confirmando o pedido: o site da própria Linx/TOTVS
+     (linx.com.br) usa bloco de cor forte + tipografia confiante +
+     MOCKUP do produto em tablet/celular, nunca foto de cliente do
+     cliente — é essa a diferença entre "site de loja" e "sistema
+     empresarial". Apresentadas 3 direções ao usuário (mockup do
+     produto / painel geométrico sem foto / foto mais sóbria); escolheu
+     mockup do produto.
+
+     **Implementação** (`login.tsx` + `styles.css`):
+     - `LoginTabletMock`/`LoginPhoneMock` (novos componentes em
+       `login.tsx`): HTML/CSS puro reaproveitando os tokens do próprio
+       app (`ed-label`, `font-display`, `text-success`, `var(--card)`...)
+       em vez de uma imagem exportada — nítido em qualquer tela/zoom,
+       acompanha tema/tipografia sozinho, mesma lógica que já fez
+       `BrandMark` virar SVG+classes em vez de PNG. Números congelados
+       (não vêm de query nenhuma — login não tem sessão pra perguntar
+       nada): os de uma venda real que rodei no ambiente de teste local
+       (empresa "Loja Modelo", 6 produtos + 4 vendas pelo PDV de
+       verdade) — Faturamento R$ 1.228,80, Ticket médio R$ 307,20,
+       Lucro R$ 780,80, e o carrinho do mockup de celular com os dois
+       primeiros itens dessa mesma venda nº 1.
+     - Tablet (maior, `aspect-ratio: 4/3`) com 3 "KPIs" + uma silhueta de
+       gráfico em CSS puro (barras `<span>` com altura fixa, só pra LER
+       como painel de BI, sem dado nenhum por trás). Celular (menor,
+       `aspect-ratio: 9/16`, `rotate: -4deg`) sobrepondo o canto
+       inferior direito do tablet, com carrinho + total + pílula
+       "Dinheiro" — a composição "dois aparelhos sobrepostos" clássica
+       de mockup de produto.
+     - `<img src="/login-store.webp">` + `.login-hero-overlay` (scrim
+       escuro só pra legibilidade sobre a foto) removidos — sem foto,
+       não precisam mais existir. `.login-hero` ganhou o MESMO gradiente
+       do `.login-form-panel` (item 202), mas `180deg` em vez de `135deg`:
+       direção vertical faz as duas colunas lado a lado lerem como UM
+       gradiente contínuo (a cor em cada Y é igual nas duas), diagonal
+       criaria uma costura visível na divisa entre as colunas (cada uma
+       reinicia seu próprio 0%-100%).
+     - Posicionamento do celular por `position: absolute` DENTRO de um
+       `.login-mock-group` (`position: relative`, `display:
+       inline-block`) que embrulha os dois aparelhos — não direto no
+       `.login-mock-stage` (`flex`, centraliza o tablet): ancorar no
+       palco inteiro jogava o celular longe do canto do tablet sempre
+       que o palco sobrava maior que o tablet (a centralização do
+       flexbox não reduz a CAIXA do item, só a posição dele).
+
+     **Verificação**: `typecheck`/lint/`npm test` (522) limpos. Visual
+     confirmado por `getBoundingClientRect` (não só screenshot — a
+     mesma ressalva já registrada antes sobre viewport emulado nesta
+     ferramenta de automação: a 1280px a tela capturada vem com uma
+     área em branco estranha, mas a medição real confirma
+     `.login-hero`/`.login-form-panel` exatamente 640px cada, sem
+     overflow) em duas larguras: 1280px (a mais confortável) e 1024px
+     (o mínimo do breakpoint `lg:`) — celular e tablet cabem dentro da
+     coluna nos dois casos, sem vazar pra fora. Console sem erro em
+     nenhuma etapa. Produto/vendas de teste ficam na empresa descartável
+     "Loja Modelo" do PGLite local, nada tocou produção.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -14,6 +14,78 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
+/**
+ * Mockup estatico do proprio produto pro hero do login -- pedido do
+ * usuario depois de ver como Linx/TOTVS e outros sistemas grandes fazem
+ * essa tela: nunca foto de banco de imagens, sempre o APARELHO mostrando
+ * o software de verdade. Numeros abaixo sao os de uma venda real feita
+ * neste mesmo ambiente de teste (empresa "Loja Modelo"), congelados aqui
+ * -- nao vem de query nenhuma, a tela de login nao tem sessao pra
+ * perguntar nada a ningeum.
+ *
+ * HTML/CSS puro, reaproveitando as classes de token do proprio app
+ * (ed-label, font-display, text-success...) em vez de uma imagem
+ * exportada: fica nitido em qualquer tela/zoom, pesa quase nada, e
+ * acompanha sozinho qualquer ajuste futuro de tipografia/cor — o mesmo
+ * motivo que fez `BrandMark` virar SVG com classes Tailwind em vez de PNG.
+ */
+function LoginTabletMock() {
+  return (
+    <div className="login-mock login-mock-tablet" aria-hidden>
+      <div className="login-mock-notch" />
+      <div className="login-mock-screen">
+        <p className="ed-label text-muted-foreground">Loja Modelo</p>
+        <p className="font-display text-lg font-semibold tracking-tight">Dashboard</p>
+        <div className="login-mock-kpis">
+          <div>
+            <p className="ed-label text-muted-foreground">Faturamento do mês</p>
+            <p className="font-display font-semibold tabular">R$ 1.228,80</p>
+          </div>
+          <div>
+            <p className="ed-label text-muted-foreground">Ticket médio</p>
+            <p className="font-display font-semibold tabular">R$ 307,20</p>
+          </div>
+          <div>
+            <p className="ed-label text-muted-foreground">Lucro estimado</p>
+            <p className="font-display font-semibold tabular text-success">R$ 780,80</p>
+          </div>
+        </div>
+        <div className="login-mock-chart">
+          {[38, 52, 44, 68, 58, 80, 70].map((h, i) => (
+            <span key={i} style={{ height: `${h}%` }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginPhoneMock() {
+  return (
+    <div className="login-mock login-mock-phone" aria-hidden>
+      <div className="login-mock-notch" />
+      <div className="login-mock-screen">
+        <p className="ed-label text-muted-foreground">PDV · Nova venda</p>
+        <div className="login-mock-cart">
+          <div>
+            <span>Camiseta Básica Algodão</span>
+            <span className="tabular">R$ 49,90</span>
+          </div>
+          <div>
+            <span>Calça Jeans Slim</span>
+            <span className="tabular">R$ 139,90</span>
+          </div>
+        </div>
+        <div className="login-mock-total">
+          <span>Total</span>
+          <span className="font-display font-semibold tabular">R$ 189,80</span>
+        </div>
+        <div className="login-mock-pay">Dinheiro</div>
+      </div>
+    </div>
+  );
+}
+
 const fieldClass =
   "h-14 rounded-2xl border-transparent bg-muted px-4 text-base transition-[background-color,border-color,box-shadow] focus-visible:border-input focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-primary/15";
 
@@ -210,23 +282,22 @@ function LoginPage() {
 
   return (
     <main className="login-page grid min-h-dvh lg:grid-cols-2">
-      <div className="login-hero relative hidden overflow-hidden lg:block" aria-hidden>
-        <img
-          src="/login-store.webp"
-          alt=""
-          className="login-hero-img"
-          fetchPriority="high"
-          decoding="async"
-        />
-        <div className="login-hero-overlay" />
-        <div className="relative z-[1] flex h-full flex-col justify-end p-10 xl:p-14">
-          <div className="flex items-center gap-3">
-            <BrandMark className="size-10" tone="inverse" />
-            <p className="ed-label text-primary-foreground/80">{APP_NAME}</p>
+      <div
+        className="login-hero relative hidden overflow-hidden lg:flex lg:flex-col lg:p-10 xl:p-14"
+        aria-hidden
+      >
+        <div className="flex items-center gap-3">
+          <BrandMark className="size-10" tone="inverse" />
+          <p className="ed-label text-primary-foreground/80">{APP_NAME}</p>
+        </div>
+        <p className="mt-6 max-w-sm font-display text-2xl leading-snug font-semibold text-primary-foreground xl:text-3xl">
+          Acesse o PDV, a folha e o caixa da operação.
+        </p>
+        <div className="login-mock-stage">
+          <div className="login-mock-group">
+            <LoginTabletMock />
+            <LoginPhoneMock />
           </div>
-          <p className="mt-6 max-w-sm font-display text-2xl leading-snug font-semibold text-primary-foreground xl:text-3xl">
-            Acesse o PDV, a folha e o caixa da operação.
-          </p>
         </div>
       </div>
       <section className="login-form-panel flex items-center justify-center px-6 py-10">
