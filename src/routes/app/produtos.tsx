@@ -128,6 +128,10 @@ function ProdutosPage() {
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
   const kpis = list.data?.kpis;
+  // Falso enquanto carrega (nunca mostra custo/margem "por engano" durante
+  // o loading) -- servidor manda zero pra quem nao pode ver de qualquer
+  // jeito, isto so decide se a COLUNA/campo aparece ou some de vez.
+  const canSeeCost = list.data?.canSeeCost ?? false;
   const paginaVazia = !list.isPlaceholderData && list.data != null && items.length === 0 && page > 0;
   useEffect(() => {
     // Produtos apagados/filtrados com a pagina N aberta: volta pro comeco em vez de mostrar "vazio".
@@ -323,7 +327,7 @@ function ProdutosPage() {
       {kpis ? (
         <div className="mb-5 kpi-grid">
           <KpiCard label="Produtos" value={String(kpis.productCount)} />
-          <KpiCard label="Valor em estoque" value={formatBRL(kpis.stockValue)} />
+          {canSeeCost ? <KpiCard label="Valor em estoque" value={formatBRL(kpis.stockValue)} /> : null}
           <KpiCard
             label="Estoque baixo"
             value={String(kpis.lowStockCount)}
@@ -367,9 +371,11 @@ function ProdutosPage() {
               <Th sortKey="name" sort={sort} onSort={onSort}>Produto</Th>
               <Th sortKey="sku" sort={sort} onSort={onSort}>SKU</Th>
               <Th>Categoria</Th>
-              <Th className="col-num" sortKey="cost" sort={sort} onSort={onSort}>Custo</Th>
+              {canSeeCost ? (
+                <Th className="col-num" sortKey="cost" sort={sort} onSort={onSort}>Custo</Th>
+              ) : null}
               <Th className="col-num" sortKey="price" sort={sort} onSort={onSort}>Preço</Th>
-              <Th className="col-num">Margem</Th>
+              {canSeeCost ? <Th className="col-num">Margem</Th> : null}
               <Th className="col-num" sortKey="stock" sort={sort} onSort={onSort}>Estoque</Th>
               <Th sortKey="active" sort={sort} onSort={onSort}>Status</Th>
               <Th />
@@ -414,9 +420,11 @@ function ProdutosPage() {
                   "—"
                 )}
               </Td>
-              <Td className="tabular col-num">{formatBRL(p.cost)}</Td>
+              {canSeeCost ? <Td className="tabular col-num">{formatBRL(p.cost)}</Td> : null}
               <Td className="tabular col-num">{formatBRL(p.price)}</Td>
-              <Td className="tabular col-num">{formatPct(marginPct(p.price, p.cost))}</Td>
+              {canSeeCost ? (
+                <Td className="tabular col-num">{formatPct(marginPct(p.price, p.cost))}</Td>
+              ) : null}
               <Td className="tabular col-num">
                 {p.stock <= p.minStock && p.minStock > 0 ? (
                   <Badge variant="warning">{formatQty(p.stock)}</Badge>
@@ -552,9 +560,15 @@ function ProdutosPage() {
                 placeholder="Sem fornecedor — digite para buscar"
               />
             </Field>
-            <Field label="Custo">
-              <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: Number(e.target.value) })} />
-            </Field>
+            {/* Some pra quem nao tem purchases.read (vendedor/caixa) -- sem
+                products.write mesmo, eles nunca salvariam de qualquer
+                jeito (o servidor recusa), mas o campo ali já revelaria o
+                custo real antes mesmo de tentar. */}
+            {canSeeCost ? (
+              <Field label="Custo">
+                <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: Number(e.target.value) })} />
+              </Field>
+            ) : null}
             <Field label="Preço">
               <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} />
             </Field>

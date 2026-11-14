@@ -9877,6 +9877,92 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      ainda se distingue por estar dentro do cartão claro. typecheck/lint
      limpos.
 
+198. **Acesso limitado para vendedores/funcionários, a pedido do usuário
+     ("criar a versão do sistema para vendedores e funcionários... sem
+     acesso a tantas informações, por questão de segurança") — dois
+     vazamentos de dado fechados; a infraestrutura de papéis em si já
+     existia e não precisou ser criada.**
+
+     **O que já existia antes desta sessão** (achado investigando, não
+     construído agora): `src/lib/permissions.ts` já tinha 7 papéis
+     (admin, gerente, vendedor, caixa, "pdv" = Operador de PDV, estoque,
+     financeiro) e ~33 permissões granulares; `nav.ts` já filtra o menu
+     por permissão (`NAV_ITEMS.filter((i) => can(tenant.role, i.perm))`,
+     em `app-shell.tsx:55`); o convite de equipe (`InvitePanel`) e a
+     tabela de membros em Configurações → Usuários já deixam escolher o
+     papel; `listSellersFn` já mascarava salário/CPF/documento do
+     vendedor pra quem não tem `sellers.write` (comentário no código já
+     citava esse exato risco — convidar um vendedor dava acesso ao
+     salário de TODOS os colegas); `index.tsx` já redireciona quem não
+     tem `dashboard.read` (papel "pdv") pra primeira tela permitida, sem
+     cair num erro de permissão no primeiro login.
+
+     **Dois vazamentos reais, fechados**:
+     1. **Dashboard** (`insight.ts`, `dashboardFn`) devolvia lucro,
+        contas a pagar/receber, saldo financeiro e os quatro agregados
+        de folha (comissão pendente, retido no mês, encargos INSS/FGTS,
+        folha paga) pra QUALQUER papel com `dashboard.read` — "vendedor"
+        e "caixa" têm essa permissão (pra ver faturamento/ranking do
+        dia), mas não `finance.read`. Corrigido com
+        `canSeeFinance = can(tenant.role, "finance.read")`: os nove
+        campos (+ `trend.profit`) zeram quando falso, e o `index.tsx`
+        esconde os 4 KPI cards e o card inteiro "Folha e retenções"
+        nesse caso (não mostra "R$ 0,00" como se fosse de verdade —
+        mesmo padrão do `podeVerFolha` que já existia em
+        `listSellersFn`). Faturamento/ticket/ranking de vendedores
+        continuam visíveis — eram dado já considerado aceitável antes
+        (mesmo comentário de `listSellersFn` confirma).
+     2. **Produtos** (`catalog.ts` + `produtos.tsx`): coluna Custo e
+        Margem na tabela, o KPI "Valor em estoque", e o campo Custo no
+        diálogo de edição apareciam pra qualquer papel com
+        `products.read` — "vendedor" e "caixa" têm, e nenhum dos dois
+        deveria saber a margem de cada item. `getProductFn` também
+        vazava: o diálogo de edição busca o produto inteiro (`p.*`), ou
+        seja, só esconder a coluna da tabela não bastava — abrir
+        "editar" em qualquer produto já mostrava o custo no campo antes
+        mesmo de tentar salvar. Reaproveitado `purchases.read` como a
+        permissão de "pode ver custo" (admin/gerente/estoque têm,
+        vendedor/caixa/financeiro não têm) em vez de criar uma
+        permissão nova — `listProductsFn` e `getProductFn` zeram
+        `cost`/`stockValue` quando falso; `produtos.tsx` esconde as
+        colunas, o KPI e o campo do diálogo com o mesmo flag
+        (`canSeeCost`, vindo do servidor, não recalculado no cliente).
+
+     **Verificação ao vivo, de ponta a ponta, com conta de vendedor de
+     verdade** (não só leitura de código): no PGLite local (empresa
+     ZZTESTE do item 190), logado como admin, criei um convite com papel
+     Vendedor pela própria tela de Configurações → Usuários, saí da
+     conta, abri o link do convite e criei a conta "Vendedora ZZ" por
+     ele — o mesmo caminho que um dono de loja real usaria. Confirmado:
+     - Dashboard da vendedora: Faturamento (hoje/mês/período), Ticket
+       médio, gráfico, Metas, Produtos mais vendidos e ranking de
+       vendedores aparecem normalmente; Lucro estimado, Contas a
+       receber/pagar, Saldo financeiro e Folha e retenções **não
+       aparecem** (nem vazios, somem de vez).
+     - Produtos da vendedora: tabela só com Produto/SKU/Categoria/
+       Preço/Estoque/Status (sem Custo/Margem), KPI sem "Valor em
+       estoque"; abrir "Editar produto" não mostra campo Custo nenhum.
+     - Repetido como admin (antes de criar o convite): todos os campos
+       acima aparecem normalmente — sem regressão.
+     - Console sem erro em nenhuma etapa; `typecheck`/`lint` nos 4
+       arquivos tocados limpos; `npm test` 522/522.
+
+     **Deliberadamente fora desta rodada** (não é esquecimento): não
+     foram adicionados papéis novos (os 7 já cobrem "vendedor e
+     funcionários" bem — convém usar "Vendedor"/"Caixa"/"Operador de
+     PDV" conforme o cargo real, não inventar um papel único
+     "funcionário"); não foi adicionado bloqueio de UI nas ações de
+     escrita (botão "Novo produto"/clique pra editar continuam visíveis
+     pra quem só tem leitura — o servidor já recusa o Salvar com uma
+     mensagem clara, mesmo padrão que toda outra tela do app usa hoje;
+     mudar isso é um projeto de consistência de UI à parte, não um
+     vazamento de dado); não foi auditada toda tela do sistema — Vendas,
+     Clientes, CRM, Metas, Caixa (inclui a conferência cega já
+     cuidadosa do item original) foram conferidas por grep e leitura e
+     não acusaram o mesmo padrão de vazamento, mas uma varredura
+     exaustiva de TODAS as telas fica como próximo passo se o usuário
+     quiser ir além dos dois achados concretos desta rodada.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.

@@ -126,23 +126,33 @@ function DashboardPage() {
           hint={`${d.salesCount} vendas`}
           trend={{ value: d.trend.ticket, label: "vs anterior" }}
         />
-        <KpiCard
-          label="Lucro estimado"
-          value={formatBRL(d.profit)}
-          tone={d.profit > 0 ? "success" : d.profit < 0 ? "danger" : "default"}
-          trend={{ value: d.trend.profit, label: "vs anterior" }}
-        />
-        <KpiCard label="Contas a receber" value={formatBRL(d.receivables)} />
-        <KpiCard
-          label="Contas a pagar"
-          value={formatBRL(d.payables)}
-          tone={d.payables > 0 ? "warning" : "default"}
-        />
-        <KpiCard
-          label="Saldo financeiro"
-          value={formatBRL(d.balance)}
-          tone={d.balance > 0 ? "success" : d.balance < 0 ? "danger" : "default"}
-        />
+        {/* Lucro/contas a pagar-receber/saldo sao dado de dono/gerente, nao
+            de quem opera o balcao -- "vendedor"/"caixa" tem dashboard.read
+            (faturamento/ranking do dia) mas nao finance.read. O servidor
+            ja zera esses campos pra quem nao pode ver (insight.ts); aqui
+            o card some de vez, em vez de mostrar "R$ 0,00" como se o lucro
+            fosse zero de verdade. */}
+        {d.canSeeFinance ? (
+          <>
+            <KpiCard
+              label="Lucro estimado"
+              value={formatBRL(d.profit)}
+              tone={d.profit > 0 ? "success" : d.profit < 0 ? "danger" : "default"}
+              trend={{ value: d.trend.profit, label: "vs anterior" }}
+            />
+            <KpiCard label="Contas a receber" value={formatBRL(d.receivables)} />
+            <KpiCard
+              label="Contas a pagar"
+              value={formatBRL(d.payables)}
+              tone={d.payables > 0 ? "warning" : "default"}
+            />
+            <KpiCard
+              label="Saldo financeiro"
+              value={formatBRL(d.balance)}
+              tone={d.balance > 0 ? "success" : d.balance < 0 ? "danger" : "default"}
+            />
+          </>
+        ) : null}
       </div>
 
       <Card className="dash-chart dash-fill">
@@ -211,48 +221,53 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="dash-folha dash-list">
-          <CardHeader>
-            <CardTitle>Folha e retenções</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-block text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Comissões a pagar</span>
-              {/* shrink-0 + nowrap em todo valor destas listas: sem isso o
-                  numero encolhe junto com o rotulo e quebra no meio ("4 /"
-                  em cima do "8"). Quem deve absorver a falta de espaco e o
-                  texto, que corta com reticencias; o valor precisa continuar
-                  legivel de uma olhada. */}
-              <span className="shrink-0 whitespace-nowrap tabular font-medium">
-                {formatBRL(d.pendingCommissionNet)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Retido no mês</span>
-              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthTaxWithheld)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Encargos (INSS/FGTS)</span>
-              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthEmployerCharges)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Folha paga no mês</span>
-              <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthCommissionNet)}</span>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/app/vendedores" className="text-xs text-primary hover:underline">
-                Guia de retenções
-              </Link>
-              <Link
-                to="/app/configuracoes"
-                search={{ tab: "impostos" } as never}
-                className="text-xs text-primary hover:underline"
-              >
-                Alíquota de ISS
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Folha inteira some pra quem nao tem finance.read -- comissao
+            pendente da EQUIPE, retencao e encargos sao agregados da folha,
+            nao o desempenho individual de quem ta vendo a tela. */}
+        {d.canSeeFinance ? (
+          <Card className="dash-folha dash-list">
+            <CardHeader>
+              <CardTitle>Folha e retenções</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-block text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Comissões a pagar</span>
+                {/* shrink-0 + nowrap em todo valor destas listas: sem isso o
+                    numero encolhe junto com o rotulo e quebra no meio ("4 /"
+                    em cima do "8"). Quem deve absorver a falta de espaco e o
+                    texto, que corta com reticencias; o valor precisa continuar
+                    legivel de uma olhada. */}
+                <span className="shrink-0 whitespace-nowrap tabular font-medium">
+                  {formatBRL(d.pendingCommissionNet)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Retido no mês</span>
+                <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthTaxWithheld)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Encargos (INSS/FGTS)</span>
+                <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthEmployerCharges)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Folha paga no mês</span>
+                <span className="shrink-0 whitespace-nowrap tabular">{formatBRL(d.monthCommissionNet)}</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link to="/app/vendedores" className="text-xs text-primary hover:underline">
+                  Guia de retenções
+                </Link>
+                <Link
+                  to="/app/configuracoes"
+                  search={{ tab: "impostos" } as never}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Alíquota de ISS
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card className="dash-products dash-list">
           <CardHeader>
             <CardTitle>Produtos mais vendidos</CardTitle>

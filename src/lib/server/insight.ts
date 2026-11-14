@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, can } from "@/lib/permissions";
 import { resolvePeriod, type PeriodKey } from "@/lib/period";
 import { num } from "@/lib/utils";
 import { assertStoreOptional, requireTenant } from "./context";
@@ -85,6 +85,15 @@ export const dashboardFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "dashboard.read");
+    // "vendedor"/"caixa" tem dashboard.read (pra ver faturamento/ranking do
+    // dia), mas NAO finance.read -- lucro, contas a pagar/receber, saldo e
+    // os agregados de folha (comissao pendente, retencao, encargos) sao
+    // dado do dono/gerente, nao do balcao. Sem este corte, qualquer
+    // funcionario com acesso ao painel via o lucro exato de cada periodo e
+    // o total da folha de comissao da equipe inteira -- achado revisando a
+    // pedido do usuario ("funcionarios... nao tendo acesso a tantas
+    // informacoes do sistema, por questao de seguranca").
+    const canSeeFinance = can(tenant.role, "finance.read");
     await assertStoreOptional(sql, tenant, data.storeId);
     const range = resolvePeriod(data.period, data.from, data.to);
     const storeId = data.storeId ?? null;
@@ -404,26 +413,30 @@ export const dashboardFn = createServerFn({ method: "POST" })
 
     return {
       range,
+      canSeeFinance,
       todayRevenue: num(todayK?.revenue),
       todaySales: num(todayK?.sales),
       monthRevenue: num(monthK?.revenue),
       revenue: num(cur?.revenue),
       salesCount: num(cur?.sales),
       ticket: num(cur?.ticket),
-      profit: num(cur?.profit),
-      receivables: num(rec?.v),
-      payables: num(pay?.v),
-      balance: num(rec?.v) - num(pay?.v),
-      pendingCommissionNet: num(pending?.net),
-      pendingCommissionGross: num(pending?.gross),
-      monthCommissionNet: Number(monthNetPaid.toFixed(2)),
-      monthTaxWithheld: Number(monthWithheld.toFixed(2)),
-      monthEmployerCharges: Number(monthEmployer.toFixed(2)),
+      // Zerado (nao omitido) pra manter o tipo do retorno estavel -- quem
+      // le confia em `canSeeFinance`, nao em o campo existir ou nao; ver
+      // o mesmo padrao em listSellersFn (podeVerFolha) pro salario/CPF.
+      profit: canSeeFinance ? num(cur?.profit) : 0,
+      receivables: canSeeFinance ? num(rec?.v) : 0,
+      payables: canSeeFinance ? num(pay?.v) : 0,
+      balance: canSeeFinance ? num(rec?.v) - num(pay?.v) : 0,
+      pendingCommissionNet: canSeeFinance ? num(pending?.net) : 0,
+      pendingCommissionGross: canSeeFinance ? num(pending?.gross) : 0,
+      monthCommissionNet: canSeeFinance ? Number(monthNetPaid.toFixed(2)) : 0,
+      monthTaxWithheld: canSeeFinance ? Number(monthWithheld.toFixed(2)) : 0,
+      monthEmployerCharges: canSeeFinance ? Number(monthEmployer.toFixed(2)) : 0,
       trend: {
         revenue: pct(num(cur?.revenue), num(prev?.revenue)),
         sales: pct(num(cur?.sales), num(prev?.sales)),
         ticket: pct(num(cur?.ticket), num(prev?.ticket)),
-        profit: pct(num(cur?.profit), num(prev?.profit)),
+        profit: canSeeFinance ? pct(num(cur?.profit), num(prev?.profit)) : 0,
       },
       series: fillDailySeries(
         series.map((s) => ({ date: s.d, total: num(s.total), n: num(s.n) })),

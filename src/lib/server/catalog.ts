@@ -99,6 +99,13 @@ export const listProductsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.read");
+    // "vendedor"/"caixa" tem products.read (pra vender/consultar no PDV) mas
+    // custo e margem revelam exatamente quanto a loja ganha em cada item --
+    // justo o tipo de informacao que a pedido do usuario funcionario nao
+    // deveria ver. Reaproveita purchases.read (quem compra/recebe mercadoria
+    // ja lida com custo por natureza do cargo -- admin/gerente/estoque tem,
+    // vendedor/caixa nao) em vez de criar uma permissao nova so pra isto.
+    const canSeeCost = can(tenant.role, "purchases.read");
     const params: unknown[] = [tenant.companyId];
     const raw = data.q?.trim() || "";
     let extra = "";
@@ -155,7 +162,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
     );
     const kpis = {
       productCount: num(kpiRow?.product_count ?? 0),
-      stockValue: num(kpiRow?.stock_value ?? 0),
+      stockValue: canSeeCost ? num(kpiRow?.stock_value ?? 0) : 0,
       lowStockCount: num(kpiRow?.low_stock_count ?? 0),
       inactiveCount: num(kpiRow?.inactive_count ?? 0),
     };
@@ -190,7 +197,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
       sku: strN(r.sku),
       name: String(r.name),
       unit: String(r.unit ?? "UN"),
-      cost: num(r.cost),
+      cost: canSeeCost ? num(r.cost) : 0,
       price: num(r.price),
       promoPrice: r.promo_price == null ? null : num(r.promo_price),
       minStock: num(r.min_stock),
@@ -204,7 +211,7 @@ export const listProductsFn = createServerFn({ method: "POST" })
       brand: strN(r.brand),
       stock: num(r.stock),
     }));
-    return { items, total, kpis };
+    return { items, total, kpis, canSeeCost };
   });
 
 function strN(v: unknown): string | null {
@@ -217,6 +224,10 @@ export const getProductFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenant } = await requireTenant(context.userId);
     assertCan(tenant.role, "products.read");
+    // Mesmo corte do listProductsFn: custo e margem nao sao pra
+    // "vendedor"/"caixa" verem, nem pela tabela nem abrindo o dialogo de
+    // edicao (que busca o produto inteiro, `p.*`, via esta função).
+    const canSeeCost = can(tenant.role, "purchases.read");
     // s.legal_name/trade_name: sem isto o formulario de edicao so tinha o
     // supplier_id, e o SupplierPicker (busca por nome) abria sem nome
     // nenhum pra mostrar -- o campo parecia "sem fornecedor" mesmo com um
@@ -243,7 +254,11 @@ export const getProductFn = createServerFn({ method: "POST" })
         order by v.id`,
       vParams,
     );
-    return dump({ product, variants });
+    if (!canSeeCost) {
+      product.cost = 0;
+      for (const v of variants) v.cost = 0;
+    }
+    return dump({ product, variants, canSeeCost });
   });
 
 export const saveProductFn = createServerFn({ method: "POST" })
