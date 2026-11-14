@@ -10051,6 +10051,54 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      já correto) — estão cobertos. Nenhuma mudança de código nesta
      entrada; é documentação de verificação, mesmo padrão do item 194.
 
+201. **Troca da cor da marca: verde → azul-marinho, pedido do usuário com
+     uma imagem em anexo.** Cor extraída da imagem por script (lê o PNG e
+     amostra os pixels — não é chute visual): núcleo em torno de
+     `#132449` (HSL 221°, 59%, 18%). Aplicada por **rotação de matiz**, não
+     escolha solta: cada token da família verde girou os mesmos +55,9°
+     de matiz (165° verde → 221° azul-marinho, o delta exato entre o
+     `--primary` claro antigo e a referência), preservando saturação e
+     luminosidade de cada um — por quê: rotação pura de matiz não mexe em
+     L, que é quem decide contraste, então todo contraste já calibrado
+     (primary/accent/sidebar contra seus fundos) se mantém idêntico sem
+     precisar reconferir manualmente. Conferido mesmo assim com script
+     (`color-tools.mjs`, descartável, não commitado): todos os pares
+     ficaram iguais ou melhores que antes, nada abaixo de 4.5:1.
+
+     **Tokens trocados** (`styles.css`, nos 4 blocos — `:root`, `.dark`,
+     `.login-page`, e o duplicado dentro de `@media print`):
+     `--primary` (claro `#165f4d`→`#132449`; escuro `#6dd5b0`→`#6d99d5`),
+     `--primary-foreground` escuro (`#10221c`→`#101722`, girado também
+     por consistência), `--ring`, `--chart-1` (acompanham `--primary`
+     nos dois temas), `--accent`/`--accent-foreground` (claro e escuro),
+     `--sidebar`/`--sidebar-accent`/`--sidebar-foreground` (o rail de
+     navegação, que é escuro-verde FIXO independente do tema geral —
+     virou escuro-azul fixo). `public/favicon.svg` (`#165F4D`→`#132449`
+     no retângulo principal; `#578B7C`→`#566179`, recalculado como 70%
+     da cor nova + 30% do creme de fundo, a mesma fórmula que já explicava
+     o valor antigo). `theme-color` em `__root.tsx` (`#165F4D`→`#132449`).
+
+     **Deliberadamente fora**: `--success`/`--warning`/`--destructive`/
+     `--info` (cores SEMÂNTICAS de estado — verde=positivo é convenção
+     de UI, não identidade de marca; "Lucro estimado" positivo continua
+     verde, correto). `--chart-2..5` (paleta categórica de gráficos com
+     5 tons já distintos de propósito — só `chart-1`, que sempre
+     espelhou `--primary`, girou junto). `BrandMark` (`brand.tsx`) não
+     precisou de edição — já usa `fill-primary`/`fill-primary-foreground`
+     (classes Tailwind ligadas aos tokens), então a logo viva em toda a
+     tela já acompanha o token automaticamente. `public/og.jpg` e tudo
+     sob `public/__grok/` ficaram de fora — gerados por ferramenta do
+     Grok App Builder, fora do alcance de código (`AGENTS.md`).
+
+     **Verificação**: `typecheck`/lint limpos, `npm test` 522/522. Ao
+     vivo no servidor local, nos dois temas (computed style, não só
+     screenshot): `--primary`/`--sidebar` confirmados exatos nos dois
+     (`#132449`/`#141c30` claro, `#6d99d5`/`#101216` escuro). Visual: tela
+     de login com o fundo e botão azul-marinho, logo e avatar no topo da
+     barra lateral, rail de navegação (incl. item ativo) inteiro
+     reconstruído em azul — nenhuma mancha verde sobrando em nenhuma
+     tela conferida.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
