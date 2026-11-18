@@ -10184,6 +10184,77 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      nenhuma etapa. Produto/vendas de teste ficam na empresa descartável
      "Loja Modelo" do PGLite local, nada tocou produção.
 
+204. **P3a executado: role `app_rw` (DML-only) criada no banco certo e em
+     produção, substituindo o uso direto de `neondb_owner` pelo app.**
+     Continuação do guia `GUIA_P3_SEGURANCA_BANCO.md` (itens 184-188,
+     entregue mas não executado até aqui). Pedido do usuário: "continuar
+     com o P3a".
+
+     **Desvio de projeto (achado no meio do caminho, não é bug de
+     código)**: o trabalho inicial de criar a role foi feito, sem querer,
+     no projeto Neon pessoal do usuário ("aurum", conta
+     `console.neon.tech` via login GitHub) — um projeto sem nenhuma
+     relação com o app. O banco de produção de verdade é gerenciado por
+     uma organização Neon DIFERENTE, via integração do marketplace do
+     Vercel, recurso **"gestao-comercial-db"** (Neon ID
+     `gentle-river-25715894`), só acessível por Vercel → Storage →
+     clicar no nome do recurso → **"Open in Neon"** (SSO, sem precisar do
+     login pessoal da Neon). Confirmado comparando o Neon ID nas duas
+     telas. Sinal de alerta que expôs o desvio: depois de "criar" a role
+     e rodar as migrations supostamente no banco certo, o deploy falhava
+     com `column "company_id" does not exist` ao aplicar
+     `0002_schema.sql` e a tabela `_migrations` tinha só 1 linha (devia
+     ter ~40) — sintoma de banco vazio/errado, não de schema quebrado.
+
+     **Trabalho repetido no projeto certo**: `create role app_rw with
+     login password '...'` + `grant select, insert, update, delete` nas
+     tabelas existentes + `alter default privileges for role
+     neondb_owner ... grant ... to app_rw` nas tabelas futuras (mesmo
+     script do guia, role renomeada de `app_runtime` para `app_rw` —
+     Neon's "New Role" do console cria role com
+     `createdb/createrole/bypassrls` por padrão e sem ADMIN OPTION pro
+     `neondb_owner` alterá-la depois; `app_rw` criada via SQL direto não
+     tem esse problema). Verificado com `select rolname, rolsuper,
+     rolcreatedb, rolcreaterole, rolbypassrls from pg_roles where rolname
+     = 'app_rw'` → todas as colunas `f`.
+
+     **Troca dos env vars no Vercel**: `MIGRATE_DATABASE_URL` =
+     connection string do `neondb_owner` (só usada no build, pelo
+     `scripts/migrate.mjs`); `DATABASE_URL` = connection string do
+     `app_rw` (usada em runtime pelo app e pelo better-auth). A role
+     `app_rw` criada via SQL não aparece no seletor de role da UI
+     "Connect" da Neon (a UI só lista roles criadas pelo próprio botão da
+     Neon) — connection string montada manualmente, copiando a do
+     `neondb_owner` e trocando usuário+senha.
+
+     **Bug real, não de código**: primeira senha escolhida pro `app_rw`
+     (`P@ssw0rd#123`) tinha `@` e `#`, caracteres especiais de URI —
+     quebrou o parsing da connection string e produção ficou KO por
+     alguns minutos (`/api/auth/get-session` → 500, `password
+     authentication failed for user 'app_rw'`, SQLSTATE 28P01), mesmo
+     com o build passando limpo. Corrigido com `alter role app_rw with
+     password` para uma senha só com letras/números, e `DATABASE_URL`
+     atualizada e redeployada. Lição para a próxima vez que alguém
+     escolher senha pra uma role nova: evitar `@ # : / ? %` já na hora de
+     criar, não só na hora de montar a connection string.
+
+     **Verificação final**: redeploy limpo (`[migrate] up to date.`,
+     sem erro), request logs em produção (`/api/auth/get-session`, `/`)
+     todos voltando 200, nenhum "password authentication failed"
+     recorrente depois da troca de senha. Produção nunca ficou fora do
+     ar por um deploy quebrado (Vercel não promove build com erro); ficou
+     exposta por alguns minutos ao erro de senha só depois do deploy que
+     *passou* no build mas tinha a senha errada em runtime — diferença
+     importante: build verde não garante runtime são quando a mudança é
+     só de credencial.
+
+     Pendência de limpeza (sem urgência): apagar a tabela de exemplo
+     `playing_with_neon` que sobrou de um script de dados de teste da
+     própria Neon, executado sem querer junto com o script de criação da
+     role (`drop table playing_with_neon;`). Atualizar
+     `GUIA_P3_SEGURANCA_BANCO.md` para refletir o nome final da role
+     (`app_rw`, não `app_runtime`) ainda não foi feito.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
