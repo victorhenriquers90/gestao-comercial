@@ -1,9 +1,14 @@
 # Guia P3 — Segurança de acesso ao banco (auditoria de DBA, itens 184/187)
 
-Dois upgrades estruturais recomendados pela auditoria. O **P3a é barato e
-vale fazer já**; o **P3b é um projeto próprio**, descrito aqui só para a
-decisão ficar informada. Nenhum dos dois foi executado — os passos abaixo
-dependem de você (painéis do Neon e do Vercel, onde vivem as credenciais).
+Dois upgrades estruturais recomendados pela auditoria. O **P3a já foi
+executado e está em produção** (ver HANDOFF.md, item 204, para o relato
+completo incluindo um desvio de projeto Neon e um incidente breve de
+senha). O **P3b é um projeto próprio**, descrito aqui só para a decisão
+ficar informada — ainda não executado.
+
+Os passos abaixo ficam registrados como referência/histórico de como o
+P3a foi feito (role chamada `app_rw`, não `app_runtime` como o rascunho
+original previa — motivo explicado no Passo 1).
 
 ---
 
@@ -22,35 +27,54 @@ continuam com a role dona e o app passa pra role limitada.
 
 ### Passo 1 — Criar a role no Neon (você)
 
-Console do Neon → projeto do gestao-comercial → **Roles** → **New Role**
-→ nome `app_runtime`. O Neon gera a senha e mostra a connection string
-dessa role — guarde-a, é a futura `DATABASE_URL`.
+**Use o SQL Editor, não o botão "New Role" do console.** O botão do
+console cria a role com `CREATEDB`/`CREATEROLE`/`BYPASSRLS` por padrão —
+o oposto do que o P3a quer — e, pior, `neondb_owner` não ganha ADMIN
+OPTION automático sobre uma role criada pelo console, então depois não
+dá pra `ALTER ROLE`/`DROP ROLE` nela (erro `permission denied`,
+SQLSTATE 42501). Uma role criada via SQL direto por `neondb_owner` não
+tem esse problema.
 
-> Prefira o console ao SQL para criar a role: o Neon gerencia a senha e
-> monta a string certa (host `-pooler`, `sslmode`) sozinho.
+No SQL Editor do Neon, conectado como `neondb_owner`, banco `neondb`:
+
+```sql
+create role app_rw with login password 'ESCOLHA-UMA-SENHA-FORTE-AQUI';
+```
+
+> **Cuidado com a senha**: ela vai virar parte de uma connection string
+> (`postgresql://app_rw:SENHA@host/...`). Evite os caracteres
+> `@ # : / ? %` — eles têm significado especial numa URI e quebram o
+> parsing (foi exatamente o que aconteceu na execução real: uma senha
+> com `@` e `#` derrubou o login em produção por alguns minutos até a
+> troca — ver HANDOFF item 204). Prefira só letras e números.
+
+Essa role não vai aparecer no seletor de "Connect" da UI da Neon (que só
+lista roles criadas pelo próprio botão do console) — monte a connection
+string manualmente, copiando a de `neondb_owner` e trocando usuário e
+senha.
 
 ### Passo 2 — Conceder DML (você, no SQL Editor do Neon, conectado como `neondb_owner` no banco `neondb`)
 
 ```sql
-grant connect on database neondb to app_runtime;
-grant usage on schema public to app_runtime;
-grant select, insert, update, delete on all tables in schema public to app_runtime;
-grant usage, select on all sequences in schema public to app_runtime;
+grant connect on database neondb to app_rw;
+grant usage on schema public to app_rw;
+grant select, insert, update, delete on all tables in schema public to app_rw;
+grant usage, select on all sequences in schema public to app_rw;
 
 -- Tabelas FUTURAS (migrations rodam como neondb_owner): sem estas duas
 -- linhas, cada migration nova criaria tabela/sequence que o runtime não
 -- enxerga e o app quebraria depois do deploy seguinte.
 alter default privileges for role neondb_owner in schema public
-  grant select, insert, update, delete on tables to app_runtime;
+  grant select, insert, update, delete on tables to app_rw;
 alter default privileges for role neondb_owner in schema public
-  grant usage, select on sequences to app_runtime;
+  grant usage, select on sequences to app_rw;
 ```
 
 Conferência rápida (ainda no SQL Editor):
 
 ```sql
 select rolname, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls
-from pg_roles where rolname = 'app_runtime';
+from pg_roles where rolname = 'app_rw';
 -- esperado: tudo false
 ```
 
@@ -62,7 +86,7 @@ Projeto gestao-comercial → **Settings → Environment Variables**
 | Variável | Valor |
 |---|---|
 | `MIGRATE_DATABASE_URL` | a string ATUAL (de `neondb_owner`) — copie antes de mexer |
-| `DATABASE_URL` | a string nova da role `app_runtime` (passo 1) |
+| `DATABASE_URL` | a string nova da role `app_rw` (passo 1) |
 
 > **Ordem importa**: crie `MIGRATE_DATABASE_URL` primeiro. Como a atual é
 > Sensitive (ilegível depois de salva), se você sobrescrever
@@ -76,9 +100,14 @@ Qualquer push (ou "Redeploy" no painel) aplica. Verificar:
 1. O log de build mostra `[migrate] up to date.` (ou `applied …`) — prova
    que a rota de migration (role dona) funciona.
 2. O app abre e opera normalmente (PDV, vendas, caixa) — prova que a role
-   `app_runtime` cobre o dia a dia.
+   `app_rw` cobre o dia a dia.
 3. Se algo falhar com "permission denied", é um GRANT faltando — reverter
    é só apontar `DATABASE_URL` de volta pra string da dona.
+4. Se o build passar mas o login/sessão falhar com "password
+   authentication failed" (SQLSTATE 28P01), build verde não significa
+   runtime são: a causa mais provável é a senha da connection string ter
+   caracteres especiais (`@ # :` etc.) quebrando o parsing — ver aviso no
+   Passo 1.
 
 **Aproveite e confira o P4 no mesmo passo**: o host da string deve conter
 `-pooler` (endpoint com pooling do Neon). Sem isso, picos de instâncias
