@@ -83,8 +83,8 @@ const OID_DATE = 1082;
 const OID_INTERVAL = 1186;
 const identity = (v: string) => v;
 
-type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
-type RunTransaction = <T>(fn: (tx: Sql) => Promise<T>) => Promise<T>;
+export type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
+export type RunTransaction = <T>(fn: (tx: Sql) => Promise<T>) => Promise<T>;
 
 /**
  * Wrap a query runner in the tagged-template + `.query()` `Sql` surface.
@@ -107,6 +107,37 @@ function toSql(run: Run, transaction: RunTransaction): Sql {
     run<T>(text, params);
   sql.transaction = transaction;
   return sql;
+}
+
+/**
+ * Embrulha um `Sql` ja resolvido (Neon ou PGlite) para que toda instrucao —
+ * solta ou dentro de `.transaction()` — rode com `app.company_id` definido
+ * na MESMA conexao da query real, via `set_config(..., true)` (escopo de
+ * transacao: nunca vaza pro proximo emprestimo do pool, ao contrario de um
+ * `SET` de sessao que precisaria de `RESET` manual e vazaria se um erro
+ * pulasse esse passo). Construida so em cima do `sql.transaction()` que ja
+ * existe e ja roda em producao — nenhum codigo especifico de Neon/PGlite
+ * aqui dentro. Uma chamada solta (`sql\`...\`` / `sql.query()`) vira sua
+ * propria mini-transacao de uma instrucao so (BEGIN + set_config + a query
+ * + COMMIT); uma chamada que ja usa `.transaction()` so ganha o
+ * `set_config` extra logo apos o BEGIN que ja pagava.
+ *
+ * `SET LOCAL app.company_id = $1` nao compila — `SET` nao aceita bind
+ * parameter no valor. `set_config(nome, valor, true)` e uma chamada de
+ * funcao comum, por isso parametrizavel.
+ *
+ * Usada por `requireTenant` (ver context.ts) para que nenhum dos ~140
+ * server functions precise mudar: todos ja recebem o `sql` de volta de
+ * `requireTenant` e so o usam, nunca o `getSql()` cru.
+ */
+export function getTenantSql(sql: Sql, companyId: number): Sql {
+  const scope = (tx: Sql) =>
+    tx.query(`select set_config('app.company_id', $1, true)`, [String(companyId)]);
+  const run: Run = async <T>(text: string, params: unknown[]): Promise<T[]> =>
+    sql.transaction((tx) => scope(tx).then(() => tx.query<T>(text, params)));
+  const transaction: RunTransaction = async <T>(fn: (tx: Sql) => Promise<T>): Promise<T> =>
+    sql.transaction((tx) => scope(tx).then(() => fn(tx)));
+  return toSql(run, transaction);
 }
 
 function createNeonSql(): Promise<Sql> {

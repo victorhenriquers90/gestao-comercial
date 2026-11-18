@@ -1,4 +1,4 @@
-import { dbSource, getSql, type Sql } from "@/lib/db";
+import { dbSource, getSql, getTenantSql, type Sql } from "@/lib/db";
 import { demoSeedEnabled } from "@/lib/demo-seed";
 import { INVITE_COOKIE, NO_ACCESS_MESSAGE, PENDING_COMPANY_COOKIE, multiTenantEnabled } from "@/lib/invite-constants";
 import { DEFAULT_DISCOUNT_LIMIT, isRole, type Role } from "@/lib/permissions";
@@ -37,7 +37,14 @@ export async function requireTenant(userId: string): Promise<{ sql: Sql; tenant:
   const nomeLoja = await readPendingCompanyName();
   try {
     const tenant = await ensureTenant(sql, userId, convite, nomeLoja);
-    return { sql, tenant };
+    // `sql` cru so serve pra DESCOBRIR o tenant (loadTenant le `memberships`
+    // por user_id, nao da pra saber o company_id por uma GUC que esse
+    // proprio lookup ainda nao revelou). A partir daqui, todo mundo que usa
+    // o retorno deste `requireTenant` passa a ter `app.company_id` definido
+    // em toda instrucao (ver `getTenantSql`, db.ts) -- RLS nas tabelas de
+    // negocio enxerga a mesma empresa que o filtro `where company_id = ...`
+    // que o app ja escreve a mao, sem precisar mudar nenhum dos call-sites.
+    return { sql: getTenantSql(sql, tenant.companyId), tenant };
   } finally {
     // Usado ou recusado, o cookie sai: um convite vencido preso nele
     // repetiria o mesmo erro em toda requisicao.
@@ -374,6 +381,14 @@ export async function ensureTenant(
       returning id
     `;
     const companyId = company!.id;
+
+    // RLS (fase 2 do P3b, ainda nao ativada em nenhuma tabela nesta
+    // transacao) vai exigir isto definido ANTES de qualquer insert em
+    // tabela com policy -- sem esta linha, no dia em que `stores` (e as
+    // demais do lote 1) ganharem RLS, todo cadastro de empresa nova
+    // quebraria com "new row violates row-level security policy". Dormente
+    // ate la: nenhuma policy existe ainda, entao isto hoje nao muda nada.
+    await tx.query(`select set_config('app.company_id', $1, true)`, [String(companyId)]);
 
     // Sem demonstracao: uma loja so, sem cidade inventada -- endereco errado
     // aqui iria parar em cupom e nota. O dono completa em Configuracoes.
