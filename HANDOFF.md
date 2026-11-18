@@ -10255,6 +10255,78 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      `GUIA_P3_SEGURANCA_BANCO.md` para refletir o nome final da role
      (`app_rw`, não `app_runtime`) ainda não foi feito.
 
+205. **RLS multi-tenant, Fase 1 (plumbing) — zero mudança de
+     comportamento, só a infraestrutura.** Pedido do usuário depois de
+     perguntar se a arquitetura já era "enterprise completa": fechar as
+     duas lacunas conscientes que faltavam — RLS no banco e teste de carga
+     real. Plano inteiro (RLS em 7 lotes + teste de carga em k6) desenhado
+     em modo de planejamento, com duas rodadas de pesquisa (Explore + Plan
+     agents) que validaram o mecanismo linha a linha contra o código real
+     antes de qualquer SQL ser escrito — achando 2 bugs reais de antemão
+     (ver abaixo) que só apareceriam em produção no dia em que uma policy
+     fosse ativada.
+
+     **O problema de verdade não é "RLS", é o pool de conexões**:
+     `getSql()` (`db.ts`) devolve um `Sql` sobre um `pg.Pool({max:5})`
+     compartilhado por processo. Uma chamada solta (`sql\`...\`` ou
+     `sql.query()`) pega QUALQUER conexão livre do pool — não existe "a
+     conexão desta requisição". Só `sql.transaction()` fixa uma conexão
+     pra várias instruções. `reports.ts`, `insight.ts`, `party.ts` e
+     metade de `catalog.ts` fazem 10-20+ `sql.query()` soltos por
+     requisição sem nunca usar `.transaction()` — `SET LOCAL
+     app.company_id` configurado uma vez não cobriria essas.
+
+     **Solução, sem tocar os ~140 server functions**: `getTenantSql(sql,
+     companyId)`, nova em `db.ts` (`db.ts:112-135`), embrulha o `Sql`
+     existente por cima do `sql.transaction()` que já roda em produção —
+     toda chamada solta vira sua própria mini-transação de uma instrução
+     só (`BEGIN` + `select set_config('app.company_id', $1, true)` + a
+     query real + `COMMIT`); toda chamada que já usa `.transaction()` só
+     ganha o `set_config` extra logo após o `BEGIN` que já pagava.
+     `set_config(...)` em vez de `SET LOCAL ... = $1` porque `SET` não
+     aceita bind parameter no valor. `requireTenant` (`context.ts`) passa
+     a devolver esse `sql` já escopado — os 141 call-sites de
+     `requireTenant` não mudam nenhuma linha, porque já usam a variável
+     `sql` que ele devolve.
+
+     **2 bugs reais achados ANTES de qualquer policy existir** (por isso
+     a Fase 1 é só plumbing, sem ativar RLS em nenhuma tabela ainda):
+     1. O bootstrap de cadastro (`ensureTenant`, dentro da transação que
+        cria `stores`/`company_settings`/`cash_accounts`/`seedCompany`)
+        nunca chamava `set_config` — no dia em que `stores` ganhasse RLS
+        (Fase 2, lote 1), todo cadastro novo quebraria com "new row
+        violates row-level security policy". Corrigido com uma linha
+        logo após `companyId` ser conhecido nessa transação — dormente
+        até a Fase 2 ativar alguma policy.
+     2. `memberships` (lookup por `user_id`, é assim que o sistema
+        descobre seu `company_id` — não dá pra exigir a GUC que esse
+        mesmo lookup ainda vai revelar) e `pending_invites` (lido por
+        token secreto ANTES de existir tenant, no hook do Better Auth e
+        em `openInviteFn`/`acceptInviteFn`) ficam de FORA do escopo de
+        RLS pra sempre — 40 tabelas com `company_id` − essas 2 = 38
+        recebem RLS na Fase 2, batendo com a estimativa de "~40" do
+        `GUIA_P3_SEGURANCA_BANCO.md`.
+
+     **Teste novo** (`src/lib/server/rls.test.ts`, primeiro do repo a
+     tocar Postgres de verdade): tabela descartável criada dentro do
+     próprio teste, num PGlite isolado (não o do app — `import.meta.glob`
+     das migrations só funciona sob Vite, não sob o test runner puro do
+     Node). Prova crucial: a conexão padrão do PGlite é SUPERUSUÁRIA, e
+     superusuário/dono sempre ignora RLS — testar nela testaria nada. O
+     teste cria uma role comum (`create role probe_role`) e troca pra ela
+     (`set role probe_role`) antes de qualquer asserção, aí sim prova
+     isolamento real: chamada solta, dentro de `.transaction()`, e que
+     `WITH CHECK` rejeita um insert cross-tenant (não só esconde leitura).
+
+     **Verificação**: `typecheck`/lint/`npm test` limpos (525 testes, +3
+     novos). Deploy Vercel "Ready", Dashboard ao vivo conferido depois —
+     zero mudança visível, como esperado (nenhuma policy existe ainda pra
+     reagir ao `set_config`).
+
+     **Próximo**: Fase 2 (ativar RLS em 7 lotes, menor risco primeiro) e
+     Fase 3 (teste de carga real com k6, numa branch descartável da Neon)
+     — plano completo salvo, ainda não executadas.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
