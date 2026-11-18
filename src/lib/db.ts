@@ -117,7 +117,13 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    // Sem `max` explicito, a lib usa o padrao (10) por instancia. Serverless
+    // escala HORIZONTALMENTE -- cada instancia quente abre seu proprio pool
+    // -- entao o total de conexoes contra o endpoint `-pooler` da Neon cresce
+    // com o numero de instancias ativas, nao só com `max`. Um valor baixo por
+    // instancia deixa mais instancias caberem dentro do limite agregado do
+    // plano antes de esgotar conexoes.
+    const pool = new Pool({ connectionString: databaseUrl, max: 5 });
     const run: Run = async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
