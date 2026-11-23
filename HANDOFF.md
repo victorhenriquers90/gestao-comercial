@@ -10404,6 +10404,55 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      tabela por tabela mais "quente" a cada lote, `sales`/`sale_items`
      por último e fora de horário de pico.
 
+207. **RLS, lote 1: regressão real em produção, revertida na hora — causa
+     raiz ainda não encontrada.** Continuação do item 206. Minutos depois
+     do deploy (que tinha passado limpo na branch de teste), a página
+     **Fornecedores** quebrou em produção com `invalid input syntax for
+     type integer: ''`, nunca visto nem localmente nem na branch
+     descartável. Revertido na hora com `0042_rls_batch1_rollback.sql`
+     (`disable row level security` nas 10 tabelas — as policies continuam
+     definidas, só o enforcement foi desligado). Confirmado: site voltou
+     ao normal, nenhum dado afetado.
+
+     **O que já foi eliminado como causa**, pra quem for investigar de
+     novo não repetir:
+     - As duas queries de `listSuppliersFn` (lista + KPIs,
+       `party.ts:797-860`) rodam limpas na branch de teste como `app_rw`
+       (via `SET ROLE`, sem senha) — testado duas vezes: com valores
+       literais E com `PREPARE`/`EXECUTE` (protocolo estendido, parâmetros
+       de verdade, igual ao driver `pg` faz) — nenhuma das duas reproduz
+       o erro.
+     - `listNotificationsFn` (roda em TODA página, inclusive Fornecedores
+       e Dashboard) só toca `inventories, accounts_payable,
+       accounts_receivable, cash_registers, sales, crm_tasks,
+       notifications, customers` — nenhuma tabela do lote 1.
+     - `parsePaging`/`parseSort` (`src/lib/paging.ts`) validam e lançam
+       erro PRÓPRIO (`"Limite inválido"` etc.) antes de qualquer valor
+       chegar ao banco — não é de onde vem o `''`.
+     - Única tabela do lote 1 referenciada fora do bootstrap de cadastro é
+       `company_counters` (`nextNumber`, numeração de documento — não roda
+       ao abrir Fornecedores) — eliminada por não ser acionada nessa
+       página.
+     - Dashboard (que NÃO toca nenhuma tabela do lote 1) funcionou normal
+       sob RLS, antes e depois — não prova nada sobre o lote 1
+       especificamente, só que o resto do app não quebrou.
+
+     **Hipótese não eliminada, mais provável**: diferença entre a branch
+     de teste (um usuário, dado sintético, navegação isolada) e produção
+     de verdade (SSR disparando várias `requireTenant`/`getTenantSql`
+     em paralelo — notificações, lista de fornecedores, KPI, sessão —
+     todas competindo pelo pool de 5 conexões). Não foi possível testar
+     essa hipótese com fidelidade total (precisaria rodar o dev server
+     local apontado pra branch, com a senha real do `app_rw`, e eu não
+     devo digitar/usar essa senha — ver regra de credencial do item 204).
+
+     **Antes de tentar o lote 1 de novo**: rodar `npm run dev` localmente
+     com `DATABASE_URL`/`MIGRATE_DATABASE_URL` apontando pra uma branch
+     descartável (não produção) e visitar `/app/fornecedores` com SSR de
+     verdade — único teste que ainda não foi feito e que reproduziria a
+     concorrência real do servidor. Quem fizer isso é o usuário (a
+     connection string tem senha).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
