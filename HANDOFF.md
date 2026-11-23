@@ -10327,6 +10327,83 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      Fase 3 (teste de carga real com k6, numa branch descartável da Neon)
      — plano completo salvo, ainda não executadas.
 
+206. **RLS multi-tenant, Fase 2, lote 1 de 7 — ativado e verificado contra
+     branch descartável de verdade antes de ir pra produção.** Continuação
+     do item 205. Lote 1 (menor risco): `stores, categories, brands,
+     suppliers, sellers, company_settings, company_counters,
+     commission_rules, cash_accounts, card_rates` — migration
+     `0041_rls_batch1_reference.sql`.
+
+     **Como a verificação foi feita, de verdade, sem tocar em nenhuma
+     credencial**: branches da Neon neste projeto (integração via
+     marketplace do Vercel) não têm um botão simples de "Create Branch"
+     na tela principal — fica atrás de "Create a branch manually" na
+     página de Branches, com auto-delete configurável (usei "After 1
+     day", rede de segurança extra). Depois de criar a branch
+     (`rls-lote1-teste`) e aplicar a migration nela, a verificação
+     cross-tenant foi feita **sem nunca precisar da senha do `app_rw`**:
+     `neondb_owner` (a sessão padrão do SQL Editor) tem ADMIN OPTION
+     sobre `app_rw` (foi criada via SQL direto, não pelo botão da Neon —
+     mesma regra do item 204), então `grant app_rw to neondb_owner;`
+     seguido de `set role app_rw;` troca o usuário efetivo da sessão sem
+     pedir senha nenhuma. A partir daí, qualquer policy de RLS passa a
+     valer de verdade pra essa sessão, exatamente como valeria pro app em
+     produção.
+
+     **Achado de ferramenta, não de produto**: a grade de resultado do
+     SQL Editor da Neon é renderizada de um jeito que `read_page`/
+     `get_page_text` não conseguem ler (nem é HTML de tabela comum, nem
+     canvas — não achei a origem exata, só que `document.querySelectorAll`
+     não encontra as linhas). Mensagens de `RAISE NOTICE`/`RAISE
+     EXCEPTION` e `ERROR:`, por outro lado, aparecem como texto normal.
+     Solução: toda verificação virou um bloco `do $$ ... end $$` que ou
+     estoura exceção com a contagem errada no meio da mensagem, ou imprime
+     um `NOTICE 'OK ...'` no final — nunca depende de ler a grade.
+
+     **Bug achado no MEU script de verificação, não no RLS**: a primeira
+     tentativa assumiu `real_id = min(id) from companies` — errado nesta
+     branch, porque a empresa de teste nova (inserida agora) pegou um
+     `id` MENOR (3) que a empresa piloto real "Victor Comércio" (4) — o
+     contador de sequência de `companies.id` já tinha passado por outras
+     empresas de teste criadas e apagadas em sessões anteriores deste
+     mesmo projeto, então "o id mais baixo é o mais antigo" não é uma
+     suposição segura. Corrigido buscando cada empresa pelo NOME. A
+     própria falha desse bug já serviu de prova de que o mecanismo de
+     detecção funciona: ele acusou "FALHOU stores: empresa teste
+     enxergou 1 linha(s) da empresa real" exatamente quando o teste em si
+     estava invertido — depois de corrigir, a mesma verificação (nos dois
+     sentidos, pras 10 tabelas) deu **"OK isolamento correto"**.
+
+     **Confirmado na branch de teste antes do deploy real**:
+     `relrowsecurity = true` e o `qual`/`with_check` da policy batendo
+     exatamente com `(company_id = (current_setting('app.company_id',
+     true))::int)` em `stores` (amostra; as outras 9 seguem o mesmo
+     script). Isolamento comprovado nos dois sentidos: a empresa de teste
+     só enxerga a própria linha em cada uma das 10 tabelas, a empresa real
+     não enxerga a linha da empresa de teste.
+
+     **Migration aplicada em produção** depois dessa verificação (não
+     antes). `scripts/rls-verify.mjs`, criado numa tentativa anterior
+     (rodar via Node local com a senha do `app_rw` numa variável de
+     ambiente), foi removido — a fricção de PowerShell/variável de
+     ambiente/senha em texto no terminal foi maior que o ganho, e o
+     método do `SET ROLE` direto no SQL Editor da Neon é estritamente
+     melhor (zero senha envolvida, zero script pra manter).
+
+     **Pendência corrigida de um incidente anterior**: antes de achar o
+     jeito certo de criar a branch, duas tentativas de verificação
+     acabaram rodando sem querer direto na `main` (produção) — confirmado
+     e corrigido na hora (`relrowsecurity=false` antes de qualquer policy
+     real existir, e a empresa de teste falsa foi apagada com um `DELETE`
+     visado por nome). Nenhum dado real foi afetado; registrado aqui para
+     quem for fazer os próximos lotes não repetir o mesmo caminho errado.
+
+     **Verificação**: `typecheck`/`npm test` (525) limpos. Deploy Vercel
+     "Ready" após o push. Próximo: lotes 2-7, mesma técnica (branch
+     descartável + `set role app_rw` + bloco `do $$` autoverificável),
+     tabela por tabela mais "quente" a cada lote, `sales`/`sale_items`
+     por último e fora de horário de pico.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
