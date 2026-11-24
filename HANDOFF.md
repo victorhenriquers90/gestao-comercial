@@ -10453,6 +10453,48 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      concorrência real do servidor. Quem fizer isso é o usuário (a
      connection string tem senha).
 
+208. **RLS, lote 1: não reproduzido nem com o teste mais fiel possível —
+     provavelmente transitório.** Continuação do item 207. A branch de
+     teste anterior tinha expirado sozinha (auto-delete configurado pra 1
+     dia); criada uma nova (`rls-lote1-teste-2`) e desta vez testado com
+     o `npm run dev` LOCAL apontado pra ela via `DATABASE_URL` (SSR de
+     verdade, `app_rw` de verdade, concorrência real do servidor — o
+     único teste que faltava depois dos itens 206/207).
+
+     Com RLS genuinamente ativa nas 10 tabelas do lote 1 (reativada na
+     branch, que tinha herdado o rollback de produção), as 5 telas
+     afetadas (Fornecedores, Vendedores, Configurações, Caixa, mais
+     Dashboard) funcionaram perfeitamente, em várias recargas seguidas —
+     **nenhum erro reproduzido**, nem o "invalid input syntax for type
+     integer" nem nada parecido.
+
+     **Conclusão**: depois de eliminar as duas queries de
+     `listSuppliersFn` (item 207), `listNotificationsFn`, a validação de
+     paginação, E agora o SSR real com concorrência de verdade — a
+     hipótese que sobra é que o erro em produção foi **transitório**
+     (um blip específico daquele deploy/instância, não um bug
+     determinístico do mecanismo de RLS). Não foi possível confirmar essa
+     hipótese com 100% de certeza (não dá pra forçar o mesmo blip de
+     novo), mas a ausência total de reprodução depois de 4 tentativas
+     fiéis diferentes é um sinal forte.
+
+     **Pendência, achado incidental nesta investigação**: o campo
+     "Branch" que aparece dentro do modal "Connect" da Neon é só
+     informativo — não dá pra trocar de branch por ali. É preciso trocar
+     a branch no SELETOR DE BRANCH (lateral esquerda, abaixo do nome do
+     projeto) ANTES de abrir "Connect"; senão a connection string sai
+     sempre da branch que já estava selecionada (gerou confusão real
+     nesta sessão, quase pegando a string de produção por engano mais de
+     uma vez).
+
+     **Recomendação pra quem retomar isso**: dado o tanto de verificação
+     já feita, a próxima tentativa de reativar o lote 1 em produção
+     parece segura — mas registre e observe de perto (`get_runtime_logs`/
+     `get_runtime_errors` da MCP do Vercel, não só a UI) nos primeiros
+     minutos depois do deploy, com o rollback (`disable row level
+     security`, mesmo padrão do item 207) pronto pra aplicar na hora se
+     acontecer de novo.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
