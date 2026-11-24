@@ -10495,6 +10495,44 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      security`, mesmo padrão do item 207) pronto pra aplicar na hora se
      acontecer de novo.
 
+209. **RLS, lote 1: reproduziu de novo em produção (2ª recarga, não a
+     1ª) — confirmado condição de corrida, não bug determinístico.**
+     Continuação do item 208. Reativado (`0043_rls_batch1_reenable.sql`)
+     depois da investigação sem reprodução local; o PRIMEIRO carregamento
+     de `/app/fornecedores` em produção funcionou normal, o SEGUNDO (uns
+     segundos depois) voltou a dar `invalid input syntax for type
+     integer: ''`. Revertido de novo na hora
+     (`0044_rls_batch1_rollback2.sql`), confirmado estável depois.
+
+     **Por que isso explica tudo que não reproduziu antes**: concorrência
+     real de produção (várias invocações serverless, múltiplas chamadas
+     disparadas quase juntas pelo React Query ao montar a página) não
+     existe nem localmente (um processo Node só, recarregando uma aba por
+     vez) nem numa branch de teste pouco acessada. A causa exata dentro
+     do mecanismo (`getTenantSql`/pool/transação, `db.ts`) não foi
+     encontrada com certeza — mas o comportamento bate com uma corrida:
+     aparece só sob carga, nunca em teste isolado.
+
+     **Reforço aplicado antes da próxima tentativa** (independente de
+     achar a causa exata): a policy usa `current_setting('app.company_id',
+     true)::int` — se a GUC vier como string VAZIA em vez de `NULL` (por
+     qualquer motivo, inclusive essa corrida), o cast quebra com erro em
+     vez de só negar acesso, que já é o comportamento esperado pro caso
+     NULL. Trocado pra `nullif(current_setting(...), '')::int` nas 10
+     policies do lote 1 — string vazia vira NULL antes do cast, nunca
+     mais erro, só nega (fail-safe de verdade). Não resolve a causa raiz
+     da corrida, mas fecha a CLASSE do sintoma (erro 500 visível pro
+     usuário) enquanto a causa não é achada com certeza.
+
+     **Pendência real pra quem for atrás da causa raiz**: o candidato mais
+     provável é algo em `getTenantSql`/`sql.transaction` (`db.ts`) sob
+     concorrência real do pool do `pg` contra o pooler da Neon — mas a
+     teoria não foi confirmada, só o reforço defensivo foi aplicado.
+     Vale instrumentar com log (`console.warn` temporário no `scope()` de
+     `getTenantSql` registrando o valor exato antes do cast) numa próxima
+     tentativa, pra pegar o `''` no flagra em produção se acontecer nessa
+     tentativa reforçada.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
