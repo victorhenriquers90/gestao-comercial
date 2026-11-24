@@ -10564,6 +10564,24 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      inventories, stock_movements, stock_counts, stock_count_items`),
      já aplicando o reforço `nullif` desde a primeira tentativa.
 
+211. **RLS, lote 2 de 7 (catálogo/estoque) — estável de primeira,
+     aplicando a lição do lote 1 desde o início.** `products,
+     product_variants, inventories, stock_movements, stock_counts,
+     stock_count_items` (`0047_rls_batch2_catalog.sql`), já com
+     `nullif(current_setting(...), '')::int` nas policies desde a
+     primeira tentativa — nenhuma reversão precisou acontecer dessa vez.
+
+     Verificado localmente (Produtos, Estoque: saldos/movimentações, e
+     abertura real de um inventário — exercitou o INSERT em
+     `stock_counts`/`stock_count_items`, não só leitura) e em produção
+     com 6 recargas seguidas entre Produtos e Estoque, mais
+     `get_runtime_errors` da MCP do Vercel confirmando só o aviso de SSL
+     de sempre.
+
+     **Próximo**: lote 3 (clientes/CRM — `customers, customer_notes,
+     crm_tasks`), mesmo padrão (`nullif` desde a primeira tentativa,
+     várias recargas em produção antes de considerar fechado).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
