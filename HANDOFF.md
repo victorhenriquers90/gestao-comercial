@@ -10590,6 +10590,14 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
 
      **Próximo**: lote 4 (compras — `purchases, purchase_items`).
 
+213. **RLS, lote 4 de 7 (compras) — estável de primeira.** `purchases,
+     purchase_items` (`0049_rls_batch4_purchases.sql`). Verificado
+     localmente (lista de pedidos, total vindo dos itens) e em produção
+     com 6 recargas seguidas de Compras, `get_runtime_errors` limpo.
+
+     **Próximo**: lote 5 (financeiro — `accounts_payable,
+     accounts_receivable, cash_registers, cash_movements, expenses`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
