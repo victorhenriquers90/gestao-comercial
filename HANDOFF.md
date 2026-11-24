@@ -10533,6 +10533,37 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      tentativa, pra pegar o `''` no flagra em produção se acontecer nessa
      tentativa reforçada.
 
+210. **RLS, lote 1: fechado de verdade — estável em produção depois do
+     reforço defensivo.** Continuação dos itens 206-209. 3ª tentativa de
+     ativação (`0046_rls_batch1_reenable2.sql`, com as policies já
+     reforçadas pelo item 209): 6 recargas seguidas de Fornecedores mais
+     uma passada por Vendedores, Configurações e Caixa — zero erro em
+     todas. `get_runtime_errors` da MCP do Vercel confirma só o aviso de
+     SSL de sempre, nenhum "invalid input syntax" no período.
+
+     **Estado final do lote 1**: RLS ativa nas 10 tabelas (`stores,
+     categories, brands, suppliers, sellers, company_settings,
+     company_counters, commission_rules, cash_accounts, card_rates`),
+     policies com `nullif(current_setting('app.company_id', true),
+     '')::int` (não o `current_setting(...)::int` original de 0041 —
+     ver item 209 pro motivo). Histórico de migrations do lote (pra quem
+     for entender o rastro): 0041 ativa → 0042 reverte (erro não
+     reproduzido) → 0043 reativa → 0044 reverte de novo (confirmado
+     condição de corrida) → 0045 reforça as policies (RLS ainda
+     desativada) → 0046 reativa (estável).
+
+     **A causa raiz da condição de corrida nunca foi confirmada com
+     certeza** — só contornada pelo reforço defensivo. Fica registrado
+     como dívida técnica: se o mesmo padrão de erro aparecer em algum
+     lote futuro (2-7), o candidato mais provável continua sendo
+     `getTenantSql`/`sql.transaction` (`db.ts`) sob concorrência real do
+     pool do `pg`, e o mesmo reforço `nullif(..., '')` deve ser aplicado
+     de saída nas novas policies, não só depois de um incidente.
+
+     **Próximo**: lote 2 (catálogo/estoque — `products, product_variants,
+     inventories, stock_movements, stock_counts, stock_count_items`),
+     já aplicando o reforço `nullif` desde a primeira tentativa.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
