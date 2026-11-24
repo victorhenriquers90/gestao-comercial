@@ -10582,6 +10582,14 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      crm_tasks`), mesmo padrão (`nullif` desde a primeira tentativa,
      várias recargas em produção antes de considerar fechado).
 
+212. **RLS, lote 3 de 7 (clientes/CRM) — estável de primeira.**
+     `customers, customer_notes, crm_tasks` (`0048_rls_batch3_crm.sql`).
+     Verificado localmente (Clientes, CRM: funil e agenda de follow-ups)
+     e em produção com 6 recargas seguidas entre Clientes e CRM, mais
+     `get_runtime_errors` limpo (só o aviso de SSL de sempre).
+
+     **Próximo**: lote 4 (compras — `purchases, purchase_items`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
