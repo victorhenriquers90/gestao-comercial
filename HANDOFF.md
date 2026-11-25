@@ -10627,6 +10627,30 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      alto tráfego). Depois do lote 7, Fase 3 (teste de carga real com
      k6, ainda não iniciada).
 
+216. **RLS, lote 7 de 7 (vendas) — estável de primeira. Fase 2 do P3b
+     COMPLETA.** `sales, sale_items, payments, returns, return_items,
+     held_sales, account_settlements` (`0052_rls_batch7_sales.sql`),
+     mesmo padrão `nullif(current_setting(...), '')::int` dos lotes
+     1-6. Verificado localmente (Dashboard, Vendas, PDV — venda nova e
+     modal de vendas guardadas —, Devoluções, Caixa, Financeiro) e em
+     produção com 6 recargas entre Dashboard, Vendas, Devoluções, PDV e
+     Caixa, todos com dado real (vendas canceladas/devolvidas,
+     movimentação de caixa por venda). `get_runtime_errors` limpo, só o
+     warning benigno de SSL mode de sempre.
+
+     Com isso fecham as 38 tabelas de negócio com `company_id` (as 40
+     menos as 2 exceções do desenho — `memberships` e `pending_invites`,
+     ver item 206). Isolamento multi-tenant agora tem duas camadas: o
+     `where company_id = $1` de cada query (já existia) e o Postgres
+     recusando por conta própria via RLS (novo). Nenhum rollback foi
+     necessário neste lote — a lição do lote 1 (nullif desde a primeira
+     tentativa) se pagou em todos os lotes 2-7.
+
+     **Próximo**: Fase 3 do plano (`stateless-chasing-stallman.md`) —
+     teste de carga real com k6 contra branch descartável da Neon +
+     deployment de Preview do Vercel, em 3 pontos de medição (baseline,
+     pós-plumbing, pós-RLS completo). Ainda não iniciada.
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
