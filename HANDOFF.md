@@ -10598,6 +10598,16 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Próximo**: lote 5 (financeiro — `accounts_payable,
      accounts_receivable, cash_registers, cash_movements, expenses`).
 
+214. **RLS, lote 5 de 7 (financeiro) — estável de primeira.**
+     `accounts_payable, accounts_receivable, cash_registers,
+     cash_movements, expenses` (`0050_rls_batch5_financeiro.sql`).
+     Verificado localmente (Financeiro: contas a pagar/receber e
+     despesas; Caixa: registro aberto) e em produção com 6 recargas
+     seguidas entre Financeiro e Caixa, `get_runtime_errors` limpo.
+
+     **Próximo**: lote 6 (comissão/metas/ops — `commissions, targets,
+     promotions, notifications, audit_logs`).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
