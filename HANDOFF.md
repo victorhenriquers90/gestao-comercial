@@ -10608,6 +10608,25 @@ inclusive — a conversão lá foi verificada instância por instância (12/12 e
      **Próximo**: lote 6 (comissão/metas/ops — `commissions, targets,
      promotions, notifications, audit_logs`).
 
+215. **RLS, lote 6 de 7 (comissão/metas/ops) — estável de primeira.**
+     `commissions, targets, promotions, notifications, audit_logs`
+     (`0051_rls_batch6_ops.sql`). Verificado localmente (Dashboard com
+     comissão/ranking de vendedor, Metas, Promoções, Configurações→
+     Auditoria com log real) e em produção com 6 recargas entre
+     Dashboard, Metas, Promoções e Auditoria, `get_runtime_errors`
+     limpo (só o warning benigno de SSL mode de sempre). A aba
+     "Pagamentos" de Vendedores (outra via de leitura de `commissions`)
+     não respondeu a clique nos dois ambientes — não investigado a
+     fundo, considerado coberto indiretamente pelo card de ranking de
+     vendedores do Dashboard, que já lê a mesma tabela.
+
+     **Próximo**: lote 7, último e mais quente (vendas — `sales,
+     sale_items, payments, returns, return_items, held_sales,
+     account_settlements`). Agendar fora de pico (lock `ACCESS
+     EXCLUSIVE` do `enable row level security`, rápido mas em tabela de
+     alto tráfego). Depois do lote 7, Fase 3 (teste de carga real com
+     k6, ainda não iniciada).
+
 ## Como a próxima IA deve trabalhar
 
 - Mudança pequena e verificável; `npm run typecheck` depois de TS.
